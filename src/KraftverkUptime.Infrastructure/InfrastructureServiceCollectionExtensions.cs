@@ -17,6 +17,7 @@ using KraftverkUptime.Infrastructure.Reporting;
 using KraftverkUptime.Infrastructure.Security;
 using KraftverkUptime.Infrastructure.Storage;
 using KraftverkUptime.Modules.Reporting;
+using KraftverkUptime.Modules.Reporting.Storage;
 using KraftverkUptime.Modules.Settlement.Jobs;
 using KraftverkUptime.Modules.Settlement.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -90,6 +91,9 @@ public static class InfrastructureServiceCollectionExtensions
         // ikke EF-avhengighet.
         services.AddScoped<ISettlementImportRecorder, DbSettlementImportRecorder>();
         services.AddScoped<IUptimePeriodProvider, SettlementUptimePeriodProvider>();
+
+        // --- UptimeReport-lagring (blob, JSON) ---
+        services.AddSingleton<IUptimeReportStore, KraftverkUptime.Infrastructure.Reporting.BlobUptimeReportStore>();
 
         // --- Events ---
         services.AddSingleton<IEventPublisher, InProcEventPublisher>();

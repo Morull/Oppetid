@@ -1,6 +1,176 @@
 @page "/reports"
+@inject ReportsApi Api
 
 <PageTitle>Rapporter</PageTitle>
 
 <h1>Rapporter</h1>
-<p>Rapport-modulen implementeres i Prompt 2. Placeholder-side.</p>
+
+<div class="filter-row">
+    <label>
+        Anlegg
+        <select @bind="_selectedPlantId" @bind:after="ReloadAsync">
+            <option value="">— velg anlegg —</option>
+            @if (_plants is not null)
+            {
+                @foreach (var p in _plants)
+                {
+                    <option value="@p.Id">@p.Name (@p.Id)</option>
+                }
+            }
+        </select>
+    </label>
+
+    <label>
+        Fra
+        <input type="date" @bind="_from" @bind:after="ReloadAsync" />
+    </label>
+
+    <label>
+        Til
+        <input type="date" @bind="_to" @bind:after="ReloadAsync" />
+    </label>
+
+    <button type="button" @onclick="ClearFiltersAsync">Nullstill filtre</button>
+</div>
+
+@if (_error is not null)
+{
+    <div class="alert alert-error">@_error</div>
+}
+
+@if (string.IsNullOrWhiteSpace(_selectedPlantId))
+{
+    <p>Velg et anlegg for å se importerte avregninger.</p>
+}
+else if (_items is null)
+{
+    <p><em>Laster…</em></p>
+}
+else if (_items.Count == 0)
+{
+    <p>Ingen importer funnet for valgt anlegg og filter.</p>
+}
+else
+{
+    <table class="reports-table">
+        <thead>
+            <tr>
+                <th>Anlegg</th>
+                <th>Periode</th>
+                <th>Timer</th>
+                <th>Avvik</th>
+                <th>Importert</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var row in _items)
+        {
+            <tr>
+                <td>@row.PlantName</td>
+                <td>@FormatPeriod(row.PeriodStartUtc, row.PeriodEndUtc)</td>
+                <td>@row.HourCount</td>
+                <td>@row.IssueCount</td>
+                <td>@row.ImportedAtUtc.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+                <td>
+                    @if (row.ReportAvailable)
+                    {
+                        <span class="badge badge-ready">Klar</span>
+                    }
+                    else
+                    {
+                        <span class="badge badge-pending">Behandles</span>
+                    }
+                </td>
+                <td>
+                    @if (row.ReportAvailable)
+                    {
+                        <a href="@($"reports/{row.PlantId}/{row.IdempotencyKey}")">Åpne</a>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<PlantDto>? _plants;
+    private IReadOnlyList<SettlementImportSummary>? _items;
+    private string _selectedPlantId = string.Empty;
+    private DateTime? _from;
+    private DateTime? _to;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _plants = await Api.ListPlantsAsync();
+            if (_plants.Count > 0)
+            {
+                _selectedPlantId = _plants[0].Id;
+                await ReloadAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente anleggsliste: {ex.Message}";
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_selectedPlantId))
+        {
+            _items = null;
+            return;
+        }
+
+        try
+        {
+            DateTimeOffset? from = _from.HasValue
+                ? new DateTimeOffset(_from.Value, TimeSpan.Zero)
+                : null;
+            DateTimeOffset? to = _to.HasValue
+                ? new DateTimeOffset(_to.Value.AddDays(1), TimeSpan.Zero) // inkluderende til-dato
+                : null;
+
+            if (from.HasValue ^ to.HasValue)
+            {
+                // Ikke kall API før begge datoer er satt, ellers returnerer serveren 400.
+                return;
+            }
+
+            _items = await Api.ListSettlementsAsync(_selectedPlantId, from, to);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente rapport-liste: {ex.Message}";
+            _items = Array.Empty<SettlementImportSummary>();
+        }
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        _from = null;
+        _to = null;
+        await ReloadAsync();
+    }
+
+    private static string FormatPeriod(DateTimeOffset start, DateTimeOffset end)
+    {
+        // Avregningsperioder er normalt én kalendermåned i UTC.
+        // Viser som "feb 2026" hvis lengden er en måned, ellers dato-dato.
+        var startLocal = start.ToLocalTime();
+        var endLocal = end.ToLocalTime();
+        var daysSpan = (endLocal - startLocal).TotalDays;
+        if (daysSpan is >= 27 and <= 32 && startLocal.Day == 1)
+        {
+            return startLocal.ToString("MMM yyyy");
+        }
+        return $"{startLocal:yyyy-MM-dd} – {endLocal:yyyy-MM-dd}";
+    }
+}

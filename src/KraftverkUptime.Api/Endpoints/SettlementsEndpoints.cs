@@ -1,6 +1,11 @@
 using Asp.Versioning;
 using Asp.Versioning.Builder;
+using KraftverkUptime.Api.Contracts;
 using KraftverkUptime.Api.Options;
+using KraftverkUptime.Core.Reporting;
+using KraftverkUptime.Modules.Classification.Dtos;
+using KraftverkUptime.Modules.Reporting.Storage;
+using KraftverkUptime.Modules.Settlement.Persistence;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
@@ -37,7 +42,7 @@ public static class SettlementsEndpoints
             .WithName("UploadSettlement")
             .WithSummary("Laster opp en portaleksport og starter asynkron parsing.")
             .DisableAntiforgery()
-            .AllowAnonymous() // TODO(Steg 5): erstatt med .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
+            .AllowAnonymous() // TODO(Steg 6): erstatt med .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
             .AddEndpointFilter(async (ctx, next) =>
             {
                 // Hever Kestrel-grensen fra default 30 MB til konfigurert verdi.
@@ -57,7 +62,156 @@ public static class SettlementsEndpoints
             .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
             .ProducesProblem(StatusCodes.Status415UnsupportedMediaType);
 
+        group.MapGet("/", ListAsync)
+            .WithName("ListSettlements")
+            .WithSummary("Lister importer for et anlegg, valgfritt filtrert på periode-overlapp.")
+            .AllowAnonymous() // TODO(Steg 6): .RequireAuthorization(AuthorizationPolicies.PlantReader)
+            .Produces<IReadOnlyList<SettlementImportDto>>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest);
+
+        group.MapGet("/{idempotencyKey}/report", GetReportAsync)
+            .WithName("GetSettlementReport")
+            .WithSummary("Henter ferdig-klassifisert UptimeReport som JSON.")
+            .AllowAnonymous() // TODO(Steg 6): .RequireAuthorization(AuthorizationPolicies.PlantReader)
+            .Produces<UptimeReport>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapGet("/{idempotencyKey}/report/xlsx", GetReportXlsxAsync)
+            .WithName("GetSettlementReportXlsx")
+            .WithSummary("Laster ned UptimeReport som Excel-arbeidsbok (.xlsx).")
+            .AllowAnonymous() // TODO(Steg 6): .RequireAuthorization(AuthorizationPolicies.PlantReader)
+            .Produces(StatusCodes.Status200OK, contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         return endpoints;
+    }
+
+    // ---- GET /api/v1/plants/{plantId}/settlements -----------------------------
+
+    private static async Task<IResult> ListAsync(
+        string plantId,
+        ISettlementImportRecorder recorder,
+        IUptimeReportStore reportStore,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        int? limit,
+        CancellationToken ct)
+    {
+        if (from.HasValue != to.HasValue)
+        {
+            return Results.Problem(
+                title: "Ugyldig filter",
+                detail: "'from' og 'to' må enten begge settes eller begge utelates.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var effectiveLimit = Math.Clamp(limit ?? 50, 1, 500);
+
+        var rows = await recorder.ListForPlantAsync(plantId, from, to, effectiveLimit, ct).ConfigureAwait(false);
+
+        var result = new List<SettlementImportDto>(rows.Count);
+        foreach (var row in rows)
+        {
+            var available = await reportStore
+                .GetAsync(row.OwnerOrgId, row.PlantId, row.IdempotencyKey, ct)
+                .ConfigureAwait(false) is not null;
+
+            result.Add(new SettlementImportDto(
+                PlantId: row.PlantId,
+                IdempotencyKey: row.IdempotencyKey,
+                PlantName: row.PlantName,
+                SchemaVersion: row.SchemaVersion,
+                PeriodStartUtc: row.PeriodStartUtc,
+                PeriodEndUtc: row.PeriodEndUtc,
+                HourCount: row.HourCount,
+                IssueCount: row.IssueCount,
+                ImportedAtUtc: row.ImportedAtUtc,
+                ReportAvailable: available));
+        }
+
+        return Results.Ok(result);
+    }
+
+    // ---- GET /api/v1/plants/{plantId}/settlements/{idempotencyKey}/report ----
+
+    private static async Task<IResult> GetReportAsync(
+        string plantId,
+        string idempotencyKey,
+        ISettlementImportRecorder recorder,
+        IUptimeReportStore reportStore,
+        CancellationToken ct)
+    {
+        var record = await recorder
+            .FindByIdempotencyKeyAsync(plantId, idempotencyKey, ct)
+            .ConfigureAwait(false);
+        if (record is null)
+        {
+            return Results.Problem(
+                title: "Import ikke funnet",
+                detail: $"Ingen import med idempotencyKey={idempotencyKey} for plant {plantId}.",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var report = await reportStore
+            .GetAsync(record.OwnerOrgId, record.PlantId, record.IdempotencyKey, ct)
+            .ConfigureAwait(false);
+        if (report is null)
+        {
+            return Results.Problem(
+                title: "Rapport ikke klar",
+                detail: "Importen er registrert, men klassifiseringsjobben er ikke fullført ennå.",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        return Results.Ok(report);
+    }
+
+    // ---- GET /api/v1/plants/{plantId}/settlements/{idempotencyKey}/report/xlsx
+
+    private static async Task<IResult> GetReportXlsxAsync(
+        string plantId,
+        string idempotencyKey,
+        ISettlementImportRecorder recorder,
+        IUptimeReportStore reportStore,
+        IEnumerable<IReportRenderer> renderers,
+        CancellationToken ct)
+    {
+        var record = await recorder
+            .FindByIdempotencyKeyAsync(plantId, idempotencyKey, ct)
+            .ConfigureAwait(false);
+        if (record is null)
+        {
+            return Results.Problem(
+                title: "Import ikke funnet",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var report = await reportStore
+            .GetAsync(record.OwnerOrgId, record.PlantId, record.IdempotencyKey, ct)
+            .ConfigureAwait(false);
+        if (report is null)
+        {
+            return Results.Problem(
+                title: "Rapport ikke klar",
+                detail: "Klassifiseringsjobben er ikke fullført ennå.",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var xlsxRenderer = renderers.FirstOrDefault(r => string.Equals(r.Format, "xlsx", StringComparison.OrdinalIgnoreCase));
+        if (xlsxRenderer is null)
+        {
+            return Results.Problem(
+                title: "Mangler XLSX-renderer",
+                detail: "Ingen IReportRenderer er registrert for format 'xlsx'.",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        var stream = await xlsxRenderer.RenderAsync(report, ct).ConfigureAwait(false);
+        var fileName = $"{record.PlantId}-{record.PeriodStartUtc:yyyy-MM}-uptime.xlsx";
+        return Results.File(
+            fileStream: stream,
+            contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            fileDownloadName: fileName);
     }
 
     private static async Task<IResult> UploadAsync(

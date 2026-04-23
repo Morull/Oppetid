@@ -84,25 +84,71 @@ public sealed class DbSettlementImportRecorder : ISettlementImportRecorder
             .FirstOrDefaultAsync(ct)
             .ConfigureAwait(false);
 
-        if (row is null)
+        return row is null ? null : ToRecord(row);
+    }
+
+    public async Task<SettlementImportRecord?> FindByIdempotencyKeyAsync(
+        string plantId,
+        string idempotencyKey,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
+
+        var row = await _db.SettlementImports
+            .AsNoTracking()
+            .Where(x => x.PlantId == plantId && x.IdempotencyKey == idempotencyKey)
+            .FirstOrDefaultAsync(ct)
+            .ConfigureAwait(false);
+
+        return row is null ? null : ToRecord(row);
+    }
+
+    public async Task<IReadOnlyList<SettlementImportRecord>> ListForPlantAsync(
+        string plantId,
+        DateTimeOffset? fromUtc,
+        DateTimeOffset? toUtc,
+        int limit,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+
+        var query = _db.SettlementImports
+            .AsNoTracking()
+            .Where(x => x.PlantId == plantId);
+
+        if (fromUtc.HasValue && toUtc.HasValue)
         {
-            return null;
+            // Periode-overlapp: [periodStart, periodEnd] overlapper [from, to]
+            // når periodStart <= to OG periodEnd >= from.
+            var from = fromUtc.Value;
+            var to = toUtc.Value;
+            query = query.Where(x => x.PeriodStartUtc <= to && x.PeriodEndUtc >= from);
         }
 
-        return new SettlementImportRecord
-        {
-            OwnerOrgId = row.OwnerOrgId,
-            PlantId = row.PlantId ?? string.Empty,
-            IdempotencyKey = row.IdempotencyKey,
-            BlobPath = row.BlobPath,
-            PlantName = row.PlantName,
-            SchemaVersion = row.SchemaVersion,
-            PeriodStartUtc = row.PeriodStartUtc,
-            PeriodEndUtc = row.PeriodEndUtc,
-            HourCount = row.HourCount,
-            IssueCount = row.IssueCount,
-            ImportedAtUtc = row.ImportedAtUtc,
-            CorrelationId = row.CorrelationId,
-        };
+        var rows = await query
+            .OrderByDescending(x => x.ImportedAtUtc)
+            .Take(limit)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        return rows.ConvertAll(ToRecord);
     }
+
+    private static SettlementImportRecord ToRecord(SettlementImport row) => new()
+    {
+        OwnerOrgId = row.OwnerOrgId,
+        PlantId = row.PlantId ?? string.Empty,
+        IdempotencyKey = row.IdempotencyKey,
+        BlobPath = row.BlobPath,
+        PlantName = row.PlantName,
+        SchemaVersion = row.SchemaVersion,
+        PeriodStartUtc = row.PeriodStartUtc,
+        PeriodEndUtc = row.PeriodEndUtc,
+        HourCount = row.HourCount,
+        IssueCount = row.IssueCount,
+        ImportedAtUtc = row.ImportedAtUtc,
+        CorrelationId = row.CorrelationId,
+    };
 }

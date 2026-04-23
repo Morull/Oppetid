@@ -1,0 +1,243 @@
+@page "/reports/{PlantId}/{IdempotencyKey}"
+@inject ReportsApi Api
+
+<PageTitle>Rapport – @PlantId</PageTitle>
+
+@if (_error is not null)
+{
+    <div class="alert alert-error">@_error</div>
+}
+
+@if (_notFound)
+{
+    <h1>Rapport ikke funnet</h1>
+    <p>Fant ingen ferdig-klassifisert rapport for denne importen ennå.
+       Klassifiseringen kan fortsatt pågå – gå tilbake til <a href="reports">rapportlisten</a>
+       og prøv igjen om et minutt.</p>
+}
+else if (_report is null)
+{
+    <p><em>Laster rapport…</em></p>
+}
+else
+{
+    <h1>Rapport – @_report.PlantId</h1>
+    <div class="report-header">
+        <div><strong>Periode:</strong> @FormatPeriod(_report.PeriodStartUtc, _report.PeriodEndUtc)</div>
+        <div><strong>Timer totalt:</strong> @_report.PeriodHours</div>
+        <div>
+            <a class="btn btn-primary" href="@Api.BuildXlsxDownloadUri(PlantId, IdempotencyKey)">
+                Last ned Excel
+            </a>
+        </div>
+    </div>
+
+    <section>
+        <h2>Tilstandsfordeling</h2>
+        @if (_report.StateCounts.Count == 0)
+        {
+            <p>Ingen klassifiserte timer.</p>
+        }
+        else
+        {
+            var total = _report.StateCounts.Values.Sum();
+            <div class="state-bar" role="img" aria-label="Tilstandsfordeling">
+                @foreach (var (state, count) in _report.StateCounts.OrderByDescending(kv => kv.Value))
+                {
+                    var pct = total == 0 ? 0 : count * 100.0 / total;
+                    <div class="state-bar-segment @StateCss(state)" style="@($"width:{pct.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}%")"
+                         title="@state: @count timer (@pct.ToString("F1") %)">
+                        @if (pct >= 5)
+                        {
+                            <span>@state</span>
+                        }
+                    </div>
+                }
+            </div>
+            <table class="state-table">
+                <thead>
+                    <tr><th>Tilstand</th><th>Timer</th><th>Andel</th></tr>
+                </thead>
+                <tbody>
+                @foreach (var (state, count) in _report.StateCounts.OrderByDescending(kv => kv.Value))
+                {
+                    var pct = total == 0 ? 0 : count * 100.0 / total;
+                    <tr>
+                        <td><span class="badge @StateCss(state)">@state</span></td>
+                        <td>@count</td>
+                        <td>@pct.ToString("F1") %</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    </section>
+
+    <section>
+        <h2>Nøkkel-KPI-er</h2>
+        <table class="kpi-table">
+            <thead>
+                <tr><th>KPI</th><th>Verdi</th><th>Enhet</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var name in HighlightKpis)
+            {
+                var kpi = _report.Kpis.FirstOrDefault(k => k.Name == name);
+                if (kpi is null) continue;
+                <tr>
+                    <td>@kpi.Name</td>
+                    <td>@FormatKpi(kpi)</td>
+                    <td>@kpi.Unit</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </section>
+
+    <section>
+        <h2>Full KPI-katalog (@_report.Kpis.Count)</h2>
+        <details>
+            <summary>Vis alle KPI-er</summary>
+            <table class="kpi-table">
+                <thead>
+                    <tr>
+                        <th>KPI</th>
+                        <th>Verdi</th>
+                        <th>Enhet</th>
+                        <th>Kategori</th>
+                        <th>Timer-basis</th>
+                        <th>Confidence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var kpi in _report.Kpis)
+                {
+                    <tr>
+                        <td title="@kpi.Definition">@kpi.Name</td>
+                        <td>@FormatKpi(kpi)</td>
+                        <td>@kpi.Unit</td>
+                        <td>@kpi.Category</td>
+                        <td>@kpi.HoursBasis</td>
+                        <td>@kpi.Confidence.ToString("F2")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </details>
+    </section>
+
+    <section>
+        <h2>Timetabell (@_report.Classified.Count rader)</h2>
+        <details>
+            <summary>Vis klassifiserte timer</summary>
+            <div class="hourly-scroll">
+                <table class="hourly-table">
+                    <thead>
+                        <tr>
+                            <th>Tid (UTC)</th>
+                            <th>Tilstand</th>
+                            <th>CauseCode</th>
+                            <th>MWh Elhub</th>
+                            <th>Plan</th>
+                            <th>Spotpris</th>
+                            <th>Rationale</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in _report.Classified.Take(_visibleHours))
+                    {
+                        <tr>
+                            <td>@row.TimeUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td><span class="badge @StateCss(row.State)">@row.State</span></td>
+                            <td>@row.CauseCode</td>
+                            <td>@FormatNullable(row.MwhElhub, "F3")</td>
+                            <td>@FormatNullable(row.ProduksjonplanMwh, "F3")</td>
+                            <td>@FormatNullable(row.SpotprisNokMwh, "F2")</td>
+                            <td>@row.Rationale</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+            @if (_report.Classified.Count > _visibleHours)
+            {
+                <button type="button" @onclick="() => _visibleHours += 168">
+                    Vis flere (@_visibleHours av @_report.Classified.Count)
+                </button>
+            }
+        </details>
+    </section>
+}
+
+@code {
+    [Parameter] public string PlantId { get; set; } = string.Empty;
+    [Parameter] public string IdempotencyKey { get; set; } = string.Empty;
+
+    private static readonly string[] HighlightKpis =
+    [
+        "TotalProduction_MWh", "CapacityFactor_CF", "AvailabilityFactor_AF",
+        "EquivalentAvailabilityFactor_EAF", "ServiceFactor_SF",
+        "ForcedOutageRate_FOR", "ForcedOutageEvents", "MTBF", "MTTR",
+        "PlanFulfillment", "BidAccuracy", "PlanDeviation_MWh", "PlanDeviation_NOK",
+    ];
+
+    private UptimeReportSummary? _report;
+    private bool _notFound;
+    private string? _error;
+    private int _visibleHours = 168; // første uke; "Vis flere" legger til 168 av gangen
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _error = null;
+        _notFound = false;
+        _report = null;
+        _visibleHours = 168;
+
+        try
+        {
+            _report = await Api.GetReportAsync(PlantId, IdempotencyKey);
+            if (_report is null)
+            {
+                _notFound = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente rapport: {ex.Message}";
+        }
+    }
+
+    private static string FormatKpi(KpiDto k)
+    {
+        if (!k.Value.HasValue) return "–";
+        return k.Unit switch
+        {
+            "ratio" => (k.Value.Value * 100).ToString("F2") + " %",
+            "MWh" => k.Value.Value.ToString("F2"),
+            "NOK" => k.Value.Value.ToString("N0"),
+            "hours" => k.Value.Value.ToString("F1"),
+            "events" => k.Value.Value.ToString("F0"),
+            _ => k.Value.Value.ToString("F4"),
+        };
+    }
+
+    private static string FormatNullable(double? v, string format) =>
+        v.HasValue ? v.Value.ToString(format, System.Globalization.CultureInfo.InvariantCulture) : "–";
+
+    private static string FormatPeriod(DateTimeOffset start, DateTimeOffset end)
+    {
+        var startLocal = start.ToLocalTime();
+        var endLocal = end.ToLocalTime();
+        return $"{startLocal:yyyy-MM-dd} – {endLocal:yyyy-MM-dd}";
+    }
+
+    private static string StateCss(string state) => state switch
+    {
+        "InService" => "state-inservice",
+        "FO" or "ForcedOutage" => "state-fo",
+        "PO" or "PlannedOutage" => "state-po",
+        "RS" or "ReserveShutdown" => "state-rs",
+        "FD" or "ForcedDerated" => "state-fd",
+        _ => "state-unknown",
+    };
+}

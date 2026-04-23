@@ -100,6 +100,7 @@ public sealed class ParseSettlementJobHandler : IJobHandler<ParseSettlementJob>
             PlantId = job.PlantId,
             OwnerOrgId = job.OwnerOrgId,
             BlobPath = job.BlobPath,
+            IdempotencyKey = job.IdempotencyKey,
             PeriodStartUtc = parsed.PeriodStartUtc,
             PeriodEndUtc = parsed.PeriodEndUtc,
             HourCount = parsed.Hourly.Count,

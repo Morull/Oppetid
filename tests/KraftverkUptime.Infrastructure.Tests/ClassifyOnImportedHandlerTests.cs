@@ -5,6 +5,7 @@ using KraftverkUptime.Infrastructure.Events;
 using KraftverkUptime.Modules.Classification.Config;
 using KraftverkUptime.Modules.Classification.Dtos;
 using KraftverkUptime.Modules.Reporting;
+using KraftverkUptime.Modules.Reporting.Storage;
 using KraftverkUptime.Modules.Settlement.Dtos;
 using KraftverkUptime.Modules.Settlement.Jobs;
 using KraftverkUptime.Modules.Settlement.Quality;
@@ -16,7 +17,7 @@ namespace KraftverkUptime.Infrastructure.Tests;
 public class ClassifyOnImportedHandlerTests
 {
     [Fact]
-    public async Task Handle_Calls_Provider_And_Analyzer_With_Event_Period()
+    public async Task Handle_Calls_Provider_And_Analyzer_And_Persists_Report()
     {
         var from = new DateTimeOffset(2026, 2, 1, 0, 0, 0, TimeSpan.Zero);
         var to = new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero);
@@ -51,15 +52,17 @@ public class ClassifyOnImportedHandlerTests
 
         var provider = new FakePeriodProvider(expectedPeriod);
         var analyzer = new FakeAnalyzer(expectedReport);
+        var store = new FakeReportStore();
 
         var handler = new ClassifyOnImportedHandler(
-            provider, analyzer, NullLogger<ClassifyOnImportedHandler>.Instance);
+            provider, analyzer, store, NullLogger<ClassifyOnImportedHandler>.Instance);
 
         await handler.HandleAsync(new SettlementImportedEvent
         {
             PlantId = "plant-1",
             OwnerOrgId = "org-1",
             BlobPath = "plants/plant-1/2026-02.xlsx",
+            IdempotencyKey = "abc123",
             PeriodStartUtc = from,
             PeriodEndUtc = to,
             HourCount = 0,
@@ -70,6 +73,12 @@ public class ClassifyOnImportedHandlerTests
         provider.LastFromUtc.Should().Be(from);
         provider.LastToUtc.Should().Be(to);
         analyzer.LastInput.Should().BeSameAs(expectedPeriod);
+
+        store.SaveCount.Should().Be(1);
+        store.LastOwnerOrgId.Should().Be("org-1");
+        store.LastPlantId.Should().Be("plant-1");
+        store.LastIdempotencyKey.Should().Be("abc123");
+        store.LastReport.Should().BeSameAs(expectedReport);
     }
 
     private sealed class FakePeriodProvider : IUptimePeriodProvider
@@ -103,5 +112,30 @@ public class ClassifyOnImportedHandlerTests
             LastInput = input;
             return Task.FromResult(_report);
         }
+    }
+
+    private sealed class FakeReportStore : IUptimeReportStore
+    {
+        public int SaveCount { get; private set; }
+        public string? LastOwnerOrgId { get; private set; }
+        public string? LastPlantId { get; private set; }
+        public string? LastIdempotencyKey { get; private set; }
+        public UptimeReport? LastReport { get; private set; }
+
+        public Task SaveAsync(
+            string ownerOrgId, string plantId, string idempotencyKey,
+            UptimeReport report, CancellationToken ct)
+        {
+            SaveCount++;
+            LastOwnerOrgId = ownerOrgId;
+            LastPlantId = plantId;
+            LastIdempotencyKey = idempotencyKey;
+            LastReport = report;
+            return Task.CompletedTask;
+        }
+
+        public Task<UptimeReport?> GetAsync(
+            string ownerOrgId, string plantId, string idempotencyKey, CancellationToken ct)
+            => Task.FromResult(LastReport);
     }
 }

@@ -47,7 +47,7 @@ public sealed class KraftverkDbContext : DbContext
             b.Property(x => x.Id).UseIdentityAlwaysColumn();
             b.Property(x => x.ValueJson).HasColumnType("jsonb");
             b.HasIndex(x => new { x.OwnerOrgId, x.PlantId, x.Key }).IsUnique()
-                .HasFilter("\"DeletedAt\" IS NULL");
+                .HasFilter("\"deleted_at\" IS NULL");
         });
 
         modelBuilder.Entity<PlantRegistration>(b =>
@@ -78,7 +78,7 @@ public sealed class KraftverkDbContext : DbContext
             // Filter-string matcher eksisterende konvensjon i PlantConfigurationEntry.
             b.HasIndex(x => new { x.OwnerOrgId, x.PlantId, x.IdempotencyKey })
                 .IsUnique()
-                .HasFilter("\"DeletedAt\" IS NULL");
+                .HasFilter("\"deleted_at\" IS NULL");
 
             // Hovedoppslags-index for IUptimePeriodProvider (finn siste import som dekker periode).
             b.HasIndex(x => new { x.PlantId, x.PeriodStartUtc, x.PeriodEndUtc });

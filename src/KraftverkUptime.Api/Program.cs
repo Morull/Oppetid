@@ -43,6 +43,13 @@ builder.Services.AddKraftverkVersioning();
 builder.Services.AddKraftverkPagination(builder.Configuration);
 builder.Services.AddKraftverkProblemDetails();
 
+// JSON-serialisering: enums som navngitte strenger (ellers blir UnitState.InService
+// returnert som 0 og klienten klarer ikke å deserialisere til string).
+builder.Services.ConfigureHttpJsonOptions(o =>
+{
+    o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+});
+
 // --- Settlements-opplasting ---
 builder.Services.AddOptions<SettlementUploadOptions>()
     .Bind(builder.Configuration.GetSection(SettlementUploadOptions.SectionName))
@@ -51,9 +58,14 @@ builder.Services.AddOptions<SettlementUploadOptions>()
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<SettlementUploadHandler>();
 
-// --- OpenAPI ---
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+// V1: ChannelsJobQueue er in-proc. Worker-containeren har sin egen tomme kø
+// og plukker aldri jobber lagt på av API. Kjør derfor JobLoop også i API-prosessen
+// slik at settlement-jobber behandles. TODO(V2): fjern når distribuert kø er på plass
+// (Azure Service Bus / Storage Queues) og Worker kan leve som separat prosess.
+builder.Services.AddKraftverkJobLoop();
+
+// --- OpenAPI (innebygd i .NET 10; Swashbuckle 7.2.0 er inkompatibel) ---
+builder.Services.AddOpenApi();
 
 // --- Helse ---
 var connStr = builder.Configuration.GetSection(KraftverkUptime.Infrastructure.Options.DatabaseOptions.SectionName)["ConnectionString"]
@@ -105,8 +117,8 @@ app.UseStatusCodePages();
 
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    // OpenAPI JSON serveres på /openapi/v1.json
+    app.MapOpenApi();
 }
 
 app.UseCors("kraftverkuptime-web");
@@ -124,7 +136,7 @@ app.MapKraftverkHealth();
 app.MapPlantsV1(apiV1);
 app.MapSettlementsV1(apiV1);
 
-app.MapGet("/", () => Results.Redirect("/swagger"));
+app.MapGet("/", () => Results.Redirect("/openapi/v1.json"));
 
 await app.RunAsync();
 

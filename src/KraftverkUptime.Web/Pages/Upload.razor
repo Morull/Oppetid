@@ -1,0 +1,144 @@
+@page "/upload"
+@inject ReportsApi Api
+@inject NavigationManager Nav
+
+<PageTitle>Last opp avregning</PageTitle>
+
+<h1>Last opp avregning</h1>
+
+<p>
+    Velg anlegg og en Excel-fil (<code>.xlsx</code>) eksportert fra portalen.
+    Filen lagres, parses og klassifiseres i bakgrunnen. Når prosesseringen er
+    fullført, kan rapporten åpnes fra <a href="reports">Rapporter</a>.
+</p>
+
+@if (_error is not null)
+{
+    <div class="alert alert-error" role="alert">
+        <strong>Feil:</strong> @_error
+    </div>
+}
+
+@if (_lastUpload is not null)
+{
+    <div class="alert alert-success" role="status">
+        <strong>Opplasting mottatt.</strong>
+        IdempotencyKey: <code>@_lastUpload.IdempotencyKey</code>.
+        <a href="@($"reports/{_lastUpload.PlantId}/{_lastUpload.IdempotencyKey}")">Gå til rapport</a>
+        (kan ta noen sekunder før den er klar).
+    </div>
+}
+
+<form @onsubmit="SubmitAsync" @onsubmit:preventDefault="true">
+    <fieldset disabled="@(_isUploading)">
+        <div class="form-row">
+            <label for="plantSelect">Anlegg</label>
+            @if (_plants is null)
+            {
+                <p><em>Laster anlegg…</em></p>
+            }
+            else if (_plants.Count == 0)
+            {
+                <p>Ingen anlegg registrert.</p>
+            }
+            else
+            {
+                <select id="plantSelect" @bind="_selectedPlantId">
+                    <option value="">— velg anlegg —</option>
+                    @foreach (var p in _plants)
+                    {
+                        <option value="@p.Id">@p.Name (@p.Id)</option>
+                    }
+                </select>
+            }
+        </div>
+
+        <div class="form-row">
+            <label for="fileInput">Excel-fil</label>
+            <InputFile id="fileInput" OnChange="OnFileSelected" accept=".xlsx" />
+            @if (_selectedFile is not null)
+            {
+                <span class="file-meta">
+                    @_selectedFile.Name — @(_selectedFile.Size / 1024) KB
+                </span>
+            }
+        </div>
+
+        <div class="form-row">
+            <button type="submit" disabled="@(!CanSubmit)">
+                @(_isUploading ? "Laster opp…" : "Last opp")
+            </button>
+        </div>
+    </fieldset>
+</form>
+
+@code {
+    private const long MaxUploadBytes = 26_214_400; // 25 MB
+    private const string XlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+    private IReadOnlyList<PlantDto>? _plants;
+    private string _selectedPlantId = string.Empty;
+    private IBrowserFile? _selectedFile;
+    private bool _isUploading;
+    private string? _error;
+    private SettlementUploadResponse? _lastUpload;
+
+    private bool CanSubmit =>
+        !_isUploading
+        && !string.IsNullOrWhiteSpace(_selectedPlantId)
+        && _selectedFile is not null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _plants = await Api.ListPlantsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente anleggsliste: {ex.Message}";
+            _plants = Array.Empty<PlantDto>();
+        }
+    }
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        _selectedFile = e.File;
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (!CanSubmit) return;
+
+        _error = null;
+        _lastUpload = null;
+        _isUploading = true;
+
+        try
+        {
+            await using var stream = _selectedFile!.OpenReadStream(MaxUploadBytes);
+            var contentType = string.IsNullOrWhiteSpace(_selectedFile.ContentType)
+                ? XlsxContentType
+                : _selectedFile.ContentType;
+
+            _lastUpload = await Api.UploadSettlementAsync(
+                _selectedPlantId, stream, _selectedFile.Name, contentType);
+
+            // Reset filinputen så bruker kan laste opp noe annet uten å reloade siden.
+            _selectedFile = null;
+        }
+        catch (HttpRequestException ex)
+        {
+            _error = $"Opplasting feilet: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Uventet feil: {ex.Message}";
+        }
+        finally
+        {
+            _isUploading = false;
+        }
+    }
+}

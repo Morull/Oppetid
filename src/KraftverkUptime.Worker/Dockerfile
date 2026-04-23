@@ -15,7 +15,7 @@ COPY src/ src/
 RUN dotnet publish src/KraftverkUptime.Worker/KraftverkUptime.Worker.csproj \
     -c Release -o /app --no-restore
 
-FROM mcr.microsoft.com/dotnet/runtime:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 ENV DOTNET_RUNNING_IN_CONTAINER=true \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false

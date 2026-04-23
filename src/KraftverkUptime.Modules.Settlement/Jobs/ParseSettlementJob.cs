@@ -30,6 +30,7 @@ public sealed record SettlementImportedEvent : IDomainEvent
     public required string PlantId { get; init; }
     public required string OwnerOrgId { get; init; }
     public required string BlobPath { get; init; }
+    public required string IdempotencyKey { get; init; }
     public required DateTimeOffset PeriodStartUtc { get; init; }
     public required DateTimeOffset PeriodEndUtc { get; init; }
     public required int HourCount { get; init; }
@@ -39,5 +40,5 @@ public sealed record SettlementImportedEvent : IDomainEvent
     public Guid EventId { get; init; } = Guid.NewGuid();
     public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
     public string? CorrelationId { get; init; }
-    public int SchemaVersion => 2;
+    public int SchemaVersion => 3;
 }
