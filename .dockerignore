@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+**/out/
+**/.vs/
+**/.vscode/
+**/.idea/
+**/node_modules/
+**/.git/
+**/*.user
+TestResults/
+coverage/
+.env
+.env.*
+!.env.example
+_filestore/

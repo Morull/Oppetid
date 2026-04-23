@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <RootNamespace>KraftverkUptime.Worker</RootNamespace>
+    <AssemblyName>KraftverkUptime.Worker</AssemblyName>
+    <UserSecretsId>kraftverkuptime-worker</UserSecretsId>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\KraftverkUptime.Core\KraftverkUptime.Core.csproj" />
+    <ProjectReference Include="..\KraftverkUptime.Infrastructure\KraftverkUptime.Infrastructure.csproj" />
+    <ProjectReference Include="..\KraftverkUptime.Modules.Settlement\KraftverkUptime.Modules.Settlement.csproj" />
+    <ProjectReference Include="..\KraftverkUptime.Modules.Classification\KraftverkUptime.Modules.Classification.csproj" />
+    <ProjectReference Include="..\KraftverkUptime.Modules.Reporting\KraftverkUptime.Modules.Reporting.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.4" />
+  </ItemGroup>
+
+</Project>

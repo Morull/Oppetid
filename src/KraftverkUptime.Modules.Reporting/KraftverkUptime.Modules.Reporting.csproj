@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>KraftverkUptime.Modules.Reporting</RootNamespace>
+    <AssemblyName>KraftverkUptime.Modules.Reporting</AssemblyName>
+    <Description>Bygger oppetidsrapporter fra UptimeReport-modellen og rendrer dem som XLSX med 3-veis figur (Plan/Spotbud/Elhub) + KPI-tabell.</Description>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\KraftverkUptime.Core\KraftverkUptime.Core.csproj" />
+    <ProjectReference Include="..\KraftverkUptime.Modules.Classification\KraftverkUptime.Modules.Classification.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.4" />
+    <PackageReference Include="ClosedXML" Version="0.104.0" />
+    <PackageReference Include="System.IO.Packaging" Version="10.0.4" />
+  </ItemGroup>
+
+</Project>

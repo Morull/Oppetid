@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>KraftverkUptime.EndToEnd.Tests</RootNamespace>
+    <AssemblyName>KraftverkUptime.EndToEnd.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- Testprosjekter trenger ikke docs -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\KraftverkUptime.Core\KraftverkUptime.Core.csproj" />
+    <ProjectReference Include="..\..\src\KraftverkUptime.Modules.Settlement\KraftverkUptime.Modules.Settlement.csproj" />
+    <ProjectReference Include="..\..\src\KraftverkUptime.Modules.Classification\KraftverkUptime.Modules.Classification.csproj" />
+    <ProjectReference Include="..\..\src\KraftverkUptime.Modules.Reporting\KraftverkUptime.Modules.Reporting.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.0.0" />
+    <PackageReference Include="FluentAssertions" Version="7.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\drivdal-analyse\fixtures\drivdal-feb2025.xlsx">
+      <Link>fixtures\drivdal-feb2025.xlsx</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\..\drivdal-feb2025-fasit.json">
+      <Link>fixtures\drivdal-feb2025-fasit.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

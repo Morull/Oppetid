@@ -1,0 +1,79 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kraftverk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kraftverk}
+      POSTGRES_DB: ${POSTGRES_DB:-kraftverk}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.33.0
+    command: "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --loose --skipApiVersionCheck"
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+    volumes:
+      - azurite-data:/data
+
+  api:
+    build:
+      context: .
+      dockerfile: src/KraftverkUptime.Api/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      azurite:
+        condition: service_started
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: "http://+:8080"
+      Database__ConnectionString: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-kraftverk};Username=${POSTGRES_USER:-kraftverk};Password=${POSTGRES_PASSWORD:-kraftverk}"
+      Database__RunMigrationsOnStartup: "true"
+      Storage__Provider: "AzureBlob"
+      Storage__ConnectionString: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+      Storage__ContainerName: "kraftverkuptime"
+      Observability__ExportToConsole: "true"
+    ports:
+      - "${API_PORT:-5080}:8080"
+
+  worker:
+    build:
+      context: .
+      dockerfile: src/KraftverkUptime.Worker/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      azurite:
+        condition: service_started
+      api:
+        condition: service_started
+    environment:
+      DOTNET_ENVIRONMENT: Development
+      Database__ConnectionString: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-kraftverk};Username=${POSTGRES_USER:-kraftverk};Password=${POSTGRES_PASSWORD:-kraftverk}"
+      Database__RunMigrationsOnStartup: "false"
+      Storage__Provider: "AzureBlob"
+      Storage__ConnectionString: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+
+  web:
+    build:
+      context: .
+      dockerfile: src/KraftverkUptime.Web/Dockerfile
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "${WEB_PORT:-5180}:80"
+
+volumes:
+  postgres-data:
+  azurite-data:

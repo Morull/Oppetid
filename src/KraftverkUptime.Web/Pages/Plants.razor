@@ -1,0 +1,51 @@
+@page "/plants"
+@inject HttpClient Http
+
+<PageTitle>Anlegg</PageTitle>
+
+<h1>Anlegg</h1>
+
+@if (items is null)
+{
+    <p><em>Laster…</em></p>
+}
+else if (items.Count == 0)
+{
+    <p>Ingen anlegg registrert ennå. Anleggsregistrering kommer i Prompt 2.</p>
+}
+else
+{
+    <table>
+        <thead>
+            <tr><th>Id</th><th>Navn</th><th>Type</th><th>MW</th><th>Tidssone</th></tr>
+        </thead>
+        <tbody>
+        @foreach (var p in items)
+        {
+            <tr>
+                <td>@p.Id</td><td>@p.Name</td><td>@p.Type</td><td>@p.InstalledCapacityMw</td><td>@p.TimeZone</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<PlantDto>? items;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var env = await Http.GetFromJsonAsync<Envelope<PlantDto>>("api/v1/plants");
+            items = env?.Items ?? new List<PlantDto>();
+        }
+        catch
+        {
+            items = new List<PlantDto>();
+        }
+    }
+
+    public sealed record PlantDto(string Id, string Name, string Type, double InstalledCapacityMw, string TimeZone);
+    public sealed record Envelope<T>(List<T> Items, string? NextCursor, int PageSize);
+}

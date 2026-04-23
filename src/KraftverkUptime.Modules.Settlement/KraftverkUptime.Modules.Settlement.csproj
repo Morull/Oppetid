@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>KraftverkUptime.Modules.Settlement</RootNamespace>
+    <AssemblyName>KraftverkUptime.Modules.Settlement</AssemblyName>
+    <Description>Parser for Elhub/eSett-portaleksport. Leser månedlig oppgjørs-Excel, validerer skjema, produserer normalisert tidsserie + datakvalitetsrapport.</Description>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\KraftverkUptime.Core\KraftverkUptime.Core.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.4" />
+    <PackageReference Include="ClosedXML" Version="0.104.0" />
+    <PackageReference Include="System.IO.Packaging" Version="10.0.4" />
+  </ItemGroup>
+
+</Project>

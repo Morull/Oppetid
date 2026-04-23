@@ -1,0 +1,158 @@
+{
+  "plant_id": "Drivdal",
+  "period_start_utc": "2025-01-31 23:00:00+00:00",
+  "period_end_utc": "2025-02-28 22:00:00+00:00",
+  "period_hours": 672,
+  "state_counts": {
+    "InService": 370,
+    "ForcedOutage": 163,
+    "PlannedOutage": 67,
+    "ReserveShutdown": 51,
+    "ForcedDerating": 21
+  },
+  "kpis": {
+    "ServiceHours_SH": {
+      "value": 370,
+      "unit": "hours",
+      "hours_basis": 672
+    },
+    "AvailableHours_AH": {
+      "value": 421,
+      "unit": "hours",
+      "hours_basis": 672
+    },
+    "UnavailableHours_UH": {
+      "value": 230,
+      "unit": "hours",
+      "hours_basis": 672
+    },
+    "ForcedOutageHours_FOH": {
+      "value": 163,
+      "unit": "hours",
+      "hours_basis": 672
+    },
+    "InformationUnavailable_Hours": {
+      "value": 0,
+      "unit": "hours",
+      "hours_basis": 672
+    },
+    "ResourceUnavailable_Hours": {
+      "value": 0,
+      "unit": "hours",
+      "hours_basis": 672
+    },
+    "AvailabilityFactor_AF": {
+      "value": 0.6264880952380952,
+      "unit": "ratio",
+      "hours_basis": 672
+    },
+    "AvailabilityFactor_AF_SystemView": {
+      "value": 0.6264880952380952,
+      "unit": "ratio",
+      "hours_basis": 672
+    },
+    "ServiceFactor_SF": {
+      "value": 0.5505952380952381,
+      "unit": "ratio",
+      "hours_basis": 672
+    },
+    "ForcedOutageRate_FOR": {
+      "value": 0.3058161350844278,
+      "unit": "ratio",
+      "hours_basis": 533
+    },
+    "EquivalentForcedDerated_Hours": {
+      "value": 10.453830909090911,
+      "unit": "hours",
+      "hours_basis": 672
+    },
+    "EquivalentAvailabilityFactor_EAF": {
+      "value": 0.6109317992424242,
+      "unit": "ratio",
+      "hours_basis": 672
+    },
+    "TotalProduction_MWh": {
+      "value": 703.55466,
+      "unit": "MWh",
+      "hours_basis": 672
+    },
+    "CapacityFactor_CF": {
+      "value": 0.47588924512987013,
+      "unit": "ratio",
+      "hours_basis": 672
+    },
+    "OutputFactor_OF": {
+      "value": 0.8643177641277641,
+      "unit": "ratio",
+      "hours_basis": 370
+    },
+    "ForcedOutageEvents": {
+      "value": 22,
+      "unit": "events",
+      "hours_basis": 672
+    },
+    "MTBF": {
+      "value": 16.818181818181817,
+      "unit": "hours",
+      "hours_basis": 672
+    },
+    "MTTR": {
+      "value": 7.409090909090909,
+      "unit": "hours",
+      "hours_basis": 672
+    },
+    "PlanTotal_MWh": {
+      "value": 748.5820000000001,
+      "unit": "MWh",
+      "hours_basis": 672
+    },
+    "SpotbudTotal_MWh": {
+      "value": 732.2,
+      "unit": "MWh",
+      "hours_basis": 672
+    },
+    "PlanFulfillment": {
+      "value": 0.939849822731511,
+      "unit": "ratio",
+      "hours_basis": 672
+    },
+    "BidAccuracy": {
+      "value": 0.9608777110079213,
+      "unit": "ratio",
+      "hours_basis": 672
+    },
+    "PlanToBidDeviation": {
+      "value": 0.021884042095588807,
+      "unit": "ratio",
+      "hours_basis": 672
+    },
+    "PlanDeviation_MWh": {
+      "value": -45.027340000000095,
+      "unit": "MWh",
+      "hours_basis": 672
+    },
+    "PlanDeviation_NOK": {
+      "value": -52825.66607282002,
+      "unit": "NOK",
+      "hours_basis": 672
+    },
+    "ImbalanceResult_NOK": {
+      "value": 30991.006412000002,
+      "unit": "NOK",
+      "hours_basis": 672
+    },
+    "ImbalanceCorrelation_AbsVol_RKPris": {
+      "value": 0.06892503410435837,
+      "unit": "correlation",
+      "hours_basis": 672
+    }
+  },
+  "quality": {
+    "hours_expected": 672,
+    "hours_received": 672,
+    "hours_accepted": 672,
+    "hours_flagged": 0,
+    "hours_rejected": 0,
+    "issues": []
+  }
+}

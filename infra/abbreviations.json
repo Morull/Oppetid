@@ -1,0 +1,11 @@
+{
+  "workload": "kvu",
+  "keyVault": "kv",
+  "storageAccount": "st",
+  "postgres": "psql",
+  "logAnalytics": "log",
+  "appInsights": "appi",
+  "containerAppsEnvironment": "cae",
+  "containerApp": "ca",
+  "managedIdentity": "id"
+}

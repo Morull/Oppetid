@@ -1,0 +1,15 @@
+@page "/"
+@inject IUserContextProvider UserContext
+
+<PageTitle>KraftverkUptime – Oversikt</PageTitle>
+
+<h1>Oversikt</h1>
+<p>
+    Dette er plattformskjelettet. Domenemoduler (settlement-parser, klassifisering, rapportbygging) implementeres i Prompt 2.
+</p>
+
+<ul>
+    <li><strong>Bruker:</strong> @UserContext.UserId</li>
+    <li><strong>Org:</strong> @UserContext.OrgId</li>
+    <li><strong>Roller:</strong> @string.Join(", ", UserContext.Roles)</li>
+</ul>

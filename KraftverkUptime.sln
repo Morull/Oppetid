@@ -1,0 +1,100 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{1E8A9B11-AAAA-4000-8001-000000000001}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{1E8A9B11-AAAA-4000-8001-000000000002}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Core", "src\KraftverkUptime.Core\KraftverkUptime.Core.csproj", "{11111111-0001-0001-0001-000000000001}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Infrastructure", "src\KraftverkUptime.Infrastructure\KraftverkUptime.Infrastructure.csproj", "{11111111-0001-0001-0001-000000000002}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Api", "src\KraftverkUptime.Api\KraftverkUptime.Api.csproj", "{11111111-0001-0001-0001-000000000003}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Web", "src\KraftverkUptime.Web\KraftverkUptime.Web.csproj", "{11111111-0001-0001-0001-000000000004}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Worker", "src\KraftverkUptime.Worker\KraftverkUptime.Worker.csproj", "{11111111-0001-0001-0001-000000000005}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Modules.Settlement", "src\KraftverkUptime.Modules.Settlement\KraftverkUptime.Modules.Settlement.csproj", "{11111111-0001-0001-0001-000000000006}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Modules.Classification", "src\KraftverkUptime.Modules.Classification\KraftverkUptime.Modules.Classification.csproj", "{11111111-0001-0001-0001-000000000007}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Modules.Reporting", "src\KraftverkUptime.Modules.Reporting\KraftverkUptime.Modules.Reporting.csproj", "{11111111-0001-0001-0001-000000000008}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Core.Tests", "tests\KraftverkUptime.Core.Tests\KraftverkUptime.Core.Tests.csproj", "{11111111-0001-0001-0001-000000000009}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Infrastructure.Tests", "tests\KraftverkUptime.Infrastructure.Tests\KraftverkUptime.Infrastructure.Tests.csproj", "{11111111-0001-0001-0001-00000000000A}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.EndToEnd.Tests", "tests\KraftverkUptime.EndToEnd.Tests\KraftverkUptime.EndToEnd.Tests.csproj", "{11111111-0001-0001-0001-00000000000B}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Api.Tests", "tests\KraftverkUptime.Api.Tests\KraftverkUptime.Api.Tests.csproj", "{11111111-0001-0001-0001-00000000000C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{11111111-0001-0001-0001-000000000001}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000001}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000001}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0001-0001-0001-000000000001}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0001-0001-0001-000000000002}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000002}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000002}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0001-0001-0001-000000000002}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0001-0001-0001-000000000003}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000003}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000003}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0001-0001-0001-000000000003}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0001-0001-0001-000000000004}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000004}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000004}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0001-0001-0001-000000000004}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0001-0001-0001-000000000005}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000005}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000005}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0001-0001-0001-000000000005}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0001-0001-0001-000000000006}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000006}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000006}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0001-0001-0001-000000000006}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0001-0001-0001-000000000007}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000007}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000007}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0001-0001-0001-000000000007}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0001-0001-0001-000000000008}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000008}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000008}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0001-0001-0001-000000000008}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0001-0001-0001-000000000009}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000009}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0001-0001-0001-000000000009}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0001-0001-0001-000000000009}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0001-0001-0001-00000000000A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0001-0001-0001-00000000000A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0001-0001-0001-00000000000A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0001-0001-0001-00000000000A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0001-0001-0001-00000000000B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0001-0001-0001-00000000000B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0001-0001-0001-00000000000B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0001-0001-0001-00000000000B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0001-0001-0001-00000000000C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0001-0001-0001-00000000000C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0001-0001-0001-00000000000C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0001-0001-0001-00000000000C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{11111111-0001-0001-0001-000000000001} = {1E8A9B11-AAAA-4000-8001-000000000001}
+		{11111111-0001-0001-0001-000000000002} = {1E8A9B11-AAAA-4000-8001-000000000001}
+		{11111111-0001-0001-0001-000000000003} = {1E8A9B11-AAAA-4000-8001-000000000001}
+		{11111111-0001-0001-0001-000000000004} = {1E8A9B11-AAAA-4000-8001-000000000001}
+		{11111111-0001-0001-0001-000000000005} = {1E8A9B11-AAAA-4000-8001-000000000001}
+		{11111111-0001-0001-0001-000000000006} = {1E8A9B11-AAAA-4000-8001-000000000001}
+		{11111111-0001-0001-0001-000000000007} = {1E8A9B11-AAAA-4000-8001-000000000001}
+		{11111111-0001-0001-0001-000000000008} = {1E8A9B11-AAAA-4000-8001-000000000001}
+		{11111111-0001-0001-0001-000000000009} = {1E8A9B11-AAAA-4000-8001-000000000002}
+		{11111111-0001-0001-0001-00000000000A} = {1E8A9B11-AAAA-4000-8001-000000000002}
+		{11111111-0001-0001-0001-00000000000B} = {1E8A9B11-AAAA-4000-8001-000000000002}
+		{11111111-0001-0001-0001-00000000000C} = {1E8A9B11-AAAA-4000-8001-000000000002}
+	EndGlobalSection
+EndGlobal

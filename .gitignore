@@ -1,0 +1,36 @@
+# .NET
+bin/
+obj/
+out/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+*.swp
+
+# Secrets
+*.secrets.json
+appsettings.*.Local.json
+.env
+.env.*
+!.env.example
+
+# Tooling
+.azd/
+.local-azd/
+TestResults/
+coverage/
+*.trx
+*.coverage
+*.cobertura.xml
+
+# Node (Web WASM bygg)
+node_modules/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+logs/

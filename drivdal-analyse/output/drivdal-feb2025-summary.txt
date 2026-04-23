@@ -1,0 +1,47 @@
+Drivdal oppetidsanalyse – 2025-01-31 23:00:00+00:00 til 2025-02-28 22:00:00+00:00
+Timer totalt: 672
+
+Tilstandsfordeling:
+  InService                     370  ( 55.1%)
+  ForcedOutage                  163  ( 24.3%)
+  PlannedOutage                  67  ( 10.0%)
+  ReserveShutdown                51  (  7.6%)
+  ForcedDerating                 21  (  3.1%)
+
+KPI-er (utvalg):
+  ServiceHours_SH                          370.0000 hours   [672h]
+  AvailableHours_AH                        421.0000 hours   [672h]
+  UnavailableHours_UH                      230.0000 hours   [672h]
+  ForcedOutageHours_FOH                    163.0000 hours   [672h]
+  InformationUnavailable_Hours               0.0000 hours   [672h]
+  ResourceUnavailable_Hours                  0.0000 hours   [672h]
+  AvailabilityFactor_AF                  62.65%   [672h, conf 0.78]
+  AvailabilityFactor_AF_SystemView       62.65%   [672h, conf 0.78]
+  ServiceFactor_SF                       55.06%   [672h, conf 0.78]
+  ForcedOutageRate_FOR                   30.58%   [533h, conf 0.78]
+  EquivalentForcedDerated_Hours             10.4538 hours   [672h]
+  EquivalentAvailabilityFactor_EAF       61.09%   [672h, conf 0.78]
+  TotalProduction_MWh                      703.5547 MWh   [672h]
+  CapacityFactor_CF                      47.59%   [672h, conf 0.78]
+  OutputFactor_OF                        86.43%   [370h, conf 0.78]
+  ForcedOutageEvents                        22.0000 events   [672h]
+  MTBF                                      16.8182 hours   [672h]
+  MTTR                                       7.4091 hours   [672h]
+  PlanTotal_MWh                            748.5820 MWh   [672h]
+  SpotbudTotal_MWh                         732.2000 MWh   [672h]
+  PlanFulfillment                        93.98%   [672h, conf 1.00]
+  BidAccuracy                            96.09%   [672h, conf 1.00]
+  PlanToBidDeviation                      2.19%   [672h, conf 1.00]
+  PlanDeviation_MWh                        -45.0273 MWh   [672h]
+  PlanDeviation_NOK                     -52825.6661 NOK   [672h]
+  ImbalanceResult_NOK                    30991.0064 NOK   [672h]
+  ImbalanceCorrelation_AbsVol_RKPris         0.0689 correlation   [672h]
+
+Datakvalitet:
+  Forventet:  672
+  Mottatt:    672
+  Aksepterte: 672
+  Flagget:    0
+  Avvist:     0
+
+Avvik:

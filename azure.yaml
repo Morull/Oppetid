@@ -1,0 +1,33 @@
+# azd (Azure Developer CLI) prosjektkonfigurasjon.
+# 'azd up' provisjonerer infra med Bicep og bygger/deployer tjenestene.
+name: kraftverkuptime
+metadata:
+  template: kraftverkuptime@0.1.0
+
+infra:
+  provider: bicep
+  path: infra
+  module: main
+
+services:
+  api:
+    project: src/KraftverkUptime.Api
+    language: dotnet
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: ../..
+  worker:
+    project: src/KraftverkUptime.Worker
+    language: dotnet
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: ../..
+  web:
+    project: src/KraftverkUptime.Web
+    language: dotnet
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: ../..

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>KraftverkUptime.Modules.Classification</RootNamespace>
+    <AssemblyName>KraftverkUptime.Modules.Classification</AssemblyName>
+    <Description>Proxy-klassifisering (IEEE 762/NERC GADS) og KPI-beregning basert på settlement-data. Tilsvarer UptimeAnalyzer.Settlement + UptimeAnalyzer.Fused i Prompt 2.</Description>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\KraftverkUptime.Core\KraftverkUptime.Core.csproj" />
+    <ProjectReference Include="..\KraftverkUptime.Modules.Settlement\KraftverkUptime.Modules.Settlement.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.4" />
+    <PackageReference Include="System.IO.Packaging" Version="10.0.4" />
+  </ItemGroup>
+
+</Project>
