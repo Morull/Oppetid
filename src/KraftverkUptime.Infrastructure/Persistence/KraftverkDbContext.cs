@@ -22,6 +22,11 @@ public sealed class KraftverkDbContext : DbContext
     public DbSet<PlantConfigurationEntry> PlantConfigurations => Set<PlantConfigurationEntry>();
     public DbSet<PlantRegistration> Plants => Set<PlantRegistration>();
     public DbSet<SettlementImport> SettlementImports => Set<SettlementImport>();
+    public DbSet<DowntimeAnnotationEntry> DowntimeAnnotations => Set<DowntimeAnnotationEntry>();
+    public DbSet<DowntimeCategoryEntry> DowntimeCategories => Set<DowntimeCategoryEntry>();
+    public DbSet<SignalMapEntry> SignalMaps => Set<SignalMapEntry>();
+    public DbSet<SampleFactEntry> SampleFacts => Set<SampleFactEntry>();
+    public DbSet<ClassifiedEventEntry> ClassifiedEvents => Set<ClassifiedEventEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -83,6 +88,80 @@ public sealed class KraftverkDbContext : DbContext
             // Hovedoppslags-index for IUptimePeriodProvider (finn siste import som dekker periode).
             b.HasIndex(x => new { x.PlantId, x.PeriodStartUtc, x.PeriodEndUtc });
             b.HasIndex(x => x.ImportedAtUtc);
+        });
+
+        modelBuilder.Entity<DowntimeAnnotationEntry>(b =>
+        {
+            b.ToTable("downtime_annotations");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).UseIdentityAlwaysColumn();
+            b.Property(x => x.OwnerOrgId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.PlantId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.CategoryId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.Comment).HasMaxLength(2000);
+            b.Property(x => x.CreatedBy).HasMaxLength(128);
+            b.Property(x => x.UpdatedBy).HasMaxLength(128);
+            b.Property(x => x.DeletedBy).HasMaxLength(128);
+
+            // Hovedoppslag: hent alle annoteringer for et anlegg som overlapper [from, to).
+            b.HasIndex(x => new { x.PlantId, x.StartUtc, x.EndUtc })
+                .HasFilter("\"deleted_at\" IS NULL");
+
+            // FK til kategori (uten cascade — vi tillater ikke sletting av system-kategorier
+            // og deaktivering av brukerkategorier skal ikke slette annoteringer).
+            b.HasOne<DowntimeCategoryEntry>()
+                .WithMany()
+                .HasForeignKey(x => x.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<DowntimeCategoryEntry>(b =>
+        {
+            b.ToTable("downtime_categories");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).HasMaxLength(64);
+            b.Property(x => x.DisplayName).HasMaxLength(200).IsRequired();
+            b.Property(x => x.ColorHex).HasMaxLength(16).IsRequired();
+            b.Property(x => x.UnitStateOverride).HasConversion<string>().HasMaxLength(32).IsRequired();
+            b.HasIndex(x => x.SortOrder);
+        });
+
+        // SCADA foundation — ref ANALYSE-NEDETID-SCADA.md
+        modelBuilder.Entity<SignalMapEntry>(b =>
+        {
+            b.ToTable("signal_map");
+            b.HasKey(x => new { x.PlantId, x.SignalId });
+            b.Property(x => x.PlantId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.SignalId).HasMaxLength(128).IsRequired();
+            b.Property(x => x.CsvColumn).HasMaxLength(256).IsRequired();
+            b.Property(x => x.Unit).HasMaxLength(32).IsRequired();
+            b.Property(x => x.Role).HasConversion<string>().HasMaxLength(64).IsRequired();
+            b.Property(x => x.OwnerOrgId).HasMaxLength(64).IsRequired();
+            b.HasIndex(x => x.PlantId);
+            b.HasIndex(x => new { x.PlantId, x.Role });
+        });
+
+        modelBuilder.Entity<SampleFactEntry>(b =>
+        {
+            b.ToTable("sample_facts");
+            b.HasKey(x => new { x.AssetId, x.SignalId, x.TimeUtc });
+            b.Property(x => x.AssetId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.SignalId).HasMaxLength(128).IsRequired();
+            b.HasIndex(x => new { x.AssetId, x.TimeUtc });
+        });
+
+        modelBuilder.Entity<ClassifiedEventEntry>(b =>
+        {
+            b.ToTable("classified_events");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).UseIdentityAlwaysColumn();
+            b.Property(x => x.OwnerOrgId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.PlantId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.State).HasConversion<string>().HasMaxLength(32).IsRequired();
+            b.Property(x => x.CauseCode).HasMaxLength(64);
+            b.Property(x => x.SourcesJson).HasColumnType("jsonb");
+            b.Property(x => x.Rationale).HasMaxLength(2000);
+            b.HasIndex(x => new { x.PlantId, x.StartUtc });
         });
 
         modelBuilder.ApplyOwnedEntityFilters(_queryContext);

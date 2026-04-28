@@ -20,5 +20,6 @@ public sealed record ClassifiedHourlyRow
     public DateTimeOffset TimeUtc => Row.TimeUtc;
     public double? MwhElhub => Row.MwhElhub;
     public double? ProduksjonplanMwh => Row.ProduksjonplanMwh;
+    public double? SpotbudMwh => Row.SpotbudMwh;
     public double? SpotprisNokMwh => Row.SpotprisNokMwh;
 }

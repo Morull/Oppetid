@@ -3,6 +3,8 @@ using Asp.Versioning.Builder;
 using KraftverkUptime.Api.Contracts;
 using KraftverkUptime.Api.Options;
 using KraftverkUptime.Core.Reporting;
+using KraftverkUptime.Modules.Annotations.Overlay;
+using KraftverkUptime.Modules.Annotations.Repositories;
 using KraftverkUptime.Modules.Classification.Dtos;
 using KraftverkUptime.Modules.Reporting.Storage;
 using KraftverkUptime.Modules.Settlement.Persistence;
@@ -139,6 +141,9 @@ public static class SettlementsEndpoints
         string idempotencyKey,
         ISettlementImportRecorder recorder,
         IUptimeReportStore reportStore,
+        AnnotationOverlayService overlay,
+        IDowntimeAnnotationRepository annotationRepo,
+        IDowntimeCategoryRepository categoryRepo,
         CancellationToken ct)
     {
         var record = await recorder
@@ -163,7 +168,12 @@ public static class SettlementsEndpoints
                 statusCode: StatusCodes.Status404NotFound);
         }
 
-        return Results.Ok(report);
+        // Read-time overlay: hent annoteringer + kategorier fra DB og overstyre
+        // klassifikator-output. Hvis ingen annoteringer dekker perioden,
+        // returneres rapporten uendret (referanselikhet, ingen ekstra arbeid).
+        var merged = await overlay.ApplyAsync(report, annotationRepo, categoryRepo, ct).ConfigureAwait(false);
+
+        return Results.Ok(merged);
     }
 
     // ---- GET /api/v1/plants/{plantId}/settlements/{idempotencyKey}/report/xlsx
@@ -173,6 +183,9 @@ public static class SettlementsEndpoints
         string idempotencyKey,
         ISettlementImportRecorder recorder,
         IUptimeReportStore reportStore,
+        AnnotationOverlayService overlay,
+        IDowntimeAnnotationRepository annotationRepo,
+        IDowntimeCategoryRepository categoryRepo,
         IEnumerable<IReportRenderer> renderers,
         CancellationToken ct)
     {
@@ -196,6 +209,10 @@ public static class SettlementsEndpoints
                 detail: "Klassifiseringsjobben er ikke fullført ennå.",
                 statusCode: StatusCodes.Status404NotFound);
         }
+
+        // Samme read-time overlay som JSON-endepunktet, slik at Excel-rapporten
+        // er konsistent med det som vises i UI.
+        report = await overlay.ApplyAsync(report, annotationRepo, categoryRepo, ct).ConfigureAwait(false);
 
         var xlsxRenderer = renderers.FirstOrDefault(r => string.Equals(r.Format, "xlsx", StringComparison.OrdinalIgnoreCase));
         if (xlsxRenderer is null)

@@ -1,12 +1,32 @@
-<Router AppAssembly="@typeof(Program).Assembly">
-    <Found Context="routeData">
-        <RouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)" />
-        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
-    </Found>
-    <NotFound>
-        <PageTitle>Ikke funnet</PageTitle>
-        <LayoutView Layout="@typeof(Layout.MainLayout)">
-            <p role="alert">Siden ble ikke funnet.</p>
-        </LayoutView>
-    </NotFound>
-</Router>
+<MudThemeProvider @ref="_themeProvider" Theme="DalaneTheme.Instance" IsDarkMode="_isDarkMode" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<CascadingValue Value="this">
+    <Router AppAssembly="@typeof(Program).Assembly">
+        <Found Context="routeData">
+            <RouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)" />
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <PageTitle>Ikke funnet</PageTitle>
+            <LayoutView Layout="@typeof(Layout.MainLayout)">
+                <MudAlert Severity="Severity.Warning">Siden ble ikke funnet.</MudAlert>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingValue>
+
+@code {
+    private MudThemeProvider? _themeProvider;
+    private bool _isDarkMode = true;
+
+    public bool IsDarkMode => _isDarkMode;
+
+    public void ToggleDarkMode()
+    {
+        _isDarkMode = !_isDarkMode;
+        StateHasChanged();
+    }
+}

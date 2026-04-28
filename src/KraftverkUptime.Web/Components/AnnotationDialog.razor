@@ -1,0 +1,293 @@
+@using KraftverkUptime.Web.Services
+@inject AnnotationsApi Api
+@inject ISnackbar Snackbar
+
+@*
+    Dialog for å opprette eller redigere en nedetidsannotering.
+    Tidsoppløsning: hele timer (matcher API-kontrakten).
+
+    Bruk:
+        var parameters = new DialogParameters<AnnotationDialog>
+        {
+            { x => x.PlantId, "Drivdal" },
+            { x => x.Categories, _categories },
+            { x => x.InitialStart, hourStart },
+            { x => x.InitialEnd,   hourEnd },
+            { x => x.Existing,     existingAnnotation } // null for opprett
+        };
+        var dlg = await DialogService.ShowAsync<AnnotationDialog>("Annotering", parameters);
+        var result = await dlg.Result;
+        if (!result.Canceled) { reload(); }
+*@
+
+<MudDialog>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            @if (!string.IsNullOrEmpty(CurrentClassification))
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
+                        <MudText Typo="Typo.body2">
+                            <strong>Appens nåværende klassifisering:</strong> @CurrentClassification
+                        </MudText>
+                        @if (Existing is null)
+                        {
+                            <MudText Typo="Typo.caption">
+                                Velg en kategori under for å overstyre denne klassifiseringen for valgte timer.
+                            </MudText>
+                        }
+                    </MudAlert>
+                </MudItem>
+            }
+
+            <MudItem xs="12">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">
+                    Annotering har time-presisjon. Minutter justeres automatisk til 0.
+                </MudText>
+            </MudItem>
+
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_startDate"
+                               Label="Startdato"
+                               DateFormat="yyyy-MM-dd"
+                               Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="int" @bind-Value="_startHour" Label="Start-time" Required="true">
+                    @for (var h = 0; h < 24; h++)
+                    {
+                        var hour = h;
+                        <MudSelectItem T="int" Value="@hour">@hour.ToString("D2"):00</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_endDate"
+                               Label="Sluttdato"
+                               DateFormat="yyyy-MM-dd"
+                               Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="int" @bind-Value="_endHour" Label="Slutt-time" Required="true">
+                    @for (var h = 1; h <= 24; h++)
+                    {
+                        var hour = h;
+                        <MudSelectItem T="int" Value="@hour">@(hour == 24 ? "24:00 (neste dag)" : hour.ToString("D2") + ":00")</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudSelect T="string" @bind-Value="_categoryId" Label="Kategori" Required="true">
+                    @foreach (var category in Categories.Where(c => c.IsActive).OrderBy(c => c.SortOrder))
+                    {
+                        <MudSelectItem T="string" Value="@category.Id">
+                            <span style="@($"display:inline-block;width:10px;height:10px;border-radius:2px;background:{category.ColorHex};margin-right:8px;")"></span>
+                            @category.DisplayName
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_comment"
+                              Label="Kommentar (valgfri)"
+                              Lines="3"
+                              MaxLength="2000" />
+            </MudItem>
+
+            @if (_overlap is not null)
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Warning" Class="mb-2">
+                        <MudText Typo="Typo.body2"><b>Tidsrommet overlapper @_overlap.Count eksisterende annoteringer.</b></MudText>
+                        <MudText Typo="Typo.caption">Klikk «Lagre og erstatt» for å fjerne dem og lagre denne i stedet.</MudText>
+                        <ul class="mt-2 mb-0" style="padding-left: 1.25rem;">
+                            @foreach (var item in _overlap)
+                            {
+                                <li>
+                                    @($"{item.StartUtc.UtcDateTime:yyyy-MM-dd HH:mm} – {item.EndUtc.UtcDateTime:yyyy-MM-dd HH:mm}") · @item.CategoryId
+                                </li>
+                            }
+                        </ul>
+                    </MudAlert>
+                </MudItem>
+            }
+
+            @if (_error is not null)
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+                </MudItem>
+            }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        @if (Existing is not null)
+        {
+            <MudButton OnClick="DeleteAsync" Color="Color.Error" Variant="Variant.Text" Disabled="_busy">
+                Slett
+            </MudButton>
+            <MudSpacer />
+        }
+        <MudButton OnClick="Cancel" Disabled="_busy">Avbryt</MudButton>
+        <MudButton OnClick="SaveAsync"
+                   Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   Disabled="_busy">
+            @(_overlap is null ? (Existing is null ? "Opprett" : "Lagre") : "Lagre og erstatt")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired] public string PlantId { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public IReadOnlyList<AnnotationCategoryDto> Categories { get; set; } = Array.Empty<AnnotationCategoryDto>();
+    [Parameter] public DateTimeOffset InitialStart { get; set; } = DateTimeOffset.UtcNow.Date;
+    [Parameter] public DateTimeOffset InitialEnd { get; set; } = DateTimeOffset.UtcNow.Date.AddHours(1);
+    [Parameter] public AnnotationDto? Existing { get; set; }
+
+    /// <summary>
+    /// Beskrivelse av appens nåværende klassifisering for valgte timer
+    /// (f.eks. "Drift (3 t)" eller "Blandet: 2t Drift, 1t Nedetid").
+    /// Vises som info-banner øverst i dialogen.
+    /// </summary>
+    [Parameter] public string? CurrentClassification { get; set; }
+
+    private DateTime? _startDate;
+    private DateTime? _endDate;
+    private int _startHour;
+    private int _endHour;
+    private string _categoryId = string.Empty;
+    private string? _comment;
+    private bool _busy;
+    private string? _error;
+    private IReadOnlyList<AnnotationDto>? _overlap;
+
+    protected override void OnInitialized()
+    {
+        var startSrc = Existing?.StartUtc ?? InitialStart;
+        var endSrc = Existing?.EndUtc ?? InitialEnd;
+
+        _startDate = startSrc.UtcDateTime.Date;
+        _startHour = startSrc.UtcDateTime.Hour;
+
+        // Representer time-eksklusiv slutt slik at brukeren ser den faktiske
+        // dagen som dekkes: 2026-04-29 00:00 UTC vises som "2026-04-28 24:00".
+        if (endSrc.UtcDateTime.Hour == 0)
+        {
+            _endDate = endSrc.UtcDateTime.Date.AddDays(-1);
+            _endHour = 24;
+        }
+        else
+        {
+            _endDate = endSrc.UtcDateTime.Date;
+            _endHour = endSrc.UtcDateTime.Hour;
+        }
+
+        // Sikre at slutten alltid er etter start når dialogen åpnes "tom".
+        if (_endDate == _startDate && _endHour <= _startHour)
+        {
+            _endHour = Math.Min(_startHour + 1, 24);
+        }
+
+        _categoryId = Existing?.CategoryId ?? Categories.FirstOrDefault(c => c.IsActive)?.Id ?? string.Empty;
+        _comment = Existing?.Comment;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_startDate is null || _endDate is null)
+        {
+            _error = "Start- og sluttdato må settes.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_categoryId))
+        {
+            _error = "Velg en kategori.";
+            return;
+        }
+
+        var startUtc = new DateTimeOffset(_startDate.Value.AddHours(_startHour), TimeSpan.Zero);
+        DateTimeOffset endUtc;
+        if (_endHour == 24)
+        {
+            endUtc = new DateTimeOffset(_endDate.Value.AddDays(1), TimeSpan.Zero);
+        }
+        else
+        {
+            endUtc = new DateTimeOffset(_endDate.Value.AddHours(_endHour), TimeSpan.Zero);
+        }
+
+        if (startUtc >= endUtc)
+        {
+            _error = "Start må være før slutt.";
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            var replaceIds = _overlap?.Select(o => o.Id).ToList();
+
+            AnnotationSaveResult result;
+            if (Existing is null)
+            {
+                result = await Api.CreateAsync(PlantId, startUtc, endUtc, _categoryId, _comment, replaceIds);
+            }
+            else
+            {
+                result = await Api.UpdateAsync(PlantId, Existing.Id, startUtc, endUtc, _categoryId, _comment, replaceIds);
+            }
+
+            switch (result)
+            {
+                case AnnotationSaveResult.Saved saved:
+                    Snackbar.Add(Existing is null ? "Annotering opprettet." : "Annotering oppdatert.", Severity.Success);
+                    Dialog.Close(DialogResult.Ok(saved.Annotation));
+                    return;
+
+                case AnnotationSaveResult.Conflict conflict:
+                    _overlap = conflict.Overlapping;
+                    return;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke lagre: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Existing is null)
+        {
+            return;
+        }
+        _busy = true;
+        try
+        {
+            await Api.DeleteAsync(PlantId, Existing.Id);
+            Snackbar.Add("Annotering slettet.", Severity.Success);
+            Dialog.Close(DialogResult.Ok<AnnotationDto?>(null));
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke slette: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void Cancel() => Dialog.Cancel();
+}

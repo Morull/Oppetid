@@ -6,10 +6,11 @@ namespace KraftverkUptime.Modules.Classification.Dtos;
 /// eller NaN.
 ///
 /// <see cref="Category"/> brukes til å gruppere i rapportbygg:
-///   "time"        – SH, AH, UH, AF, SF, FOR, EAF, EFDH, IU, RU
-///   "energy"      – TotalProduction, CF, OF
-///   "event"       – ForcedOutageEvents, MTBF, MTTR
-///   "plan"        – PlanFulfillment, BidAccuracy, PlanDeviation_*, Imbalance*
+///   "drift"       – ServiceHours, ForcedOutageHours, OutOfServiceHours,
+///                   InformationUnavailable_Hours, AvailabilityFactor
+///   "marked"      – BidVolume, BidDelivery
+///   "okonomi"     – TotalProduction, Spotomsetning, RkNetto, RkBruttoSalg/Kjop,
+///                   Ubalanseresultat, Oppgjor
 /// </summary>
 public sealed record KpiResult(
     string Name,

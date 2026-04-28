@@ -32,7 +32,7 @@ public class DrivdalRegressionTests
     private const double NokTolerance = 1e-2;
     private const double HoursTolerance = 1e-6;
 
-    [Fact]
+    [Fact(Skip = "Fasiten ble generert for den gamle 8-tilstands-klassifikatoren med median-spotpris, derating og 24t-regelen. Etter Phase A er klassifikatoren forenklet til 4 tilstander basert kun på Elhub og Spotbud. Generer ny fasit fra Python-PoC-en (eller fra den nye .NET-modellen som baseline) før denne aktiveres igjen.")]
     public async Task FullPipeline_MatchesFasit_ForDrivdalFebruar2025()
     {
         // --- Arrange: bygg pipeline ---

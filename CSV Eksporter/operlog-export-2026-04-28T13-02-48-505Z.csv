@@ -1,0 +1,224 @@
+timestamp;station;username;tag;text;value;operatorType;originTable;alarmType;categoryNumber;offTimestamp
+2026-02-27T12:00:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;2,2;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-26T17:13:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;2,143;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-26T17:12:16.000Z;Drivdal;KRAFTSCADA\kenneth.mydland;DRIVDAL_G1_KONTROLL_AGC_AKTIV;G1 AGC Aktivert - aktivert/deaktivert;0;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-26T12:03:23.000Z;Drivdal;KRAFTSCADA\kenneth.mydland;DRIVDAL_G1_KONTROLL_REG_P_SP_SP_LAST;G1 regulering effekt settpunkt Setpunkt - Ny grense;Gammel:, Ny:2100;DRIVDAL.G1.KONTROLL.REG_P_SP;operatorlog;;;
+2026-02-26T12:03:10.000Z;Drivdal;KRAFTSCADA\kenneth.mydland;DRIVDAL_G1_KONTROLL_AGC_AKTIV;G1 AGC Aktivert - aktivert/deaktivert;1;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-26T11:43:02.000Z;Drivdal;Drivdal;DRIVDAL_INNTAK_NIVA_OPPSTROM_REF_HRV_HH_AL;Inntak vannivå oppstrøms ref HRV - Høy-høy alarm,   0,3 cm;;;alarmlog;alarm;1;2026-03-05T15:26:33.000Z
+2026-02-25T21:03:00.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;1,429;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-25T21:02:55.000Z;Drivdal;KRAFTSCADA\kenneth.mydland;DRIVDAL_G1_KONTROLL_AGC_AKTIV;G1 AGC Aktivert - aktivert/deaktivert;0;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-25T12:12:44.000Z;Drivdal;KRAFTSCADA\geir.skaara;DRIVDAL_G1_KONTROLL_REG_P_SP_SP_LAST;G1 regulering effekt settpunkt Setpunkt - Ny grense;Gammel:, Ny:1500;DRIVDAL.G1.KONTROLL.REG_P_SP;operatorlog;;;
+2026-02-25T12:12:24.000Z;Drivdal;KRAFTSCADA\geir.skaara;DRIVDAL_G1_KONTROLL_REG_P_SP_SP_LAST;G1 regulering effekt settpunkt Setpunkt - Ny grense;Gammel:, Ny:1000;DRIVDAL.G1.KONTROLL.REG_P_SP;operatorlog;;;
+2026-02-25T12:12:04.000Z;Drivdal;KRAFTSCADA\geir.skaara;DRIVDAL_G1_KONTROLL_REG_P_CMD;G1 regulering effekt - Ny kommando;1;DRIVDAL.G1.KONTROLL.REG_P;operatorlog;;;
+2026-02-25T12:12:04.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_REG_P_NIVA_L;G1 regulering effekt/nivå Effekt;;;alarmlog;event;3;2026-03-14T16:50:37.000Z
+2026-02-25T12:11:53.000Z;Drivdal;KRAFTSCADA\geir.skaara;DRIVDAL_G1_KONTROLL_REG_NIVA_CMD;G1 regulering nivå - Ny kommando;1;DRIVDAL.G1.KONTROLL.REG_NIVA;operatorlog;;;
+2026-02-25T12:11:52.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_REG_P_NIVA_H;G1 regulering effekt/nivå Vannstand;;;alarmlog;event;3;2026-02-25T12:12:04.000Z
+2026-02-25T12:11:12.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_DRIFT_AL;G1 i drift;;;alarmlog;event;3;2026-03-08T02:01:01.000Z
+2026-02-25T12:11:12.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_H;G1 generator effektbryter ute/inne Inne;;;alarmlog;event;3;2026-03-08T02:01:40.000Z
+2026-02-25T12:09:57.000Z;Drivdal;KRAFTSCADA\geir.skaara;DRIVDAL_G1_KONTROLL_REG_P_SP_SP_LAST;G1 regulering effekt settpunkt Setpunkt - Ny grense;Gammel:, Ny:1500;DRIVDAL.G1.KONTROLL.REG_P_SP;operatorlog;;;
+2026-02-25T12:09:45.000Z;Drivdal;KRAFTSCADA\geir.skaara;DRIVDAL_G1_KONTROLL_REG_P_CMD;G1 regulering effekt - Ny kommando;1;DRIVDAL.G1.KONTROLL.REG_P;operatorlog;;;
+2026-02-25T12:09:45.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_REG_P_NIVA_L;G1 regulering effekt/nivå Effekt;;;alarmlog;event;3;2026-02-25T12:11:52.000Z
+2026-02-25T12:03:37.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTER_AL;G1 startsekvens pågår;;;alarmlog;event;3;2026-02-25T12:11:12.000Z
+2026-02-25T11:56:22.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTSEKVENS_KLAR_AL;G1 startsekvens klar;;;alarmlog;event;3;2026-02-25T12:03:37.000Z
+2026-02-25T11:47:27.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_L;G1 generator effektbryter ute/inne Ute;;;alarmlog;event;3;2026-02-25T12:11:12.000Z
+2026-02-25T11:47:26.000Z;Drivdal;Drivdal;DRIVDAL_G1_TRAFO_DIFFVERN_KRITISK_AL;G1 trafo differensialvern kritisk;;;alarmlog;alarm;1;2026-02-25T11:56:18.000Z
+2026-02-25T11:43:35.000Z;Drivdal;KRAFTSCADA\geir.skaara;DRIVDAL_G1_KONTROLL_REG_NIVA_CMD;G1 regulering nivå - Ny kommando;1;DRIVDAL.G1.KONTROLL.REG_NIVA;operatorlog;;;
+2026-02-25T11:43:35.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_REG_P_NIVA_H;G1 regulering effekt/nivå Vannstand;;;alarmlog;event;3;2026-02-25T12:09:45.000Z
+2026-02-25T11:40:25.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_DRIFT_AL;G1 i drift;;;alarmlog;event;3;2026-02-25T11:47:26.000Z
+2026-02-25T11:40:25.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_H;G1 generator effektbryter ute/inne Inne;;;alarmlog;event;3;2026-02-25T11:47:27.000Z
+2026-02-25T11:33:39.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTER_AL;G1 startsekvens pågår;;;alarmlog;event;3;2026-02-25T11:40:25.000Z
+2026-02-25T11:33:35.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTSEKVENS_KLAR_AL;G1 startsekvens klar;;;alarmlog;event;3;2026-02-25T11:33:39.000Z
+2026-02-25T10:48:54.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_L;G1 generator effektbryter ute/inne Ute;;;alarmlog;event;3;2026-02-25T10:48:53.000Z
+2026-02-25T10:48:54.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_L;G1 generator effektbryter ute/inne Ute;;;alarmlog;event;3;2026-02-25T11:40:25.000Z
+2026-02-25T10:48:53.000Z;Drivdal;Drivdal;DRIVDAL_G1_TRAFO_DIFFVERN_KRITISK_AL;G1 trafo differensialvern kritisk;;;alarmlog;alarm;1;2026-02-25T10:48:52.000Z
+2026-02-25T10:48:53.000Z;Drivdal;Drivdal;DRIVDAL_G1_TRAFO_DIFFVERN_KRITISK_AL;G1 trafo differensialvern kritisk;;;alarmlog;alarm;1;2026-02-25T11:33:34.000Z
+2026-02-25T10:46:50.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_DRIFT_AL;G1 i drift;;;alarmlog;event;3;2026-02-25T10:48:53.000Z
+2026-02-25T10:46:50.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_H;G1 generator effektbryter ute/inne Inne;;;alarmlog;event;3;2026-02-25T10:48:54.000Z
+2026-02-25T10:40:46.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTER_AL;G1 startsekvens pågår;;;alarmlog;event;3;2026-02-25T10:46:50.000Z
+2026-02-25T10:40:38.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTSEKVENS_KLAR_AL;G1 startsekvens klar;;;alarmlog;event;3;2026-02-25T10:40:46.000Z
+2026-02-25T10:34:20.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_L;G1 generator effektbryter ute/inne Ute;;;alarmlog;event;3;2026-02-25T10:46:50.000Z
+2026-02-25T10:34:19.000Z;Drivdal;Drivdal;DRIVDAL_G1_TRAFO_DIFFVERN_KRITISK_AL;G1 trafo differensialvern kritisk;;;alarmlog;alarm;1;2026-02-25T10:40:38.000Z
+2026-02-25T08:09:59.000Z;Drivdal;KRAFTSCADA\geir.skaara;DRIVDAL_G1_KONTROLL_REG_P_SP_SP_LAST;G1 regulering effekt settpunkt Setpunkt - Ny grense;Gammel:, Ny:1500;DRIVDAL.G1.KONTROLL.REG_P_SP;operatorlog;;;
+2026-02-25T08:09:52.000Z;Drivdal;KRAFTSCADA\geir.skaara;DRIVDAL_G1_KONTROLL_REG_P_CMD;G1 regulering effekt - Ny kommando;1;DRIVDAL.G1.KONTROLL.REG_P;operatorlog;;;
+2026-02-25T08:09:52.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_REG_P_NIVA_L;G1 regulering effekt/nivå Effekt;;;alarmlog;event;3;2026-02-25T11:43:35.000Z
+2026-02-25T08:07:19.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_DRIFT_AL;G1 i drift;;;alarmlog;event;3;2026-02-25T10:34:19.000Z
+2026-02-25T08:07:19.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_H;G1 generator effektbryter ute/inne Inne;;;alarmlog;event;3;2026-02-25T10:34:20.000Z
+2026-02-25T08:00:55.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTER_AL;G1 startsekvens pågår;;;alarmlog;event;3;2026-02-25T08:07:19.000Z
+2026-02-25T08:00:49.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTSEKVENS_KLAR_AL;G1 startsekvens klar;;;alarmlog;event;3;2026-02-25T08:00:55.000Z
+2026-02-25T08:00:22.000Z;Drivdal;KRAFTSCADA\geir.skaara;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T16:43:56.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_L;G1 generator effektbryter ute/inne Ute;;;alarmlog;event;3;2026-02-25T08:07:19.000Z
+2026-02-24T16:43:55.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STOPPER_AL;G1 stoppsekvens pågår;;;alarmlog;event;3;2026-02-24T16:43:55.000Z
+2026-02-24T16:43:55.000Z;Drivdal;Drivdal;DRIVDAL_G1_TRAFO_DIFFVERN_KRITISK_AL;G1 trafo differensialvern kritisk;;;alarmlog;alarm;1;2026-02-25T08:00:49.000Z
+2026-02-24T15:16:59.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_DRIFT_AL;G1 i drift;;;alarmlog;event;3;2026-02-24T16:43:55.000Z
+2026-02-24T15:16:59.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_H;G1 generator effektbryter ute/inne Inne;;;alarmlog;event;3;2026-02-24T16:43:56.000Z
+2026-02-24T15:10:00.000Z;Drivdal;KRAFTSCADA\kenneth.mydland;DRIVDAL_G1_KONTROLL_START_CMD;G1 start aggregat - Ny kommando;1;DRIVDAL.G1.KONTROLL.START;operatorlog;;;
+2026-02-24T15:10:00.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTER_AL;G1 startsekvens pågår;;;alarmlog;event;3;2026-02-24T15:16:59.000Z
+2026-02-24T15:09:52.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTSEKVENS_KLAR_AL;G1 startsekvens klar;;;alarmlog;event;3;2026-02-24T15:10:00.000Z
+2026-02-24T15:09:51.000Z;Drivdal;KRAFTSCADA\kenneth.mydland;DRIVDAL_G1_KONTROLL_DEBLOKKER_CMD;G1 deblokker - Ny kommando;1;DRIVDAL.G1.KONTROLL.DEBLOKKER;operatorlog;;;
+2026-02-24T15:08:43.000Z;Drivdal;Drivdal;DRIVDAL_INNTAK_NIVA_OPPSTROM_REF_HRV_HH_AL;Inntak vannivå oppstrøms ref HRV - Høy-høy alarm,   7,1 cm;;;alarmlog;alarm;1;2026-02-25T15:14:00.000Z
+2026-02-24T15:08:32.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_FJERN_H;G1 fjernstyring aktivert Lokal;;;alarmlog;event;3;
+2026-02-24T15:08:32.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_REG_P_NIVA_H;G1 regulering effekt/nivå Vannstand;;;alarmlog;event;3;2026-02-25T08:09:52.000Z
+2026-02-24T15:08:32.000Z;Drivdal;Drivdal;DRIVDAL_INNTAK_RISTRENSK_AUTOSTART_AV_PA_H;Inntak ristrensker autostart AV/PÅ Av;;;alarmlog;event;3;2026-04-12T18:19:04.000Z
+2026-02-24T15:08:32.000Z;Drivdal;Drivdal;DRIVDAL_G1_TRAFO_DIFFVERN_KRITISK_AL;G1 trafo differensialvern kritisk;;;alarmlog;alarm;1;2026-02-24T15:09:51.000Z
+2026-02-24T15:07:14.000Z;Drivdal;KRAFTSCADA\kenneth.mydland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:50:59.000Z;Drivdal;KRAFTSCADA\morten.ulland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:50:15.000Z;Drivdal;KRAFTSCADA\morten.ulland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:44:46.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:31:58.000Z;Drivdal;KRAFTSCADA\tommy.skogen;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:31:50.000Z;Drivdal;KRAFTSCADA\tommy.skogen;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:31:41.000Z;Drivdal;KRAFTSCADA\tommy.skogen;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:31:15.000Z;Drivdal;KRAFTSCADA\tommy.skogen;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:31:08.000Z;Drivdal;KRAFTSCADA\tommy.skogen;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:31:01.000Z;Drivdal;KRAFTSCADA\tommy.skogen;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:23:02.000Z;Drivdal;KRAFTSCADA\kenneth.mydland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:14:47.000Z;Drivdal;KRAFTSCADA\morten.ulland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:05:44.000Z;Drivdal;KRAFTSCADA\tommy.skogen;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:05:05.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:03:52.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:03:44.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:02:54.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T13:02:30.000Z;Drivdal;KRAFTSCADA\tommy.skogen;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T12:56:41.000Z;Drivdal;KRAFTSCADA\tommy.skogen;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T12:53:40.000Z;Drivdal;KRAFTSCADA\morten.ulland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T12:46:09.000Z;Drivdal;KRAFTSCADA\kenneth.mydland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T12:44:40.000Z;Drivdal;KRAFTSCADA\kenneth.mydland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T12:42:59.000Z;Drivdal;KRAFTSCADA\kenneth.mydland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T12:35:42.000Z;Drivdal;KRAFTSCADA\morten.ulland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T12:35:29.000Z;Drivdal;KRAFTSCADA\morten.ulland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T12:35:13.000Z;Drivdal;KRAFTSCADA\morten.ulland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T12:33:42.000Z;Drivdal;KRAFTSCADA\kenneth.mydland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T12:32:32.000Z;Drivdal;KRAFTSCADA\kenneth.mydland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T12:21:35.000Z;Drivdal;KRAFTSCADA\kenneth.mydland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T11:59:44.000Z;Drivdal;Drivdal;DRIVDAL_INNTAK_NIVA_OPPSTROM_REF_HRV_LL_AL;Inntak vannivå oppstrøms ref HRV - Lav-lav alarm, -220,0 cm;;;alarmlog;alarm;1;2026-02-24T15:08:43.000Z
+2026-02-24T11:59:37.000Z;Drivdal;Drivdal;DRIVDAL_INNTAK_MINVF_LITER_LL_USMS_AL;Inntak minstevannføring l/s - Lav-lav alarm,   0 l/s;;;alarmlog;alarm;4;2026-02-24T15:08:33.000Z
+2026-02-24T11:59:37.000Z;Drivdal;Drivdal;DRIVDAL_INNTAK_NIVA_OPPSTROM_KOTE_LL_AL;Inntak vannivå oppstrøms kote - Lav-lav alarm, 149,00 moh;;;alarmlog;alarm;1;2026-03-03T07:38:24.000Z
+2026-02-24T11:59:35.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_FJERN_L;G1 fjernstyring aktivert Fjern;;;alarmlog;event;3;2026-02-24T15:08:32.000Z
+2026-02-24T11:59:35.000Z;Drivdal;Drivdal;DRIVDAL_INNTAK_RISTRENSK_AUTOSTART_AV_PA_L;Inntak ristrensker autostart AV/PÅ På;;;alarmlog;event;3;2026-02-24T15:08:32.000Z
+2026-02-24T11:57:53.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T11:47:26.000Z;Drivdal;KRAFTSCADA\geir.skaara;DRIVDAL_G1_KONTROLL_REG_P_SP_SP_LAST;G1 regulering effekt settpunkt Setpunkt - Ny grense;Gammel:, Ny:1000;DRIVDAL.G1.KONTROLL.REG_P_SP;operatorlog;;;
+2026-02-24T11:46:37.000Z;Drivdal;KRAFTSCADA\geir.skaara;DRIVDAL_G1_KONTROLL_AGC_AKTIV;G1 AGC Aktivert - aktivert/deaktivert;0;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-24T11:46:02.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;0;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-24T11:45:05.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;0;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-24T11:44:36.000Z;Drivdal;KRAFTSCADA\geir.skaara;DRIVDAL_G1_KONTROLL_AGC; - AGC reset;;;operatorlog;;;
+2026-02-24T11:44:35.000Z;Drivdal;KRAFTSCADA\geir.skaara;DRIVDAL_G1_KONTROLL_AGC_AKTIV;G1 AGC Aktivert - aktivert/deaktivert;0;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-24T11:43:47.000Z;Drivdal;KRAFTSCADA\geir.skaara;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-24T09:41:20.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTSEKVENS_KLAR_AL;G1 startsekvens klar;;;alarmlog;event;3;2026-02-24T10:55:02.000Z
+2026-02-22T16:16:21.000Z;Drivdal;Drivdal;DRIVDAL_INNTAK_NIVA_OPPSTROM_REF_HRV_HH_AL;Inntak vannivå oppstrøms ref HRV - Høy-høy alarm,   0,1 cm;;;alarmlog;alarm;1;2026-02-24T11:59:44.000Z
+2026-02-22T10:47:47.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-22T06:35:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_START_CMD_AL;G1 AGC Start Kommando;;;alarmlog;event;3;2026-02-24T11:44:36.000Z
+2026-02-22T06:35:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_FELELS_AL;G1 AGC AGC har stoppet;;;alarmlog;alarm;1;2026-02-24T11:44:36.000Z
+2026-02-22T06:33:23.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_L;G1 generator effektbryter ute/inne Ute;;;alarmlog;event;3;2026-02-24T15:16:59.000Z
+2026-02-22T06:33:22.000Z;Drivdal;Drivdal;DRIVDAL_G1_TRAFO_DIFFVERN_KRITISK_AL;G1 trafo differensialvern kritisk;;;alarmlog;alarm;1;2026-02-24T09:41:20.000Z
+2026-02-22T05:00:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;2,143;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-22T04:00:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;1,633;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-22T03:00:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;0,714;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-22T02:00:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;0,612;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-22T01:41:13.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_DRIFT_AL;G1 i drift;;;alarmlog;event;3;2026-02-22T06:33:22.000Z
+2026-02-22T01:41:13.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_H;G1 generator effektbryter ute/inne Inne;;;alarmlog;event;3;2026-02-22T06:33:23.000Z
+2026-02-22T01:35:20.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_G1_KONTROLL_AGC_AKTIV;G1 AGC Aktivert - aktivert/deaktivert;1;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-22T01:35:17.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_G1_KONTROLL_AGC; - AGC reset;;;operatorlog;;;
+2026-02-22T01:34:59.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_G1_KONTROLL_START_CMD;G1 start aggregat - Ny kommando;1;DRIVDAL.G1.KONTROLL.START;operatorlog;;;
+2026-02-22T01:34:58.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTER_AL;G1 startsekvens pågår;;;alarmlog;event;3;2026-02-22T01:41:13.000Z
+2026-02-22T01:34:46.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_G1_KONTROLL_DEBLOKKER_CMD;G1 deblokker - Ny kommando;1;DRIVDAL.G1.KONTROLL.DEBLOKKER;operatorlog;;;
+2026-02-22T01:34:46.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTSEKVENS_KLAR_AL;G1 startsekvens klar;;;alarmlog;event;3;2026-02-22T01:34:58.000Z
+2026-02-21T21:23:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_START_CMD_AL;G1 AGC Start Kommando;;;alarmlog;event;3;2026-02-22T01:35:17.000Z
+2026-02-21T21:23:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_FELELS_AL;G1 AGC AGC har stoppet;;;alarmlog;alarm;1;2026-02-22T01:35:18.000Z
+2026-02-21T21:22:12.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_L;G1 generator effektbryter ute/inne Ute;;;alarmlog;event;3;2026-02-22T01:41:13.000Z
+2026-02-21T21:22:11.000Z;Drivdal;Drivdal;DRIVDAL_G1_TRAFO_DIFFVERN_KRITISK_AL;G1 trafo differensialvern kritisk;;;alarmlog;alarm;1;2026-02-22T01:34:46.000Z
+2026-02-21T20:00:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;2,143;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-21T19:00:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;0,918;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-21T18:00:06.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_DRIFT_AL;G1 i drift;;;alarmlog;event;3;2026-02-21T21:22:11.000Z
+2026-02-21T18:00:06.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_H;G1 generator effektbryter ute/inne Inne;;;alarmlog;event;3;2026-02-21T21:22:12.000Z
+2026-02-21T18:00:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;1,837;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-21T17:53:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;0,612;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-21T17:52:35.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_G1_KONTROLL_AGC_AKTIV;G1 AGC Aktivert - aktivert/deaktivert;0;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-21T17:52:32.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_G1_KONTROLL_AGC; - AGC reset;;;operatorlog;;;
+2026-02-21T17:52:27.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_G1_KONTROLL_START_CMD;G1 start aggregat - Ny kommando;1;DRIVDAL.G1.KONTROLL.START;operatorlog;;;
+2026-02-21T17:52:27.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTER_AL;G1 startsekvens pågår;;;alarmlog;event;3;2026-02-21T18:00:06.000Z
+2026-02-21T17:52:12.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTSEKVENS_KLAR_AL;G1 startsekvens klar;;;alarmlog;event;3;2026-02-21T17:52:27.000Z
+2026-02-21T17:51:59.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-21T17:51:50.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_G1_KONTROLL_DEBLOKKER_CMD;G1 deblokker - Ny kommando;1;DRIVDAL.G1.KONTROLL.DEBLOKKER;operatorlog;;;
+2026-02-21T14:34:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_START_CMD_AL;G1 AGC Start Kommando;;;alarmlog;event;3;2026-02-21T17:52:32.000Z
+2026-02-21T14:34:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_FELELS_AL;G1 AGC AGC har stoppet;;;alarmlog;alarm;1;2026-02-21T17:52:32.000Z
+2026-02-21T14:32:07.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_L;G1 generator effektbryter ute/inne Ute;;;alarmlog;event;3;2026-02-21T18:00:06.000Z
+2026-02-21T14:32:06.000Z;Drivdal;Drivdal;DRIVDAL_G1_TRAFO_DIFFVERN_KRITISK_AL;G1 trafo differensialvern kritisk;;;alarmlog;alarm;1;2026-02-21T17:52:12.000Z
+2026-02-21T14:19:34.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_DRIFT_AL;G1 i drift;;;alarmlog;event;3;2026-02-21T14:32:06.000Z
+2026-02-21T14:19:34.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_H;G1 generator effektbryter ute/inne Inne;;;alarmlog;event;3;2026-02-21T14:32:07.000Z
+2026-02-21T14:15:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_START_CMD_AL;G1 AGC Start Kommando;;;alarmlog;event;3;2026-02-21T14:16:01.000Z
+2026-02-21T14:15:00.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTER_AL;G1 startsekvens pågår;;;alarmlog;event;3;2026-02-21T14:19:34.000Z
+2026-02-21T14:14:52.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-21T14:14:45.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_G1_KONTROLL_AGC_AKTIV;G1 AGC Aktivert - aktivert/deaktivert;1;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-21T14:14:42.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_G1_KONTROLL_AGC; - AGC reset;;;operatorlog;;;
+2026-02-21T14:14:38.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_G1_KONTROLL_DEBLOKKER_CMD;G1 deblokker - Ny kommando;1;DRIVDAL.G1.KONTROLL.DEBLOKKER;operatorlog;;;
+2026-02-21T14:14:37.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTSEKVENS_KLAR_AL;G1 startsekvens klar;;;alarmlog;event;3;2026-02-21T14:15:00.000Z
+2026-02-21T13:44:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_START_CMD_AL;G1 AGC Start Kommando;;;alarmlog;event;3;2026-02-21T14:14:42.000Z
+2026-02-21T13:44:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_FELELS_AL;G1 AGC AGC har stoppet;;;alarmlog;alarm;1;2026-02-21T14:14:42.000Z
+2026-02-21T13:42:35.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_L;G1 generator effektbryter ute/inne Ute;;;alarmlog;event;3;2026-02-21T14:19:34.000Z
+2026-02-21T13:42:34.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTER_AL;G1 startsekvens pågår;;;alarmlog;event;3;2026-02-21T13:42:34.000Z
+2026-02-21T13:42:34.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STOPPER_AL;G1 stoppsekvens pågår;;;alarmlog;event;3;2026-02-21T13:42:34.000Z
+2026-02-21T13:42:34.000Z;Drivdal;Drivdal;DRIVDAL_G1_TRAFO_DIFFVERN_KRITISK_AL;G1 trafo differensialvern kritisk;;;alarmlog;alarm;1;2026-02-21T14:14:37.000Z
+2026-02-21T12:18:54.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_G1_KONTROLL_AGC_AKTIV;G1 AGC Aktivert - aktivert/deaktivert;0;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-21T12:18:51.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_G1_KONTROLL_AGC; - AGC reset;;;operatorlog;;;
+2026-02-21T12:18:30.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_DRIFT_AL;G1 i drift;;;alarmlog;event;3;2026-02-21T13:42:34.000Z
+2026-02-21T12:18:30.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_H;G1 generator effektbryter ute/inne Inne;;;alarmlog;event;3;2026-02-21T13:42:35.000Z
+2026-02-21T12:14:49.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-21T12:14:39.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_G1_KONTROLL_START_CMD;G1 start aggregat - Ny kommando;1;DRIVDAL.G1.KONTROLL.START;operatorlog;;;
+2026-02-21T12:14:38.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTER_AL;G1 startsekvens pågår;;;alarmlog;event;3;2026-02-21T12:18:30.000Z
+2026-02-21T12:14:19.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTSEKVENS_KLAR_AL;G1 startsekvens klar;;;alarmlog;event;3;2026-02-21T12:14:38.000Z
+2026-02-21T12:14:09.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-21T12:11:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_START_CMD_AL;G1 AGC Start Kommando;;;alarmlog;event;3;2026-02-21T12:18:51.000Z
+2026-02-21T12:11:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_FELELS_AL;G1 AGC AGC har stoppet;;;alarmlog;alarm;1;2026-02-21T12:18:51.000Z
+2026-02-21T12:10:41.000Z;Drivdal;KRAFTSCADA\ole.hetland;DRIVDAL_;Oppkobling til lokalt display;;DRIVDAL;operatorlog;;;
+2026-02-21T12:09:33.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_L;G1 generator effektbryter ute/inne Ute;;;alarmlog;event;3;2026-02-21T12:18:30.000Z
+2026-02-21T12:09:32.000Z;Drivdal;Drivdal;DRIVDAL_G1_TRAFO_DIFFVERN_KRITISK_AL;G1 trafo differensialvern kritisk;;;alarmlog;alarm;1;2026-02-21T12:14:19.000Z
+2026-02-21T11:56:39.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_DRIFT_AL;G1 i drift;;;alarmlog;event;3;2026-02-21T12:09:32.000Z
+2026-02-21T11:56:39.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_H;G1 generator effektbryter ute/inne Inne;;;alarmlog;event;3;2026-02-21T12:09:33.000Z
+2026-02-21T11:51:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP_F;G1 AGC Forsert settpunkt fra Database - AGC settpunkt sendt til Kraftverk;2,143;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-21T11:51:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_START_CMD_AL;G1 AGC Start Kommando;;;alarmlog;event;3;2026-02-21T11:52:01.000Z
+2026-02-21T11:51:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTER_AL;G1 startsekvens pågår;;;alarmlog;event;3;2026-02-21T11:56:39.000Z
+2026-02-20T11:02:52.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTSEKVENS_KLAR_AL;G1 startsekvens klar;;;alarmlog;event;3;2026-02-21T11:51:01.000Z
+2026-02-20T11:00:25.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_L;G1 generator effektbryter ute/inne Ute;;;alarmlog;event;3;2026-02-21T11:56:39.000Z
+2026-02-20T11:00:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;0;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-20T11:00:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_STOPP_CMD_AL;G1 AGC Stopp Kommando;;;alarmlog;event;3;2026-02-20T11:01:01.000Z
+2026-02-20T11:00:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STOPPER_AL;G1 stoppsekvens pågår;;;alarmlog;event;3;2026-02-20T11:02:52.000Z
+2026-02-20T10:00:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;0,6;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-20T09:00:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;0,9;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-20T06:56:04.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_DRIFT_AL;G1 i drift;;;alarmlog;event;3;2026-02-20T11:00:01.000Z
+2026-02-20T06:56:04.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_H;G1 generator effektbryter ute/inne Inne;;;alarmlog;event;3;2026-02-20T11:00:25.000Z
+2026-02-20T06:50:03.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTER_AL;G1 startsekvens pågår;;;alarmlog;event;3;2026-02-20T06:56:04.000Z
+2026-02-20T06:50:02.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP_F;G1 AGC Forsert settpunkt fra Database - AGC settpunkt sendt til Kraftverk;1,35;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-20T06:50:02.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_START_CMD_AL;G1 AGC Start Kommando;;;alarmlog;event;3;2026-02-20T06:51:01.000Z
+2026-02-06T14:03:37.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTSEKVENS_KLAR_AL;G1 startsekvens klar;;;alarmlog;event;3;2026-02-20T06:50:03.000Z
+2026-02-06T14:01:00.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_L;G1 generator effektbryter ute/inne Ute;;;alarmlog;event;3;2026-02-20T06:56:04.000Z
+2026-02-06T14:00:02.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STOPPER_AL;G1 stoppsekvens pågår;;;alarmlog;event;3;2026-02-06T14:03:37.000Z
+2026-02-06T14:00:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;0;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-06T14:00:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_STOPP_CMD_AL;G1 AGC Stopp Kommando;;;alarmlog;event;3;2026-02-06T14:01:01.000Z
+2026-02-06T10:00:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;1,939;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-06T08:00:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;2,143;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-06T06:56:34.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_DRIFT_AL;G1 i drift;;;alarmlog;event;3;2026-02-06T14:00:02.000Z
+2026-02-06T06:56:34.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_H;G1 generator effektbryter ute/inne Inne;;;alarmlog;event;3;2026-02-06T14:01:00.000Z
+2026-02-06T06:50:08.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTER_AL;G1 startsekvens pågår;;;alarmlog;event;3;2026-02-06T06:56:34.000Z
+2026-02-06T06:50:07.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP_F;G1 AGC Forsert settpunkt fra Database - AGC settpunkt sendt til Kraftverk;0,6;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-06T06:50:07.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_START_CMD_AL;G1 AGC Start Kommando;;;alarmlog;event;3;2026-02-06T06:51:07.000Z
+2026-02-05T01:03:05.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTSEKVENS_KLAR_AL;G1 startsekvens klar;;;alarmlog;event;3;2026-02-06T06:50:08.000Z
+2026-02-05T01:00:27.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_L;G1 generator effektbryter ute/inne Ute;;;alarmlog;event;3;2026-02-06T06:56:34.000Z
+2026-02-05T01:00:01.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;0;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-05T01:00:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_STOPP_CMD_AL;G1 AGC Stopp Kommando;;;alarmlog;event;3;2026-02-05T01:01:01.000Z
+2026-02-05T01:00:01.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STOPPER_AL;G1 stoppsekvens pågår;;;alarmlog;event;3;2026-02-05T01:03:05.000Z
+2026-02-04T20:56:17.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_DRIFT_AL;G1 i drift;;;alarmlog;event;3;2026-02-05T01:00:01.000Z
+2026-02-04T20:56:17.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_H;G1 generator effektbryter ute/inne Inne;;;alarmlog;event;3;2026-02-05T01:00:27.000Z
+2026-02-04T20:51:02.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP_F;G1 AGC Forsert settpunkt fra Database - AGC settpunkt sendt til Kraftverk;0,612;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-04T20:51:02.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_START_CMD_AL;G1 AGC Start Kommando;;;alarmlog;event;3;2026-02-04T20:52:01.000Z
+2026-02-04T20:51:02.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTER_AL;G1 startsekvens pågår;;;alarmlog;event;3;2026-02-04T20:56:17.000Z
+2026-02-04T14:03:06.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTSEKVENS_KLAR_AL;G1 startsekvens klar;;;alarmlog;event;3;2026-02-04T20:51:02.000Z
+2026-02-04T14:00:26.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_L;G1 generator effektbryter ute/inne Ute;;;alarmlog;event;3;2026-02-04T20:56:17.000Z
+2026-02-04T14:00:03.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;0;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-04T14:00:03.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STOPPER_AL;G1 stoppsekvens pågår;;;alarmlog;event;3;2026-02-04T14:03:06.000Z
+2026-02-04T14:00:02.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_STOPP_CMD_AL;G1 AGC Stopp Kommando;;;alarmlog;event;3;2026-02-04T14:01:02.000Z
+2026-02-04T10:00:02.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;0,612;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-04T09:00:02.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP;G1 AGC Settpunkt fra Database - AGC settpunkt sendt til Kraftverk;0,918;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-04T07:59:16.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_DRIFT_AL;G1 i drift;;;alarmlog;event;3;2026-02-04T14:00:03.000Z
+2026-02-04T07:59:16.000Z;Drivdal;Drivdal;DRIVDAL_G1_GEN_EFFEKTBRYTER_UTE_INNE_H;G1 generator effektbryter ute/inne Inne;;;alarmlog;event;3;2026-02-04T14:00:26.000Z
+2026-02-04T07:51:02.000Z;Drivdal;AGC;DRIVDAL_G1_KONTROLL_AGC_DB_SP_F;G1 AGC Forsert settpunkt fra Database - AGC settpunkt sendt til Kraftverk;2,041;DRIVDAL.G1.KONTROLL.AGC;operatorlog;;;
+2026-02-04T07:51:02.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_AGC_START_CMD_AL;G1 AGC Start Kommando;;;alarmlog;event;3;2026-02-04T07:52:01.000Z
+2026-02-04T07:51:02.000Z;Drivdal;Drivdal;DRIVDAL_G1_KONTROLL_STARTER_AL;G1 startsekvens pågår;;;alarmlog;event;3;2026-02-04T07:59:16.000Z

@@ -20,6 +20,10 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Modules.Cla
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Modules.Reporting", "src\KraftverkUptime.Modules.Reporting\KraftverkUptime.Modules.Reporting.csproj", "{11111111-0001-0001-0001-000000000008}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Modules.Annotations", "src\KraftverkUptime.Modules.Annotations\KraftverkUptime.Modules.Annotations.csproj", "{11111111-0001-0001-0001-00000000000D}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Modules.Scada", "src\KraftverkUptime.Modules.Scada\KraftverkUptime.Modules.Scada.csproj", "{11111111-0001-0001-0001-00000000000E}"
+EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Core.Tests", "tests\KraftverkUptime.Core.Tests\KraftverkUptime.Core.Tests.csproj", "{11111111-0001-0001-0001-000000000009}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KraftverkUptime.Infrastructure.Tests", "tests\KraftverkUptime.Infrastructure.Tests\KraftverkUptime.Infrastructure.Tests.csproj", "{11111111-0001-0001-0001-00000000000A}"
@@ -82,6 +86,14 @@ Global
 		{11111111-0001-0001-0001-00000000000C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{11111111-0001-0001-0001-00000000000C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{11111111-0001-0001-0001-00000000000C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0001-0001-0001-00000000000D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0001-0001-0001-00000000000D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0001-0001-0001-00000000000D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0001-0001-0001-00000000000D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-0001-0001-0001-00000000000E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-0001-0001-0001-00000000000E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-0001-0001-0001-00000000000E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-0001-0001-0001-00000000000E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{11111111-0001-0001-0001-000000000001} = {1E8A9B11-AAAA-4000-8001-000000000001}
@@ -96,5 +108,7 @@ Global
 		{11111111-0001-0001-0001-00000000000A} = {1E8A9B11-AAAA-4000-8001-000000000002}
 		{11111111-0001-0001-0001-00000000000B} = {1E8A9B11-AAAA-4000-8001-000000000002}
 		{11111111-0001-0001-0001-00000000000C} = {1E8A9B11-AAAA-4000-8001-000000000002}
+		{11111111-0001-0001-0001-00000000000D} = {1E8A9B11-AAAA-4000-8001-000000000001}
+		{11111111-0001-0001-0001-00000000000E} = {1E8A9B11-AAAA-4000-8001-000000000001}
 	EndGlobalSection
 EndGlobal

@@ -1,51 +1,244 @@
 @page "/plants"
-@inject HttpClient Http
+@inject ReportsApi Api
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
 
 <PageTitle>Anlegg</PageTitle>
 
-<h1>Anlegg</h1>
+<div class="d-flex justify-space-between align-center mb-4">
+    <MudText Typo="Typo.h1">Anlegg</MudText>
+    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+        Tips: dra en Excel-fil rett på anleggs-kortet for å starte rapport-generering.
+    </MudText>
+</div>
 
-@if (items is null)
+@if (_error is not null)
 {
-    <p><em>Laster…</em></p>
+    <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
 }
-else if (items.Count == 0)
+
+@if (_items is null)
 {
-    <p>Ingen anlegg registrert ennå. Anleggsregistrering kommer i Prompt 2.</p>
+    <MudProgressCircular Indeterminate="true" />
+    <MudText Class="ml-2 d-inline">Laster anlegg…</MudText>
+}
+else if (_items.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        Ingen anlegg registrert ennå. Seed via SQL:
+        <MudText Typo="Typo.body2" Class="mt-2" Style="font-family: 'JetBrains Mono', monospace;">
+            INSERT INTO core.plants (id, owner_org_id, name, type, installed_capacity_mw, time_zone, created_at)
+            VALUES ('drivdal', 'dev-org', 'Drivdal', 'Regulated', 2.2, 'Europe/Oslo', NOW());
+        </MudText>
+    </MudAlert>
 }
 else
 {
-    <table>
-        <thead>
-            <tr><th>Id</th><th>Navn</th><th>Type</th><th>MW</th><th>Tidssone</th></tr>
-        </thead>
-        <tbody>
-        @foreach (var p in items)
+    <MudGrid Spacing="3">
+        @foreach (var p in _items)
         {
-            <tr>
-                <td>@p.Id</td><td>@p.Name</td><td>@p.Type</td><td>@p.InstalledCapacityMw</td><td>@p.TimeZone</td>
-            </tr>
+            var plantId = p.Id;
+            var state = GetState(plantId);
+            <MudItem xs="12" sm="6" md="4">
+                <MudFileUpload T="IBrowserFile"
+                               Accept=".xlsx,.xls"
+                               MaximumFileCount="1"
+                               FilesChanged="@(file => OnFileDroppedAsync(plantId, file))"
+                               Hidden="@false"
+                               InputClass="dk-plant-dropzoneInput"
+                               InputStyle="opacity:0"
+                               Class="@(state.IsUploading ? "dk-plant-dropzone dk-plant-dropzoneBusy" : "dk-plant-dropzone")">
+                    <ActivatorContent>
+                        <MudCard Elevation="2" Class="h-100 dk-plant-card" Style="position:relative;">
+                            <MudCardHeader>
+                                <CardHeaderAvatar>
+                                    <MudAvatar Color="MudBlazor.Color.Primary" Variant="Variant.Filled">
+                                        <MudIcon Icon="@Icons.Material.Filled.Factory" />
+                                    </MudAvatar>
+                                </CardHeaderAvatar>
+                                <CardHeaderContent>
+                                    <MudText Typo="Typo.h4">@p.Name</MudText>
+                                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">@p.Id</MudText>
+                                </CardHeaderContent>
+                            </MudCardHeader>
+                            <MudCardContent>
+                                <MudStack Spacing="1">
+                                    <div class="d-flex justify-space-between">
+                                        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">Type</MudText>
+                                        <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Filled"
+                                                 Color="@TypeColor(p.Type)">@p.Type</MudChip>
+                                    </div>
+                                    <div class="d-flex justify-space-between">
+                                        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">Installert effekt</MudText>
+                                        <MudText Typo="Typo.body1"><strong>@p.InstalledCapacityMw.ToString("F1") MW</strong></MudText>
+                                    </div>
+                                    <div class="d-flex justify-space-between">
+                                        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">Tidssone</MudText>
+                                        <MudText Typo="Typo.body1">@p.TimeZone</MudText>
+                                    </div>
+                                </MudStack>
+
+                                @if (state.IsUploading)
+                                {
+                                    <MudProgressLinear Color="MudBlazor.Color.Primary" Indeterminate="true" Class="mt-3" />
+                                    <MudText Typo="Typo.caption" Class="mt-1">Laster opp @state.FileName…</MudText>
+                                }
+                                else if (state.LastUpload is not null)
+                                {
+                                    <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3">
+                                        Mottatt — klassifisering pågår.
+                                    </MudAlert>
+                                }
+                                else if (state.Error is not null)
+                                {
+                                    <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">@state.Error</MudAlert>
+                                }
+                            </MudCardContent>
+                            <MudCardActions>
+                                <MudButton Variant="Variant.Text" Color="MudBlazor.Color.Primary"
+                                           StartIcon="@Icons.Material.Filled.CloudUpload"
+                                           Href="@($"upload?plant={plantId}")"
+                                           @onclick:stopPropagation="true">
+                                    Last opp
+                                </MudButton>
+                                <MudButton Variant="Variant.Text" Color="MudBlazor.Color.Primary"
+                                           StartIcon="@Icons.Material.Filled.Assessment"
+                                           Href="@($"reports?plant={plantId}")"
+                                           @onclick:stopPropagation="true">
+                                    Rapporter
+                                </MudButton>
+                                @if (state.LastUpload is not null)
+                                {
+                                    <MudSpacer />
+                                    <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                                               Size="MudBlazor.Size.Small"
+                                               Href="@($"reports/{plantId}/{state.LastUpload.IdempotencyKey}")"
+                                               @onclick:stopPropagation="true">
+                                        Åpne rapport
+                                    </MudButton>
+                                }
+                            </MudCardActions>
+                        </MudCard>
+                    </ActivatorContent>
+                </MudFileUpload>
+            </MudItem>
         }
-        </tbody>
-    </table>
+    </MudGrid>
 }
 
 @code {
-    private List<PlantDto>? items;
+    private const long MaxUploadBytes = 26_214_400; // 25 MB — matcher API-konfigurasjonen
+    private const string XlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+    private IReadOnlyList<PlantDto>? _items;
+    private string? _error;
+
+    /// <summary>Per-anleggs opplasting-state. Hver kort kjører selvstendig.</summary>
+    private readonly Dictionary<string, UploadState> _uploadState = new(StringComparer.Ordinal);
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            var env = await Http.GetFromJsonAsync<Envelope<PlantDto>>("api/v1/plants");
-            items = env?.Items ?? new List<PlantDto>();
+            _items = await Api.ListPlantsAsync();
         }
-        catch
+        catch (Exception ex)
         {
-            items = new List<PlantDto>();
+            _error = $"Kunne ikke hente anleggsliste: {ex.Message}";
+            _items = Array.Empty<PlantDto>();
         }
     }
 
-    public sealed record PlantDto(string Id, string Name, string Type, double InstalledCapacityMw, string TimeZone);
-    public sealed record Envelope<T>(List<T> Items, string? NextCursor, int PageSize);
+    private UploadState GetState(string plantId)
+    {
+        if (!_uploadState.TryGetValue(plantId, out var s))
+        {
+            s = new UploadState();
+            _uploadState[plantId] = s;
+        }
+        return s;
+    }
+
+    private async Task OnFileDroppedAsync(string plantId, IBrowserFile? file)
+    {
+        if (file is null)
+        {
+            return;
+        }
+
+        var state = GetState(plantId);
+        if (state.IsUploading)
+        {
+            // Ignorer ekstra slipp mens den forrige fortsatt går.
+            return;
+        }
+
+        // Light validation før vi forplikter oss til en stream.
+        var name = file.Name;
+        if (!name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)
+            && !name.EndsWith(".xls", StringComparison.OrdinalIgnoreCase))
+        {
+            state.Error = $"Filtype ikke støttet: {name}. Kun .xlsx aksepteres.";
+            StateHasChanged();
+            return;
+        }
+        if (file.Size > MaxUploadBytes)
+        {
+            state.Error = $"Filen er for stor ({file.Size / 1_048_576} MB). Maks 25 MB.";
+            StateHasChanged();
+            return;
+        }
+
+        state.IsUploading = true;
+        state.FileName = name;
+        state.Error = null;
+        state.LastUpload = null;
+        StateHasChanged();
+
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxUploadBytes);
+            var contentType = string.IsNullOrWhiteSpace(file.ContentType)
+                ? XlsxContentType
+                : file.ContentType;
+
+            state.LastUpload = await Api.UploadSettlementAsync(plantId, stream, name, contentType);
+            Snackbar.Add(
+                $"{name} mottatt for {plantId} — klassifisering pågår.",
+                Severity.Success);
+        }
+        catch (HttpRequestException ex)
+        {
+            state.Error = $"Opplasting feilet: {ex.Message}";
+            Snackbar.Add(state.Error, Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            state.Error = $"Uventet feil: {ex.Message}";
+            Snackbar.Add(state.Error, Severity.Error);
+        }
+        finally
+        {
+            state.IsUploading = false;
+            state.FileName = null;
+            StateHasChanged();
+        }
+    }
+
+    private static MudBlazor.Color TypeColor(string type) => type switch
+    {
+        "Regulated" => MudBlazor.Color.Primary,
+        "RunOfRiver" => MudBlazor.Color.Info,
+        "Wind" => MudBlazor.Color.Secondary,
+        "Solar" => MudBlazor.Color.Warning,
+        _ => MudBlazor.Color.Default,
+    };
+
+    private sealed class UploadState
+    {
+        public bool IsUploading { get; set; }
+        public string? FileName { get; set; }
+        public string? Error { get; set; }
+        public SettlementUploadResponse? LastUpload { get; set; }
+    }
 }

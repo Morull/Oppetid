@@ -10,6 +10,8 @@ COPY src/KraftverkUptime.Api/KraftverkUptime.Api.csproj src/KraftverkUptime.Api/
 COPY src/KraftverkUptime.Modules.Settlement/KraftverkUptime.Modules.Settlement.csproj src/KraftverkUptime.Modules.Settlement/
 COPY src/KraftverkUptime.Modules.Classification/KraftverkUptime.Modules.Classification.csproj src/KraftverkUptime.Modules.Classification/
 COPY src/KraftverkUptime.Modules.Reporting/KraftverkUptime.Modules.Reporting.csproj src/KraftverkUptime.Modules.Reporting/
+COPY src/KraftverkUptime.Modules.Annotations/KraftverkUptime.Modules.Annotations.csproj src/KraftverkUptime.Modules.Annotations/
+COPY src/KraftverkUptime.Modules.Scada/KraftverkUptime.Modules.Scada.csproj src/KraftverkUptime.Modules.Scada/
 RUN dotnet restore src/KraftverkUptime.Api/KraftverkUptime.Api.csproj
 
 COPY src/ src/

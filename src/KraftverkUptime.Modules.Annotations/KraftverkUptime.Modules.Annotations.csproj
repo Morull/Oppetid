@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>KraftverkUptime.Modules.Annotations</RootNamespace>
+    <AssemblyName>KraftverkUptime.Modules.Annotations</AssemblyName>
+    <Description>Manuelle nedetidsannoteringer: kategorier, repository-kontrakter og read-time overlay som overstyrer klassifikator-output med menneske-merket UnitState/CauseCode.</Description>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\KraftverkUptime.Core\KraftverkUptime.Core.csproj" />
+    <ProjectReference Include="..\KraftverkUptime.Modules.Classification\KraftverkUptime.Modules.Classification.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.4" />
+  </ItemGroup>
+
+</Project>

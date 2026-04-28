@@ -1,61 +1,31 @@
-:root {
-    --bg: #0f172a;
-    --fg: #e2e8f0;
-    --accent: #38bdf8;
-    --muted: #94a3b8;
-    --sidebar: #1e293b;
-}
+/* ==========================================================================
+   KraftverkUptime — design system
+   Bygger på MudBlazor sine CSS-variabler (--mud-palette-*) slik at lys/mørk
+   tema-toggle dekker hele siden. Egne dk-* klasser gir SaaS-aktig finish:
+   gradient-bakgrunn, mykere skygger, hover-løft, kort-entré-animasjon.
+   ========================================================================== */
 
-* { box-sizing: border-box; }
-
-body {
+html, body {
     margin: 0;
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-    background: var(--bg);
-    color: var(--fg);
+    padding: 0;
+    height: 100%;
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    color: var(--mud-palette-text-primary, #1A2332);
+    background-color: var(--mud-palette-background, #F4F7FB);
+    background-image:
+        radial-gradient(ellipse 1200px 800px at 8% -8%, rgba(30, 95, 142, 0.08), transparent 60%),
+        radial-gradient(ellipse 1000px 800px at 108% 0%, rgba(0, 169, 157, 0.06), transparent 55%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
-.page {
-    display: flex;
+#app {
     min-height: 100vh;
 }
 
-.sidebar {
-    width: 220px;
-    background: var(--sidebar);
-    padding: 1rem;
-}
-
-.sidebar nav ul { list-style: none; padding: 0; }
-.sidebar nav li a {
-    display: block;
-    padding: 0.5rem 0.75rem;
-    color: var(--fg);
-    border-radius: 0.375rem;
-    text-decoration: none;
-}
-.sidebar nav li a.active, .sidebar nav li a:hover {
-    background: rgba(56, 189, 248, 0.1);
-    color: var(--accent);
-}
-
-main { flex: 1; display: flex; flex-direction: column; }
-.topbar {
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid #1e293b;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-.topbar .env { color: var(--muted); font-size: 0.85rem; }
-.content { padding: 1.5rem; }
-
-table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
-th, td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #1e293b; text-align: left; }
-th { color: var(--muted); font-weight: 500; }
-
 #blazor-error-ui {
-    background: #991b1b;
+    background: var(--mud-palette-error, #991b1b);
     color: #fff;
     display: none;
     padding: 0.75rem 1.25rem;
@@ -65,70 +35,309 @@ th { color: var(--muted); font-weight: 500; }
     z-index: 1000;
 }
 
-.boot { padding: 2rem; color: var(--muted); }
-
-/* --- Steg 5: Reports UI ------------------------------------------------- */
-
-.alert {
-    padding: 0.75rem 1rem;
-    border-radius: 0.375rem;
-    margin: 1rem 0;
-}
-.alert-error   { background: rgba(239, 68, 68, 0.15); color: #fecaca; border: 1px solid rgba(239, 68, 68, 0.4); }
-.alert-success { background: rgba(34, 197, 94, 0.15); color: #bbf7d0; border: 1px solid rgba(34, 197, 94, 0.4); }
-
-.form-row { margin: 1rem 0; display: flex; flex-direction: column; gap: 0.35rem; }
-.form-row label { color: var(--muted); }
-.form-row input, .form-row select {
-    background: var(--sidebar); color: var(--fg);
-    border: 1px solid #334155; border-radius: 0.375rem; padding: 0.5rem;
-}
-.file-meta { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
-
-button, .btn {
-    background: var(--accent); color: #0f172a; font-weight: 600;
-    border: 0; padding: 0.5rem 1rem; border-radius: 0.375rem; cursor: pointer;
-    text-decoration: none; display: inline-block;
-}
-button:disabled { opacity: 0.5; cursor: not-allowed; }
-button:hover, .btn:hover { filter: brightness(1.1); }
-
-.filter-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; margin: 1rem 0; }
-.filter-row label { display: flex; flex-direction: column; gap: 0.25rem; color: var(--muted); }
-
-.report-header { display: flex; flex-wrap: wrap; gap: 2rem; align-items: center; margin: 1rem 0 2rem; }
-
-.badge {
-    display: inline-block; padding: 0.15rem 0.5rem;
-    border-radius: 999px; font-size: 0.8rem; font-weight: 600;
-    background: #334155; color: var(--fg);
-}
-.badge-ready   { background: rgba(34, 197, 94, 0.2);  color: #86efac; }
-.badge-pending { background: rgba(250, 204, 21, 0.2); color: #fde68a; }
-
-.state-inservice { background: rgba(34, 197, 94, 0.3);  color: #bbf7d0; }
-.state-fo        { background: rgba(239, 68, 68, 0.3);  color: #fecaca; }
-.state-po        { background: rgba(59, 130, 246, 0.3); color: #bfdbfe; }
-.state-rs        { background: rgba(168, 85, 247, 0.3); color: #e9d5ff; }
-.state-fd        { background: rgba(249, 115, 22, 0.3); color: #fed7aa; }
-.state-unknown   { background: #334155; color: var(--muted); }
-
-.state-bar { display: flex; width: 100%; height: 2rem; border-radius: 0.375rem; overflow: hidden; margin: 0.5rem 0; }
-.state-bar-segment {
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.75rem; font-weight: 600; color: #0f172a; overflow: hidden; white-space: nowrap;
+.boot {
+    padding: 2rem;
+    color: var(--mud-palette-text-secondary, #94a3b8);
+    text-align: center;
+    font-family: system-ui, sans-serif;
 }
 
-.state-bar-segment.state-inservice { background: #22c55e; }
-.state-bar-segment.state-fo        { background: #ef4444; }
-.state-bar-segment.state-po        { background: #3b82f6; }
-.state-bar-segment.state-rs        { background: #a855f7; }
-.state-bar-segment.state-fd        { background: #f97316; }
-.state-bar-segment.state-unknown   { background: #475569; }
+/* --- Hero ------------------------------------------------------------------ */
+.dk-hero {
+    margin-bottom: 28px;
+}
+.dk-hero h1.mud-typography-h1 {
+    font-size: 2.5rem !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.025em !important;
+    line-height: 1.1 !important;
+    margin: 0 0 6px 0 !important;
+}
+.dk-hero-sub {
+    font-size: 1.05rem;
+    color: var(--mud-palette-text-secondary);
+    line-height: 1.4;
+}
 
-.hourly-scroll { max-height: 420px; overflow-y: auto; margin-top: 0.5rem; }
-.hourly-table  { font-size: 0.85rem; }
-.hourly-table th { position: sticky; top: 0; background: var(--bg); }
+/* --- Card-grunnform -------------------------------------------------------- */
+.dk-card {
+    border-radius: 14px !important;
+    border: 1px solid var(--mud-palette-lines-default, rgba(15, 30, 60, 0.06));
+    background: var(--mud-palette-surface, #fff);
+    box-shadow:
+        0 1px 2px rgba(15, 30, 60, 0.04),
+        0 4px 16px rgba(15, 30, 60, 0.04) !important;
+    transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 220ms cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 220ms;
+}
+.dk-card:hover {
+    transform: translateY(-2px);
+    box-shadow:
+        0 1px 3px rgba(15, 30, 60, 0.06),
+        0 14px 32px rgba(15, 30, 60, 0.12) !important;
+    border-color: rgba(30, 95, 142, 0.22);
+}
 
-details > summary { cursor: pointer; color: var(--accent); margin: 0.5rem 0; }
-section { margin: 2rem 0; }
+/* --- Stat-kort (KPI) ------------------------------------------------------- */
+.dk-stat {
+    position: relative;
+    overflow: hidden;
+}
+.dk-stat::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--dk-accent, #1E5F8E), var(--dk-accent-2, #00A99D));
+    opacity: 0.95;
+}
+.dk-stat-icon {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    margin-bottom: 14px;
+    background: linear-gradient(135deg, var(--dk-accent, #1E5F8E) 0%, var(--dk-accent-2, #00A99D) 100%);
+    box-shadow: 0 6px 16px rgba(30, 95, 142, 0.25);
+}
+.dk-stat-icon .mud-icon-root {
+    color: #fff !important;
+}
+.dk-stat-label {
+    font-size: 0.72rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase;
+    color: var(--mud-palette-text-secondary) !important;
+    margin: 0 !important;
+}
+.dk-stat-value {
+    font-size: 2.25rem !important;
+    font-weight: 700 !important;
+    line-height: 1.1 !important;
+    margin: 4px 0 4px 0 !important;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+}
+.dk-stat-sub {
+    font-size: 0.825rem !important;
+    color: var(--mud-palette-text-secondary) !important;
+    margin: 0 !important;
+}
+
+/* --- Action-kort (hurtigvalg) --------------------------------------------- */
+.dk-action {
+    cursor: pointer;
+    height: 100%;
+}
+.dk-action-icon {
+    width: 52px; height: 52px;
+    border-radius: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+    color: var(--dk-accent, #1E5F8E);
+    background: color-mix(in srgb, var(--dk-accent, #1E5F8E) 12%, transparent);
+}
+.dk-action-icon .mud-icon-root {
+    color: var(--dk-accent, #1E5F8E) !important;
+}
+.dk-action h5.mud-typography-h5 {
+    font-weight: 600 !important;
+    letter-spacing: -0.01em !important;
+}
+
+/* --- Status-puls (for "Behandles") ---------------------------------------- */
+.dk-pulse {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--mud-palette-warning);
+    margin-right: 6px;
+    vertical-align: middle;
+    box-shadow: 0 0 0 0 var(--mud-palette-warning);
+    animation: dk-pulse 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes dk-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(243, 156, 18, 0.6); }
+    70%  { box-shadow: 0 0 0 8px rgba(243, 156, 18, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(243, 156, 18, 0); }
+}
+
+/* --- Entrance-animasjon for kort ------------------------------------------ */
+@keyframes dk-fade-up {
+    0%   { opacity: 0; transform: translateY(10px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+.dk-fade-in {
+    animation: dk-fade-up 420ms cubic-bezier(0.4, 0, 0.2, 1) backwards;
+}
+.dk-fade-in:nth-child(1) { animation-delay: 0ms; }
+.dk-fade-in:nth-child(2) { animation-delay: 70ms; }
+.dk-fade-in:nth-child(3) { animation-delay: 140ms; }
+.dk-fade-in:nth-child(4) { animation-delay: 210ms; }
+.dk-fade-in:nth-child(5) { animation-delay: 280ms; }
+.dk-fade-in:nth-child(6) { animation-delay: 350ms; }
+
+/* --- AppBar-justeringer --------------------------------------------------- */
+.mud-appbar .mud-chip.dk-version {
+    height: 22px !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+    color: rgba(255, 255, 255, 0.75) !important;
+    background: transparent !important;
+    font-size: 0.7rem !important;
+    letter-spacing: 0.05em;
+}
+
+/* --- Bordkort på rapport-listen ------------------------------------------- */
+.dk-table-wrap {
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid var(--mud-palette-lines-default, rgba(15, 30, 60, 0.06));
+    box-shadow: 0 1px 2px rgba(15, 30, 60, 0.04), 0 4px 16px rgba(15, 30, 60, 0.04);
+    background: var(--mud-palette-surface, #fff);
+}
+
+/* --- Driftstidslinje (heatmap, ReportDetail) ------------------------------ */
+.dk-timeline {
+    display: grid;
+    gap: 2px;
+    overflow-x: auto;
+}
+.dk-timeline-headerRow,
+.dk-timeline-row {
+    display: grid;
+    grid-template-columns: 56px repeat(24, minmax(20px, 1fr));
+    gap: 2px;
+    align-items: center;
+}
+.dk-timeline-headerRow {
+    margin-bottom: 4px;
+}
+.dk-timeline-dayLabel {
+    font-size: 0.72rem;
+    color: var(--mud-palette-text-secondary, #6B7480);
+    text-align: right;
+    padding-right: 6px;
+    font-variant-numeric: tabular-nums;
+}
+.dk-timeline-hourLabel {
+    font-size: 0.7rem;
+    text-align: center;
+    color: var(--mud-palette-text-secondary, #6B7480);
+}
+.dk-timeline-cell {
+    height: 18px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+.dk-timeline-cell:hover {
+    transform: scale(1.15);
+    box-shadow: 0 2px 8px rgba(15, 30, 60, 0.25);
+    z-index: 1;
+}
+.dk-timeline-cellSelected {
+    outline: 2px solid var(--mud-palette-primary, #1E5F8E);
+    outline-offset: -1px;
+    z-index: 2;
+}
+
+/* --- Anleggs-kort med drag-til-opplastning --------------------------------- */
+.dk-plant-dropzone {
+    position: relative;
+    cursor: pointer;
+    height: 100%;
+}
+.dk-plant-dropzone .mud-card {
+    height: 100%;
+    transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+.dk-plant-dropzone:hover .mud-card {
+    box-shadow: 0 6px 18px rgba(15, 30, 60, 0.10);
+    transform: translateY(-1px);
+}
+
+/* Native fil-input legges som usynlig overlay over kort-innholdet — fanger
+   både klikk og drag-drop. Stopper med 64px margin fra bunn slik at knappene
+   i .mud-card-actions ligger fritt og kan klikkes som vanlig. */
+.dk-plant-dropzoneInput {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 64px !important;
+    width: auto !important;
+    height: auto !important;
+    opacity: 0 !important;
+    z-index: 10;
+    cursor: pointer;
+}
+
+/* Action-baren ligger under inputtets dekningsområde — ingen
+   z-index-trickery nødvendig. Bevarer normal klikk-flyt. */
+.dk-plant-dropzone .mud-card-actions {
+    position: relative;
+    background: var(--mud-palette-surface, #fff);
+}
+
+/* Highlight når en fil dras over kortet (Mud-klasse + browser-fallback) */
+.dk-plant-dropzone:has(input[type=file]:focus) .mud-card,
+.dk-plant-dropzone .mud-fileupload-dragging .mud-card {
+    border: 2px dashed var(--mud-palette-primary, #1E5F8E);
+    background: rgba(30, 95, 142, 0.04);
+}
+
+.dk-plant-dropzoneBusy .mud-card {
+    pointer-events: none;
+    opacity: 0.85;
+}
+.dk-timeline-cellEmpty {
+    height: 18px;
+    background-color: rgba(0, 0, 0, 0.04);
+    border-radius: 3px;
+}
+.dk-timeline-legend {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 18px 24px;
+    font-size: 0.78rem;
+    color: var(--mud-palette-text-secondary, #6B7480);
+}
+.dk-timeline-legendGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.dk-timeline-legendGroupTitle {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--mud-palette-text-primary, #1A2332);
+    font-weight: 600;
+    padding-bottom: 2px;
+    border-bottom: 1px solid var(--mud-palette-lines-default, rgba(15, 30, 60, 0.06));
+    margin-bottom: 2px;
+}
+.dk-timeline-legendGroupItems {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.dk-timeline-legendItem {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.dk-timeline-legendSwatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    flex-shrink: 0;
+}

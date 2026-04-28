@@ -1,0 +1,357 @@
+@using KraftverkUptime.Web.Services
+
+@*
+    Driftstidslinje — heatmap med én rad per dag og 24 ruter per rad
+    (én per time). Fargekoder per UnitState (eller annoterings-kategori
+    hvis dekket av en annotering). Klikk på en time åpner dialog.
+
+    Komponenten renderer rene HTML/CSS-celler — ingen ApexCharts —
+    fordi:
+      1. Vi vil ha eksakt kontroll på fargene per kategori.
+      2. Click-til-annotere er enklere uten chart-events.
+      3. Performance: 24 × ~31 = 744 celler er ingenting for nettleseren.
+*@
+
+<div class="dk-card pa-4">
+    <div class="d-flex justify-space-between align-center mb-3">
+        <MudText Typo="Typo.h3">Driftstidslinje</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">
+            Klikk én time, eller klikk-og-dra for å markere en lengre periode.
+        </MudText>
+    </div>
+
+    @if (Days.Count == 0)
+    {
+        <MudText Typo="Typo.body2">Ingen data i perioden.</MudText>
+    }
+    else
+    {
+        <div class="dk-timeline" @onmouseleave="CancelDrag">
+            <div class="dk-timeline-headerRow">
+                <div class="dk-timeline-dayLabel"></div>
+                @for (var h = 0; h < 24; h++)
+                {
+                    var hour = h;
+                    <div class="dk-timeline-hourLabel">@(hour % 3 == 0 ? hour.ToString("D2") : "")</div>
+                }
+            </div>
+            @foreach (var day in Days)
+            {
+                <div class="dk-timeline-row">
+                    <div class="dk-timeline-dayLabel">@day.Date.ToString("dd.MM")</div>
+                    @foreach (var cell in day.Cells)
+                    {
+                        if (cell is null)
+                        {
+                            <div class="dk-timeline-cell dk-timeline-cellEmpty"></div>
+                        }
+                        else
+                        {
+                            var c = cell;
+                            <div class="dk-timeline-cell @(IsInDragRange(c) ? "dk-timeline-cellSelected" : "")"
+                                 style="@($"background-color:{c.Color};")"
+                                 title="@c.Tooltip"
+                                 @onmousedown="@(() => StartDrag(c))"
+                                 @onmousedown:preventDefault="true"
+                                 @onmouseenter="@(() => DragEnter(c))"
+                                 @onmouseup="@(() => EndDrag(c))">
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="dk-timeline-legend mt-3">
+            @foreach (var group in LegendGroups)
+            {
+                <div class="dk-timeline-legendGroup">
+                    <div class="dk-timeline-legendGroupTitle">@group.GroupName</div>
+                    <div class="dk-timeline-legendGroupItems">
+                        @foreach (var entry in group.Items)
+                        {
+                            <div class="dk-timeline-legendItem">
+                                <span class="dk-timeline-legendSwatch" style="@($"background-color:{entry.Color};")"></span>
+                                <span>@entry.Label</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<ClassifiedHourDto> Hours { get; set; } = Array.Empty<ClassifiedHourDto>();
+
+    [Parameter]
+    public IReadOnlyList<AnnotationDto> Annotations { get; set; } = Array.Empty<AnnotationDto>();
+
+    [Parameter]
+    public IReadOnlyList<AnnotationCategoryDto> Categories { get; set; } = Array.Empty<AnnotationCategoryDto>();
+
+    [Parameter]
+    public EventCallback<HourClickedArgs> OnHourClick { get; set; }
+
+    private IReadOnlyList<DayRow> Days { get; set; } = Array.Empty<DayRow>();
+    private IReadOnlyList<LegendGroup> LegendGroups { get; set; } = Array.Empty<LegendGroup>();
+
+    protected override void OnParametersSet()
+    {
+        Days = BuildDays();
+        LegendGroups = BuildLegendGroups();
+    }
+
+    private IReadOnlyList<DayRow> BuildDays()
+    {
+        if (Hours.Count == 0)
+        {
+            return Array.Empty<DayRow>();
+        }
+
+        var categoryById = Categories.ToDictionary(c => c.Id, c => c, StringComparer.Ordinal);
+
+        // Indekser annoteringer per (utc-time-start) for O(1) oppslag.
+        var annotationByHour = new Dictionary<DateTimeOffset, AnnotationDto>();
+        foreach (var annotation in Annotations)
+        {
+            var cursor = annotation.StartUtc;
+            while (cursor < annotation.EndUtc)
+            {
+                annotationByHour[cursor] = annotation;
+                cursor = cursor.AddHours(1);
+            }
+        }
+
+        var byHour = Hours.ToDictionary(h => h.TimeUtc.UtcDateTime, h => h);
+        var days = Hours.Select(h => h.TimeUtc.UtcDateTime.Date).Distinct().OrderBy(d => d).ToList();
+
+        var rows = new List<DayRow>(days.Count);
+        foreach (var day in days)
+        {
+            var cells = new HourCell?[24];
+            for (var h = 0; h < 24; h++)
+            {
+                var dt = new DateTimeOffset(day.AddHours(h), TimeSpan.Zero);
+                if (!byHour.TryGetValue(dt.UtcDateTime, out var hour))
+                {
+                    cells[h] = null;
+                    continue;
+                }
+
+                annotationByHour.TryGetValue(dt, out var annotation);
+                AnnotationCategoryDto? category = null;
+                if (annotation is not null)
+                {
+                    categoryById.TryGetValue(annotation.CategoryId, out category);
+                }
+
+                var color = category?.ColorHex ?? StateColor(hour.State);
+                var label = category?.DisplayName ?? StateDisplayName(hour.State);
+
+                // Multi-line tooltip via \n — native browser-tooltip rendrer det greit.
+                var lines = new List<string>(5)
+                {
+                    $"{dt.UtcDateTime:yyyy-MM-dd HH:mm} UTC",
+                    $"Tilstand: {label}",
+                };
+                if (annotation is null && hour.Confidence < 0.999)
+                {
+                    lines.Add($"Confidence: {hour.Confidence:F2}");
+                }
+                if (!string.IsNullOrWhiteSpace(hour.CauseCode) && annotation is null)
+                {
+                    lines.Add($"Årsak: {hour.CauseCode}");
+                }
+                if (annotation is not null)
+                {
+                    lines.Add("Manuelt annotert");
+                    if (!string.IsNullOrWhiteSpace(annotation.Comment))
+                    {
+                        lines.Add($"Kommentar: {annotation.Comment}");
+                    }
+                }
+                var tooltip = string.Join('\n', lines);
+
+                cells[h] = new HourCell(dt, hour, annotation, color, tooltip);
+            }
+            rows.Add(new DayRow(day, cells));
+        }
+
+        return rows;
+    }
+
+    /// <summary>
+    /// Bygger legend organisert i 4 hovedklasser (Drift, Nedetid, Planlagt, Annet)
+    /// med spesifikke kategorier som undergrupper. Reduserer visuell støy uten
+    /// å miste detaljnivået — fargene på cellene er fortsatt unike.
+    /// </summary>
+    private IReadOnlyList<LegendGroup> BuildLegendGroups()
+    {
+        var drift = new List<LegendEntry> { new("Auto: Drift", "#2A9D8F") };
+
+        var nedetid = new List<LegendEntry> { new("Auto: Nedetid", "#E76F51") };
+        foreach (var c in Categories.Where(c => c.IsActive && IsNedetidCategory(c)).OrderBy(c => c.SortOrder))
+        {
+            nedetid.Add(new LegendEntry(c.DisplayName, c.ColorHex));
+        }
+
+        var planlagt = new List<LegendEntry>();
+        foreach (var c in Categories.Where(c => c.IsActive && IsPlanlagtCategory(c)).OrderBy(c => c.SortOrder))
+        {
+            planlagt.Add(new LegendEntry(c.DisplayName, c.ColorHex));
+        }
+
+        var annet = new List<LegendEntry>
+        {
+            new("Auto: Stille", "#7E57C2"),
+            new("Auto: Mangler data", "#9AA5B0"),
+        };
+        foreach (var c in Categories.Where(c => c.IsActive && !IsNedetidCategory(c) && !IsPlanlagtCategory(c)).OrderBy(c => c.SortOrder))
+        {
+            annet.Add(new LegendEntry(c.DisplayName, c.ColorHex));
+        }
+
+        var groups = new List<LegendGroup>(4) { new("Drift", drift) };
+        if (nedetid.Count > 0) groups.Add(new LegendGroup("Nedetid", nedetid));
+        if (planlagt.Count > 0) groups.Add(new LegendGroup("Planlagt", planlagt));
+        if (annet.Count > 0) groups.Add(new LegendGroup("Annet", annet));
+        return groups;
+    }
+
+    private static bool IsNedetidCategory(AnnotationCategoryDto c) =>
+        string.Equals(c.UnitStateOverride, "ForcedOutage", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(c.UnitStateOverride, "ResourceUnavailable", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsPlanlagtCategory(AnnotationCategoryDto c) =>
+        string.Equals(c.UnitStateOverride, "PlannedOutage", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(c.UnitStateOverride, "MaintenanceOutage", StringComparison.OrdinalIgnoreCase);
+
+    // ---- Drag-til-å-merke -------------------------------------------------
+    //
+    // Mouse-down på en celle starter merkingen. Mouse-enter på neste celle
+    // utvider markeringen mens venstre-tasten holdes inne. Mouse-up "lukker"
+    // markeringen og åpner dialogen for hele perioden. Hvis brukeren bare
+    // klikker (ingen drag), behandles det som ett-times-markering.
+    //
+    // Mouse-leave på timeline-kontaineren avbryter pågående drag (forhindrer
+    // "stuck"-state hvis brukeren slipper musen utenfor rutenettet).
+
+    private DateTimeOffset? _dragStart;
+    private DateTimeOffset? _dragCurrent;
+
+    private void StartDrag(HourCell cell)
+    {
+        _dragStart = cell.Time;
+        _dragCurrent = cell.Time;
+    }
+
+    private void DragEnter(HourCell cell)
+    {
+        if (_dragStart is null)
+        {
+            return;
+        }
+        _dragCurrent = cell.Time;
+    }
+
+    private async Task EndDrag(HourCell cell)
+    {
+        if (_dragStart is null)
+        {
+            return;
+        }
+
+        var startTime = _dragStart.Value;
+        var endHour = (_dragCurrent ?? cell.Time);
+
+        var rangeStart = startTime <= endHour ? startTime : endHour;
+        var rangeEndExclusive = (startTime <= endHour ? endHour : startTime).AddHours(1);
+
+        // Single-click på en celle med eksisterende annotering → editér akkurat den.
+        AnnotationDto? annotation = null;
+        if (rangeStart.AddHours(1) == rangeEndExclusive)
+        {
+            annotation = cell.Annotation;
+        }
+
+        // Plukk ut alle klassifiserte timer i intervallet — dialogen bruker dem
+        // til å vise appens nåværende klassifisering for perioden.
+        var rangeHours = Hours
+            .Where(h => h.TimeUtc >= rangeStart && h.TimeUtc < rangeEndExclusive)
+            .OrderBy(h => h.TimeUtc)
+            .ToList();
+
+        _dragStart = null;
+        _dragCurrent = null;
+
+        if (OnHourClick.HasDelegate)
+        {
+            await OnHourClick.InvokeAsync(new HourClickedArgs(rangeStart, rangeEndExclusive, cell.Hour, rangeHours, annotation));
+        }
+    }
+
+    private void CancelDrag()
+    {
+        _dragStart = null;
+        _dragCurrent = null;
+    }
+
+    private bool IsInDragRange(HourCell cell)
+    {
+        if (_dragStart is null || _dragCurrent is null)
+        {
+            return false;
+        }
+        var min = _dragStart.Value <= _dragCurrent.Value ? _dragStart.Value : _dragCurrent.Value;
+        var max = _dragStart.Value <= _dragCurrent.Value ? _dragCurrent.Value : _dragStart.Value;
+        return cell.Time >= min && cell.Time <= max;
+    }
+
+    private static string StateColor(string state) => state switch
+    {
+        "InService" or "inService" => "#2A9D8F",
+        "ForcedOutage" or "forcedOutage" => "#E76F51",
+        "ReserveShutdown" or "reserveShutdown" => "#7E57C2",
+        "InformationUnavailable" or "informationUnavailable" => "#9AA5B0",
+        "PlannedOutage" or "plannedOutage" => "#0D47A1",
+        "MaintenanceOutage" or "maintenanceOutage" => "#1976D2",
+        "ResourceUnavailable" or "resourceUnavailable" => "#00796B",
+        _ => "#BDBDBD",
+    };
+
+    private static string StateDisplayName(string state) => state switch
+    {
+        "InService" or "inService" => "Drift",
+        "ForcedOutage" or "forcedOutage" => "Nedetid",
+        "ReserveShutdown" or "reserveShutdown" => "Stille",
+        "InformationUnavailable" or "informationUnavailable" => "Mangler data",
+        "PlannedOutage" or "plannedOutage" => "Planlagt revisjon",
+        "MaintenanceOutage" or "maintenanceOutage" => "Vedlikehold",
+        "ResourceUnavailable" or "resourceUnavailable" => "Vannmangel",
+        _ => state,
+    };
+
+    /// <summary>
+    /// Argumenter for klikk eller drag-markering på driftstidslinjen.
+    /// <see cref="StartUtc"/> er inklusiv, <see cref="EndUtc"/> er eksklusiv —
+    /// så et enkelt-klikk gir et 1-times intervall, og drag fra 09 til 11
+    /// gir [09:00, 12:00) (3 timer).
+    /// <see cref="RangeHours"/> inneholder alle klassifiserte timer i intervallet,
+    /// slik at dialogen kan vise hva appen har bestemt for periodene.
+    /// <see cref="Annotation"/> settes kun ved enkelt-klikk på allerede annotert celle.
+    /// </summary>
+    public sealed record HourClickedArgs(
+        DateTimeOffset StartUtc,
+        DateTimeOffset EndUtc,
+        ClassifiedHourDto AnchorHour,
+        IReadOnlyList<ClassifiedHourDto> RangeHours,
+        AnnotationDto? Annotation);
+
+    private sealed record HourCell(DateTimeOffset Time, ClassifiedHourDto Hour, AnnotationDto? Annotation, string Color, string Tooltip);
+    private sealed record DayRow(DateTime Date, HourCell?[] Cells);
+    private sealed record LegendEntry(string Label, string Color);
+    private sealed record LegendGroup(string GroupName, IReadOnlyList<LegendEntry> Items);
+}

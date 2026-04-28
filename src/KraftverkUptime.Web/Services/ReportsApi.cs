@@ -162,5 +162,6 @@ public sealed record ClassifiedHourDto(
     string CauseCode,
     double? MwhElhub,
     double? ProduksjonplanMwh,
+    double? SpotbudMwh,
     double? SpotprisNokMwh,
     string Rationale);

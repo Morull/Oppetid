@@ -13,9 +13,12 @@ using KraftverkUptime.Infrastructure.Jobs;
 using KraftverkUptime.Infrastructure.Notifications;
 using KraftverkUptime.Infrastructure.Options;
 using KraftverkUptime.Infrastructure.Persistence;
+using KraftverkUptime.Infrastructure.Persistence.Repositories;
 using KraftverkUptime.Infrastructure.Reporting;
 using KraftverkUptime.Infrastructure.Security;
 using KraftverkUptime.Infrastructure.Storage;
+using KraftverkUptime.Modules.Annotations.Repositories;
+using KraftverkUptime.Modules.Scada.Repositories;
 using KraftverkUptime.Modules.Reporting;
 using KraftverkUptime.Modules.Reporting.Storage;
 using KraftverkUptime.Modules.Settlement.Jobs;
@@ -91,6 +94,16 @@ public static class InfrastructureServiceCollectionExtensions
         // ikke EF-avhengighet.
         services.AddScoped<ISettlementImportRecorder, DbSettlementImportRecorder>();
         services.AddScoped<IUptimePeriodProvider, SettlementUptimePeriodProvider>();
+
+        // --- Annoteringer (manuell nedetidsmerking) ---
+        services.AddScoped<IDowntimeAnnotationRepository, EfDowntimeAnnotationRepository>();
+        services.AddScoped<IDowntimeCategoryRepository, EfDowntimeCategoryRepository>();
+
+        // --- SCADA foundation (signal_map + sample_facts + classified_events) ---
+        services.AddScoped<ISignalMapRepository, EfSignalMapRepository>();
+        services.AddScoped<IScadaSampleRepository, EfScadaSampleRepository>();
+        services.AddScoped<IClassifiedEventRepository, EfClassifiedEventRepository>();
+        services.AddScoped<KraftverkUptime.Modules.Scada.Import.IScadaImportService, KraftverkUptime.Infrastructure.Scada.ScadaImportService>();
 
         // --- UptimeReport-lagring (blob, JSON) ---
         services.AddSingleton<IUptimeReportStore, KraftverkUptime.Infrastructure.Reporting.BlobUptimeReportStore>();

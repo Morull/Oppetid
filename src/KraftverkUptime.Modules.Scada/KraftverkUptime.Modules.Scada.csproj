@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>KraftverkUptime.Modules.Scada</RootNamespace>
+    <AssemblyName>KraftverkUptime.Modules.Scada</AssemblyName>
+    <Description>SCADA-data: signal-whitelist (signal_map), tidsserier (sample_facts), event-logg (classified_events), CSV-import og fremtidig SCADA-basert klassifikator. Ref ANALYSE-NEDETID-SCADA.md og ANALYSE-VIRKNINGSGRAD.md.</Description>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\KraftverkUptime.Core\KraftverkUptime.Core.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.4" />
+  </ItemGroup>
+
+</Project>

@@ -16,6 +16,8 @@
     <PackageReference Include="Microsoft.Authentication.WebAssembly.Msal" Version="10.0.4" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Authentication" Version="10.0.4" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.4" />
+    <PackageReference Include="MudBlazor" Version="8.4.0" />
+    <PackageReference Include="Blazor-ApexCharts" Version="6.0.0" />
   </ItemGroup>
 
 </Project>

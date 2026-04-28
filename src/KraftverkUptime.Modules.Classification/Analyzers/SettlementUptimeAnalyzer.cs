@@ -54,11 +54,11 @@ public sealed class SettlementUptimeAnalyzer : IAnalyzer<UptimePeriod, UptimeRep
         var report = _kpiCalculator.Compute(classified, input.PlantConfig);
 
         _logger.LogInformation(
-            "Analyse fullført: SH={SH}, AH={AH}, UH={UH}, FO={FO}, total={Mwh:F2} MWh",
+            "Analyse fullført: SH={SH}, FOH={FOH}, OOS={OOS}, AF={AF}, total={Mwh:F2} MWh",
             report.Kpis.FirstOrDefault(k => k.Name == "ServiceHours_SH")?.Value,
-            report.Kpis.FirstOrDefault(k => k.Name == "AvailableHours_AH")?.Value,
-            report.Kpis.FirstOrDefault(k => k.Name == "UnavailableHours_UH")?.Value,
             report.Kpis.FirstOrDefault(k => k.Name == "ForcedOutageHours_FOH")?.Value,
+            report.Kpis.FirstOrDefault(k => k.Name == "OutOfServiceHours")?.Value,
+            report.Kpis.FirstOrDefault(k => k.Name == "AvailabilityFactor_AF")?.Value,
             report.Kpis.FirstOrDefault(k => k.Name == "TotalProduction_MWh")?.Value);
 
         return Task.FromResult(report);

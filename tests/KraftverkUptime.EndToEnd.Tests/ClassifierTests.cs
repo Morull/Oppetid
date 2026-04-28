@@ -9,22 +9,26 @@ using Xunit;
 namespace KraftverkUptime.EndToEnd.Tests;
 
 /// <summary>
-/// Regel-for-regel-tester for SettlementClassifier. Hver test isolerer én
-/// regel slik at feilmeldinger peker til én konkret regel når de bryter.
+/// Regel-for-regel-tester for forenklet SettlementClassifier (post-Phase A).
+///
+/// Modellen produserer kun fire tilstander automatisk:
+/// <list type="bullet">
+///   <item>InService — Elhub > 0</item>
+///   <item>ForcedOutage — Elhub = 0 og Spotbud > 0</item>
+///   <item>ReserveShutdown — Elhub = 0 og Spotbud = 0/null</item>
+///   <item>InformationUnavailable — Elhub mangler eller er negativ</item>
+/// </list>
+///
+/// Tilstandene PlannedOutage, MaintenanceOutage, ResourceUnavailable og
+/// ForcedDerating produseres ikke automatisk lenger – de skal komme via
+/// manuell annotering når den funksjonen er bygd.
 /// </summary>
 public class ClassifierTests
 {
-    private static readonly PlantClassificationConfig Regulated = new()
+    private static readonly PlantClassificationConfig DefaultPlant = new()
     {
         PlantId = "Test",
-        PlantType = PlantType.Regulated,
-        NominalPowerMw = 2.2,
-    };
-
-    private static readonly PlantClassificationConfig RunOfRiver = new()
-    {
-        PlantId = "TestROR",
-        PlantType = PlantType.RunOfRiver,
+        PlantType = PlantType.Regulated, // Type påvirker ikke logikken lenger
         NominalPowerMw = 2.2,
     };
 
@@ -33,103 +37,103 @@ public class ClassifierTests
     {
         var classified = Classify(new[]
         {
-            Hour(0, mwhElhub: null, plan: 2.0, spot: 500, dq: DataQualityState.InformationUnavailable),
-        }, Regulated);
+            Hour(0, mwhElhub: null, bid: 2.0, dq: DataQualityState.InformationUnavailable),
+        });
 
         classified[0].State.Should().Be(UnitState.InformationUnavailable);
+        classified[0].CauseCode.Should().Be("9.1-DataMissing");
         classified[0].Confidence.Should().Be(1.0);
     }
 
     [Fact]
-    public void Row_WithZeroElhub_AndPositivePlan_IsForcedOutage()
+    public void Row_WithNegativeElhub_IsInformationUnavailable()
     {
         var classified = Classify(new[]
         {
-            Hour(0, mwhElhub: 0, plan: 2.0, spot: 500),
-        }, Regulated);
+            Hour(0, mwhElhub: -0.5, bid: 2.0),
+        });
+
+        classified[0].State.Should().Be(UnitState.InformationUnavailable);
+        classified[0].CauseCode.Should().Be("9.2-NegativeReading");
+    }
+
+    [Fact]
+    public void Row_WithPositiveElhub_IsInService_RegardlessOfBidOrPlan()
+    {
+        // Elhub > 0 → InService, uavhengig av bud, plan eller spotpris.
+        var classified = Classify(new[]
+        {
+            Hour(0, mwhElhub: 1.5, bid: 2.0),    // under bud, men kjører
+            Hour(1, mwhElhub: 0.05, bid: 2.0),   // mye under bud, men kjører
+            Hour(2, mwhElhub: 2.5, bid: 0),      // over bud, kjører
+            Hour(3, mwhElhub: 1.0, bid: null),   // ingen bud-info
+        });
+
+        classified.Should().AllSatisfy(c =>
+        {
+            c.State.Should().Be(UnitState.InService);
+            c.CauseCode.Should().Be("0-Normal");
+            c.Confidence.Should().Be(0.95);
+        });
+    }
+
+    [Fact]
+    public void Row_WithZeroElhub_AndPositiveBid_IsForcedOutage()
+    {
+        var classified = Classify(new[]
+        {
+            Hour(0, mwhElhub: 0, bid: 2.0),
+        });
 
         classified[0].State.Should().Be(UnitState.ForcedOutage);
         classified[0].CauseCode.Should().Be("U1-UnplannedStop");
+        classified[0].Confidence.Should().Be(0.90);
     }
 
     [Fact]
-    public void Row_WithZeroElhub_AndZeroPlan_AndSustainedRun_IsPlannedOutage()
+    public void Row_WithZeroElhub_AndZeroBid_IsReserveShutdown()
     {
-        // 25 sammenhengende null-timer → PO
-        var hours = new List<SettlementHourlyRow>();
-        for (int i = 0; i < 25; i++)
-        {
-            hours.Add(Hour(i, mwhElhub: 0, plan: 0, spot: 500));
-        }
-        var classified = Classify(hours, Regulated);
-
-        classified.Should().AllSatisfy(c =>
-            c.State.Should().Be(UnitState.PlannedOutage));
-    }
-
-    [Fact]
-    public void Row_WithZeroElhub_AndZeroPlan_AndLowSpot_IsReserveShutdown()
-    {
-        // Median = 500 i data; test-time har spot = 200 < median
         var classified = Classify(new[]
         {
-            Hour(0, mwhElhub: 0, plan: 0, spot: 200),
-            Hour(1, mwhElhub: 1.9, plan: 2.0, spot: 500),
-            Hour(2, mwhElhub: 1.9, plan: 2.0, spot: 800),
-        }, Regulated);
+            Hour(0, mwhElhub: 0, bid: 0),
+        });
 
         classified[0].State.Should().Be(UnitState.ReserveShutdown);
-        classified[0].CauseCode.Should().Be("M1-MarketDriven");
+        classified[0].CauseCode.Should().Be("M1-NoCommitment");
+        classified[0].Confidence.Should().Be(0.80);
     }
 
     [Fact]
-    public void Row_WithPositiveElhub_AndPositivePlan_RatioBelow90Pct_IsForcedDerating()
+    public void Row_WithZeroElhub_AndNullBid_IsReserveShutdown()
     {
         var classified = Classify(new[]
         {
-            Hour(0, mwhElhub: 1.5, plan: 2.0, spot: 500),  // 75 % = under 90 %
-        }, Regulated);
+            Hour(0, mwhElhub: 0, bid: null),
+        });
 
-        classified[0].State.Should().Be(UnitState.ForcedDerating);
-        classified[0].CauseCode.Should().Be("D1-ForcedDerating");
+        classified[0].State.Should().Be(UnitState.ReserveShutdown);
+        classified[0].CauseCode.Should().Be("M1-NoCommitment");
     }
 
     [Fact]
-    public void Row_WithPositiveElhub_AndRatioAbove90Pct_IsInService()
+    public void Empty_Hourly_ReturnsEmpty()
     {
-        var classified = Classify(new[]
-        {
-            Hour(0, mwhElhub: 1.95, plan: 2.0, spot: 500),  // 97,5 %
-        }, Regulated);
-
-        classified[0].State.Should().Be(UnitState.InService);
-        classified[0].Confidence.Should().Be(0.95);
-    }
-
-    [Fact]
-    public void RunOfRiver_WithZeroElhub_IsResourceUnavailable()
-    {
-        var classified = Classify(new[]
-        {
-            Hour(0, mwhElhub: 0, plan: 0, spot: 500),
-        }, RunOfRiver);
-
-        classified[0].State.Should().Be(UnitState.ResourceUnavailable);
+        var classified = Classify(Array.Empty<SettlementHourlyRow>());
+        classified.Should().BeEmpty();
     }
 
     // ------------------------------------------------------------------
     private static IReadOnlyList<ClassifiedHourlyRow> Classify(
-        IReadOnlyList<SettlementHourlyRow> hours, PlantClassificationConfig plant)
+        IReadOnlyList<SettlementHourlyRow> hours)
     {
         var classifier = new SettlementClassifier();
-        return classifier.Classify(hours, plant);
+        return classifier.Classify(hours, DefaultPlant);
     }
 
     private static SettlementHourlyRow Hour(
         int offsetHours,
         double? mwhElhub,
-        double? plan,
-        double? spot,
+        double? bid,
         DataQualityState dq = DataQualityState.Good)
     {
         var baseTime = new DateTimeOffset(2025, 2, 1, 0, 0, 0, TimeSpan.Zero);
@@ -140,8 +144,7 @@ public class ClassifierTests
             TimeLocal = utc.ToOffset(TimeSpan.FromHours(1)),
             MwhElhub = mwhElhub,
             MwhESett = mwhElhub,
-            ProduksjonplanMwh = plan,
-            SpotprisNokMwh = spot,
+            SpotbudMwh = bid,
             DqState = dq,
         };
     }

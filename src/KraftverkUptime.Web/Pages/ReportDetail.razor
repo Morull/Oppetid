@@ -1,197 +1,279 @@
 @page "/reports/{PlantId}/{IdempotencyKey}"
+@using ApexCharts
+@using KraftverkUptime.Web.Components
 @inject ReportsApi Api
+@inject AnnotationsApi AnnotationsApi
+@inject IDialogService DialogService
 
 <PageTitle>Rapport – @PlantId</PageTitle>
 
 @if (_error is not null)
 {
-    <div class="alert alert-error">@_error</div>
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
 }
-
-@if (_notFound)
+else if (_notFound)
 {
-    <h1>Rapport ikke funnet</h1>
-    <p>Fant ingen ferdig-klassifisert rapport for denne importen ennå.
-       Klassifiseringen kan fortsatt pågå – gå tilbake til <a href="reports">rapportlisten</a>
-       og prøv igjen om et minutt.</p>
+    <MudAlert Severity="Severity.Warning">
+        <MudText Typo="Typo.h4">Rapport ikke funnet</MudText>
+        <MudText>Fant ingen ferdig-klassifisert rapport for denne importen ennå.
+        Klassifiseringen kan fortsatt pågå – <MudLink Href="reports">gå tilbake til listen</MudLink>
+        og prøv igjen om et minutt.</MudText>
+    </MudAlert>
 }
 else if (_report is null)
 {
-    <p><em>Laster rapport…</em></p>
+    <MudProgressCircular Indeterminate="true" />
+    <MudText Class="ml-2">Laster rapport…</MudText>
 }
 else
 {
-    <h1>Rapport – @_report.PlantId</h1>
-    <div class="report-header">
-        <div><strong>Periode:</strong> @FormatPeriod(_report.PeriodStartUtc, _report.PeriodEndUtc)</div>
-        <div><strong>Timer totalt:</strong> @_report.PeriodHours</div>
-        <div>
-            <a class="btn btn-primary" href="@Api.BuildXlsxDownloadUri(PlantId, IdempotencyKey)">
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="8">
+            <MudText Typo="Typo.h1">Rapport – @_report.PlantId</MudText>
+            <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+                @FormatPeriod(_report.PeriodStartUtc, _report.PeriodEndUtc)
+                · @_report.PeriodHours timer
+            </MudText>
+        </MudItem>
+        <MudItem xs="12" md="4" Class="d-flex justify-end align-center">
+            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Download"
+                       Href="@Api.BuildXlsxDownloadUri(PlantId, IdempotencyKey).ToString()"
+                       Target="_blank">
                 Last ned Excel
-            </a>
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @* ---------- KPI-kort --------------------------------------------------- *@
+    <MudGrid Class="mb-6">
+        @foreach (var card in HighlightCards(_report))
+        {
+            <MudItem xs="12" sm="6" md="4" lg="3">
+                <MudPaper Class="pa-4" Elevation="2" Style="@($"border-left: 4px solid {card.Color};")">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">@card.Label</MudText>
+                    <MudText Typo="Typo.h3">@card.Value</MudText>
+                    <MudText Typo="Typo.caption">@card.Sub</MudText>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+
+    @* ---------- Graf 1: Tilstandsfordeling (donut) ------------------------ *@
+    <MudGrid Class="mb-6">
+        <MudItem xs="12" md="5">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h3" Class="mb-3">Tilstandsfordeling</MudText>
+                @if (_stateSlices.Count > 0)
+                {
+                    <ApexChart @key="_chartVersion" TItem="StateSlice" Options="_donutOptions" Height="320">
+                        <ApexPointSeries TItem="StateSlice"
+                                         Items="_stateSlices"
+                                         Name="Timer"
+                                         SeriesType="SeriesType.Donut"
+                                         XValue="s => s.Display"
+                                         YAggregate="xs => (decimal)xs.Sum(x => x.Hours)" />
+                    </ApexChart>
+                }
+            </MudPaper>
+        </MudItem>
+
+        @* ---------- Graf 2: 3-veis – plan / spotbud / faktisk ------------- *@
+        <MudItem xs="12" md="7">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h3" Class="mb-3">Plan / Spotbud / Faktisk</MudText>
+                @if (_report.Classified.Count > 0)
+                {
+                    <ApexChart @key="_chartVersion" TItem="ClassifiedHourDto" Options="_lineOptions" Height="320">
+                        <ApexPointSeries TItem="ClassifiedHourDto"
+                                         Items="_report.Classified"
+                                         Name="Produksjonsplan"
+                                         SeriesType="SeriesType.Line"
+                                         XValue="h => h.TimeUtc.UtcDateTime"
+                                         YValue="h => (decimal)(h.ProduksjonplanMwh ?? 0)" />
+                        <ApexPointSeries TItem="ClassifiedHourDto"
+                                         Items="_report.Classified"
+                                         Name="Spotbud"
+                                         SeriesType="SeriesType.Line"
+                                         XValue="h => h.TimeUtc.UtcDateTime"
+                                         YValue="h => (decimal)(h.SpotbudMwh ?? 0)" />
+                        <ApexPointSeries TItem="ClassifiedHourDto"
+                                         Items="_report.Classified"
+                                         Name="Faktisk (Elhub)"
+                                         SeriesType="SeriesType.Line"
+                                         XValue="h => h.TimeUtc.UtcDateTime"
+                                         YValue="h => (decimal)(h.MwhElhub ?? 0)" />
+                    </ApexChart>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* ---------- Graf 3: Avvik fra forpliktelse ---------------------------- *@
+    <MudPaper Class="pa-4 mb-6" Elevation="1">
+        <div class="d-flex justify-space-between align-center mb-3">
+            <MudText Typo="Typo.h3">Avvik fra forpliktelse</MudText>
+            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                Faktisk minus Spotbud / Plan. 0 = perfekt leveranse. Lys grønn = drift, rød = nedetid.
+            </MudText>
         </div>
+        @if (_report.Classified.Count > 0)
+        {
+            <ApexChart @key="_chartVersion" TItem="ClassifiedHourDto" Options="_avvikOptions" Height="280">
+                <ApexPointSeries TItem="ClassifiedHourDto"
+                                 Items="_report.Classified"
+                                 Name="Avvik Plan"
+                                 SeriesType="SeriesType.Line"
+                                 XValue="h => h.TimeUtc.UtcDateTime"
+                                 YValue="h => (decimal)((h.MwhElhub ?? 0) - (h.ProduksjonplanMwh ?? 0))" />
+                <ApexPointSeries TItem="ClassifiedHourDto"
+                                 Items="_report.Classified"
+                                 Name="Avvik Spotbud"
+                                 SeriesType="SeriesType.Line"
+                                 XValue="h => h.TimeUtc.UtcDateTime"
+                                 YValue="h => (decimal)((h.MwhElhub ?? 0) - (h.SpotbudMwh ?? 0))" />
+            </ApexChart>
+        }
+    </MudPaper>
+
+    @* ---------- Driftstidslinje (heatmap, klikk-til-annotere) ------------- *@
+    <div class="mb-6">
+        <DriftTimeline @key="_chartVersion"
+                       Hours="_report.Classified"
+                       Annotations="_annotations"
+                       Categories="_categories"
+                       OnHourClick="OpenAnnotationDialogAsync" />
     </div>
 
-    <section>
-        <h2>Tilstandsfordeling</h2>
-        @if (_report.StateCounts.Count == 0)
-        {
-            <p>Ingen klassifiserte timer.</p>
-        }
-        else
-        {
-            var total = _report.StateCounts.Values.Sum();
-            <div class="state-bar" role="img" aria-label="Tilstandsfordeling">
-                @foreach (var (state, count) in _report.StateCounts.OrderByDescending(kv => kv.Value))
-                {
-                    var pct = total == 0 ? 0 : count * 100.0 / total;
-                    <div class="state-bar-segment @StateCss(state)" style="@($"width:{pct.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}%")"
-                         title="@state: @count timer (@pct.ToString("F1") %)">
-                        @if (pct >= 5)
+    @* ---------- KPI-katalog (gruppert etter kategori) --------------------- *@
+    <MudPaper Class="pa-4 mb-6" Elevation="1">
+        <div class="d-flex justify-space-between align-center mb-3">
+            <MudText Typo="Typo.h3">KPI-katalog (@_report.Kpis.Count)</MudText>
+            <MudTextField @bind-Value="_kpiFilter" Immediate="true"
+                          Placeholder="Søk KPI…"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          IconSize="MudBlazor.Size.Small"
+                          Margin="Margin.Dense"
+                          Variant="Variant.Outlined"
+                          Style="max-width: 280px;" />
+        </div>
+
+        <MudExpansionPanels MultiExpansion="true" Elevation="0" Square="true" Gutters="false">
+            @foreach (var group in GroupedKpis())
+            {
+                <MudExpansionPanel Expanded="@(IsGroupExpandedByDefault(group.Category))">
+                    <TitleContent>
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="@CategoryIcon(group.Category)"
+                                     Color="@CategoryColor(group.Category)"
+                                     Class="mr-3" />
+                            <div>
+                                <MudText Typo="Typo.h4">@CategoryDisplayName(group.Category)</MudText>
+                                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                                    @group.Items.Count nøkkeltall
+                                </MudText>
+                            </div>
+                        </div>
+                    </TitleContent>
+                    <ChildContent>
+                        @if (group.Items.Count == 0)
                         {
-                            <span>@state</span>
+                            <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="pa-3">
+                                Ingen treff i denne kategorien.
+                            </MudText>
                         }
-                    </div>
-                }
-            </div>
-            <table class="state-table">
-                <thead>
-                    <tr><th>Tilstand</th><th>Timer</th><th>Andel</th></tr>
-                </thead>
-                <tbody>
-                @foreach (var (state, count) in _report.StateCounts.OrderByDescending(kv => kv.Value))
-                {
-                    var pct = total == 0 ? 0 : count * 100.0 / total;
-                    <tr>
-                        <td><span class="badge @StateCss(state)">@state</span></td>
-                        <td>@count</td>
-                        <td>@pct.ToString("F1") %</td>
-                    </tr>
-                }
-                </tbody>
-            </table>
-        }
-    </section>
-
-    <section>
-        <h2>Nøkkel-KPI-er</h2>
-        <table class="kpi-table">
-            <thead>
-                <tr><th>KPI</th><th>Verdi</th><th>Enhet</th></tr>
-            </thead>
-            <tbody>
-            @foreach (var name in HighlightKpis)
-            {
-                var kpi = _report.Kpis.FirstOrDefault(k => k.Name == name);
-                if (kpi is null) continue;
-                <tr>
-                    <td>@kpi.Name</td>
-                    <td>@FormatKpi(kpi)</td>
-                    <td>@kpi.Unit</td>
-                </tr>
+                        else
+                        {
+                            <MudTable Items="@group.Items" Hover="true" Dense="true" Elevation="0">
+                                <HeaderContent>
+                                    <MudTh>KPI</MudTh>
+                                    <MudTh Style="text-align:right">Verdi</MudTh>
+                                    <MudTh>Enhet</MudTh>
+                                    <MudTh Style="text-align:right">Timer-basis</MudTh>
+                                    <MudTh Style="text-align:right">Confidence</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd DataLabel="KPI">
+                                        <MudTooltip Text="@context.Definition">
+                                            <span>@context.Name</span>
+                                        </MudTooltip>
+                                    </MudTd>
+                                    <MudTd DataLabel="Verdi" Style="text-align:right; font-variant-numeric: tabular-nums;">@FormatKpi(context)</MudTd>
+                                    <MudTd DataLabel="Enhet">@context.Unit</MudTd>
+                                    <MudTd DataLabel="Timer-basis" Style="text-align:right">@context.HoursBasis</MudTd>
+                                    <MudTd DataLabel="Confidence" Style="text-align:right">@context.Confidence.ToString("F2")</MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        }
+                    </ChildContent>
+                </MudExpansionPanel>
             }
-            </tbody>
-        </table>
-    </section>
+        </MudExpansionPanels>
+    </MudPaper>
 
-    <section>
-        <h2>Full KPI-katalog (@_report.Kpis.Count)</h2>
-        <details>
-            <summary>Vis alle KPI-er</summary>
-            <table class="kpi-table">
-                <thead>
-                    <tr>
-                        <th>KPI</th>
-                        <th>Verdi</th>
-                        <th>Enhet</th>
-                        <th>Kategori</th>
-                        <th>Timer-basis</th>
-                        <th>Confidence</th>
-                    </tr>
-                </thead>
-                <tbody>
-                @foreach (var kpi in _report.Kpis)
-                {
-                    <tr>
-                        <td title="@kpi.Definition">@kpi.Name</td>
-                        <td>@FormatKpi(kpi)</td>
-                        <td>@kpi.Unit</td>
-                        <td>@kpi.Category</td>
-                        <td>@kpi.HoursBasis</td>
-                        <td>@kpi.Confidence.ToString("F2")</td>
-                    </tr>
-                }
-                </tbody>
-            </table>
-        </details>
-    </section>
-
-    <section>
-        <h2>Timetabell (@_report.Classified.Count rader)</h2>
-        <details>
-            <summary>Vis klassifiserte timer</summary>
-            <div class="hourly-scroll">
-                <table class="hourly-table">
-                    <thead>
-                        <tr>
-                            <th>Tid (UTC)</th>
-                            <th>Tilstand</th>
-                            <th>CauseCode</th>
-                            <th>MWh Elhub</th>
-                            <th>Plan</th>
-                            <th>Spotpris</th>
-                            <th>Rationale</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    @foreach (var row in _report.Classified.Take(_visibleHours))
-                    {
-                        <tr>
-                            <td>@row.TimeUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</td>
-                            <td><span class="badge @StateCss(row.State)">@row.State</span></td>
-                            <td>@row.CauseCode</td>
-                            <td>@FormatNullable(row.MwhElhub, "F3")</td>
-                            <td>@FormatNullable(row.ProduksjonplanMwh, "F3")</td>
-                            <td>@FormatNullable(row.SpotprisNokMwh, "F2")</td>
-                            <td>@row.Rationale</td>
-                        </tr>
-                    }
-                    </tbody>
-                </table>
-            </div>
-            @if (_report.Classified.Count > _visibleHours)
-            {
-                <button type="button" @onclick="() => _visibleHours += 168">
-                    Vis flere (@_visibleHours av @_report.Classified.Count)
-                </button>
-            }
-        </details>
-    </section>
+    @* ---------- Timetabell (foldbar) -------------------------------------- *@
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudExpansionPanels Elevation="0">
+            <MudExpansionPanel>
+                <TitleContent>
+                    <MudText Typo="Typo.h3">Klassifiserte timer (@_report.Classified.Count)</MudText>
+                </TitleContent>
+                <ChildContent>
+                    <MudTable Items="_report.Classified" Hover="true" Dense="true" Elevation="0"
+                              Virtualize="true" FixedHeader="true" Height="480px">
+                        <HeaderContent>
+                            <MudTh>Tid (UTC)</MudTh>
+                            <MudTh>Tilstand</MudTh>
+                            <MudTh>CauseCode</MudTh>
+                            <MudTh Style="text-align:right">MWh Elhub</MudTh>
+                            <MudTh Style="text-align:right">Plan</MudTh>
+                            <MudTh Style="text-align:right">Spotpris</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Tid">@context.TimeUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</MudTd>
+                            <MudTd DataLabel="Tilstand">
+                                <MudChip T="string" Size="MudBlazor.Size.Small" Color="@StateColor(context.State)">@StateDisplayName(context.State)</MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="CauseCode">@context.CauseCode</MudTd>
+                            <MudTd DataLabel="MWh Elhub" Style="text-align:right">@FormatNullable(context.MwhElhub, "F3")</MudTd>
+                            <MudTd DataLabel="Plan" Style="text-align:right">@FormatNullable(context.ProduksjonplanMwh, "F3")</MudTd>
+                            <MudTd DataLabel="Spotpris" Style="text-align:right">@FormatNullable(context.SpotprisNokMwh, "F2")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </ChildContent>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    </MudPaper>
 }
 
 @code {
     [Parameter] public string PlantId { get; set; } = string.Empty;
     [Parameter] public string IdempotencyKey { get; set; } = string.Empty;
 
-    private static readonly string[] HighlightKpis =
-    [
-        "TotalProduction_MWh", "CapacityFactor_CF", "AvailabilityFactor_AF",
-        "EquivalentAvailabilityFactor_EAF", "ServiceFactor_SF",
-        "ForcedOutageRate_FOR", "ForcedOutageEvents", "MTBF", "MTTR",
-        "PlanFulfillment", "BidAccuracy", "PlanDeviation_MWh", "PlanDeviation_NOK",
-    ];
-
     private UptimeReportSummary? _report;
     private bool _notFound;
     private string? _error;
-    private int _visibleHours = 168; // første uke; "Vis flere" legger til 168 av gangen
+    private string _kpiFilter = string.Empty;
+    private List<StateSlice> _stateSlices = new();
+    private IReadOnlyList<AnnotationDto> _annotations = Array.Empty<AnnotationDto>();
+    private IReadOnlyList<AnnotationCategoryDto> _categories = Array.Empty<AnnotationCategoryDto>();
+
+    private ApexChartOptions<StateSlice> _donutOptions = new();
+    private ApexChartOptions<ClassifiedHourDto> _lineOptions = new();
+    private ApexChartOptions<ClassifiedHourDto> _avvikOptions = new();
+
+    // Inkrementeres hver gang BuildCharts kjører — brukes som @key på ApexChart
+    // og DriftTimeline slik at Blazor gjenskaper komponentene istedenfor å bare
+    // oppdatere parametere. Blazor-ApexCharts cacher intern chart-state og
+    // viser ikke nye annotasjoner/bånd uten dette.
+    private int _chartVersion;
 
     protected override async Task OnParametersSetAsync()
     {
         _error = null;
         _notFound = false;
         _report = null;
-        _visibleHours = 168;
 
         try
         {
@@ -200,12 +282,308 @@ else
             {
                 _notFound = true;
             }
+            else
+            {
+                BuildCharts(_report);
+                await LoadAnnotationsAsync();
+            }
         }
         catch (Exception ex)
         {
             _error = $"Kunne ikke hente rapport: {ex.Message}";
         }
     }
+
+    private async Task LoadAnnotationsAsync()
+    {
+        if (_report is null)
+        {
+            return;
+        }
+        try
+        {
+            // Last kategori-listen én gang per sidelast (sjelden mutasjon).
+            if (_categories.Count == 0)
+            {
+                _categories = await AnnotationsApi.ListCategoriesAsync();
+            }
+            _annotations = await AnnotationsApi.ListAsync(
+                PlantId, _report.PeriodStartUtc, _report.PeriodEndUtc.AddHours(1));
+        }
+        catch (Exception ex)
+        {
+            // Annoteringer er sekundærdata; rapporten vises selv om dette feiler.
+            Console.Error.WriteLine($"Kunne ikke hente annoteringer: {ex.Message}");
+        }
+    }
+
+    private async Task OpenAnnotationDialogAsync(DriftTimeline.HourClickedArgs args)
+    {
+        if (_report is null)
+        {
+            return;
+        }
+
+        var parameters = new DialogParameters<AnnotationDialog>
+        {
+            { x => x.PlantId, PlantId },
+            { x => x.Categories, _categories },
+            { x => x.InitialStart, args.StartUtc },
+            { x => x.InitialEnd, args.EndUtc },
+            { x => x.Existing, args.Annotation },
+            { x => x.CurrentClassification, BuildClassificationSummary(args.RangeHours) }
+        };
+        var options = new DialogOptions
+        {
+            CloseOnEscapeKey = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.Small
+        };
+
+        var title = args.Annotation is null ? "Ny annotering" : "Rediger annotering";
+        var dialog = await DialogService.ShowAsync<AnnotationDialog>(title, parameters, options);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled)
+        {
+            return;
+        }
+
+        // Reload både annoteringene og selve rapporten (som har overlay applied).
+        await LoadAnnotationsAsync();
+        try
+        {
+            _report = await Api.GetReportAsync(PlantId, IdempotencyKey);
+            if (_report is not null)
+            {
+                BuildCharts(_report);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke oppdatere rapport etter annotering: {ex.Message}";
+        }
+        StateHasChanged();
+    }
+
+    private void BuildCharts(UptimeReportSummary report)
+    {
+        _chartVersion++;
+
+        _stateSlices = report.StateCounts
+            .OrderByDescending(kv => kv.Value)
+            .Select(kv => new StateSlice(kv.Key, StateDisplayName(kv.Key), kv.Value))
+            .ToList();
+
+        _donutOptions = new ApexChartOptions<StateSlice>
+        {
+            Colors = _stateSlices.Select(s => StateHexColor(s.CanonicalState)).ToList(),
+            Legend = new Legend { Position = LegendPosition.Bottom },
+            PlotOptions = new PlotOptions
+            {
+                Pie = new PlotOptionsPie { Donut = new PlotOptionsDonut { Size = "65%" } }
+            },
+        };
+
+        var stateBands = BuildStateBands(report);
+
+        _lineOptions = new ApexChartOptions<ClassifiedHourDto>
+        {
+            Stroke = new Stroke { Curve = Curve.Smooth, Width = 2 },
+            Xaxis = new XAxis { Type = XAxisType.Datetime },
+            Legend = new Legend { Position = LegendPosition.Top },
+            Tooltip = new Tooltip { X = new TooltipX { Format = "dd MMM HH:mm" } },
+            Colors = new List<string> { "#1E5F8E", "#F39C12", "#00A99D" },
+            Annotations = new Annotations { Xaxis = stateBands },
+        };
+
+        _avvikOptions = new ApexChartOptions<ClassifiedHourDto>
+        {
+            Stroke = new Stroke { Curve = Curve.Smooth, Width = 2 },
+            Xaxis = new XAxis { Type = XAxisType.Datetime },
+            Yaxis = new List<YAxis>
+            {
+                // 1 desimal — styrer både y-akse-labels og tooltip-presisjon.
+                new YAxis { DecimalsInFloat = 1 }
+            },
+            Legend = new Legend { Position = LegendPosition.Top },
+            Tooltip = new Tooltip { X = new TooltipX { Format = "dd MMM HH:mm" } },
+            Colors = new List<string> { "#1E5F8E", "#F39C12" },
+            Annotations = new Annotations
+            {
+                Xaxis = stateBands,
+                Yaxis = new List<AnnotationsYAxis>
+                {
+                    new()
+                    {
+                        Y = 0,
+                        BorderColor = "#9AA5B0",
+                        StrokeDashArray = 4,
+                    }
+                }
+            }
+        };
+    }
+
+    /// <summary>
+    /// Bygger bakgrunns-bånd for ApexCharts som markerer drift- og nedetidsperioder.
+    /// Lys grønt for InService, lys rødt for ForcedOutage; andre states gir ikke bånd
+    /// (for å holde grafen ryddig). Sammenhengende timer med samme state slås sammen
+    /// til ett bånd.
+    /// </summary>
+    private static List<AnnotationsXAxis> BuildStateBands(UptimeReportSummary report)
+    {
+        var bands = new List<AnnotationsXAxis>();
+        if (report.Classified.Count == 0)
+        {
+            return bands;
+        }
+
+        var rows = report.Classified.OrderBy(h => h.TimeUtc).ToList();
+        DateTimeOffset bandStart = rows[0].TimeUtc;
+        string bandState = rows[0].State;
+
+        for (var i = 1; i <= rows.Count; i++)
+        {
+            var ended = i == rows.Count;
+            var nextState = ended ? null : rows[i].State;
+            var contiguous = !ended && rows[i].TimeUtc == rows[i - 1].TimeUtc.AddHours(1);
+
+            if (ended || !contiguous || nextState != bandState)
+            {
+                var bandEnd = rows[i - 1].TimeUtc.AddHours(1);
+                var color = StateBandColor(bandState);
+                if (color is not null)
+                {
+                    bands.Add(new AnnotationsXAxis
+                    {
+                        X = bandStart.ToUnixTimeMilliseconds(),
+                        X2 = bandEnd.ToUnixTimeMilliseconds(),
+                        BorderColor = "transparent",
+                        FillColor = color,
+                        Opacity = 0.10,
+                    });
+                }
+                if (!ended)
+                {
+                    bandStart = rows[i].TimeUtc;
+                    bandState = nextState!;
+                }
+            }
+        }
+
+        return bands;
+    }
+
+    /// <summary>
+    /// Mapper UnitState til en bakgrunnsfarge for ApexCharts-bånd.
+    /// Returner null for states vi ikke vil flagge i grafen (RS, IU, etc.).
+    /// </summary>
+    private static string? StateBandColor(string state) => state switch
+    {
+        "InService" or "inService" => "#2ECC71",          // lys grønn — drift
+        "ForcedOutage" or "forcedOutage" => "#E74C3C",    // rød — uvarslet nedetid
+        "PlannedOutage" or "plannedOutage" => "#1E5F8E",  // blå — planlagt revisjon (annotert)
+        "MaintenanceOutage" or "maintenanceOutage" => "#1976D2", // litt lysere blå — vedlikehold
+        _ => null,
+    };
+
+    private bool FilterKpi(KpiDto k)
+    {
+        if (string.IsNullOrWhiteSpace(_kpiFilter)) return true;
+        return k.Name.Contains(_kpiFilter, StringComparison.OrdinalIgnoreCase)
+            || k.Category.Contains(_kpiFilter, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Grupper KPI-er etter Category og sorter både gruppene og KPI-ene innenfor.
+    /// drift først (operasjonelt viktigst), så marked, så økonomi.
+    /// </summary>
+    private IEnumerable<KpiGroup> GroupedKpis()
+    {
+        if (_report is null) yield break;
+
+        var filtered = _report.Kpis.Where(FilterKpi).ToList();
+
+        foreach (var category in new[] { "drift", "marked", "okonomi" })
+        {
+            var items = filtered
+                .Where(k => string.Equals(k.Category, category, StringComparison.Ordinal))
+                .OrderBy(k => k.Name)
+                .ToList();
+            yield return new KpiGroup(category, items);
+        }
+
+        // Eventuelle ukjente kategorier til slutt
+        var knownCategories = new HashSet<string>(new[] { "drift", "marked", "okonomi" }, StringComparer.Ordinal);
+        var unknown = filtered.Where(k => !knownCategories.Contains(k.Category))
+            .GroupBy(k => k.Category)
+            .OrderBy(g => g.Key);
+        foreach (var g in unknown)
+        {
+            yield return new KpiGroup(g.Key, g.OrderBy(k => k.Name).ToList());
+        }
+    }
+
+    /// <summary>
+    /// Drift utvides by default (operasjonelt fokus). Hvis brukeren søker, åpne alle
+    /// for å gjøre treff synlige uavhengig av kategori.
+    /// </summary>
+    private bool IsGroupExpandedByDefault(string category)
+    {
+        if (!string.IsNullOrWhiteSpace(_kpiFilter))
+        {
+            return true;
+        }
+        return category == "drift";
+    }
+
+    private static string CategoryDisplayName(string category) => category switch
+    {
+        "drift" => "Drift",
+        "marked" => "Marked",
+        "okonomi" => "Økonomi",
+        _ => category,
+    };
+
+    private static string CategoryIcon(string category) => category switch
+    {
+        "drift" => Icons.Material.Filled.PrecisionManufacturing,
+        "marked" => Icons.Material.Filled.TrendingUp,
+        "okonomi" => Icons.Material.Filled.Payments,
+        _ => Icons.Material.Filled.Category,
+    };
+
+    private static MudBlazor.Color CategoryColor(string category) => category switch
+    {
+        "drift" => MudBlazor.Color.Success,
+        "marked" => MudBlazor.Color.Info,
+        "okonomi" => MudBlazor.Color.Warning,
+        _ => MudBlazor.Color.Default,
+    };
+
+    private sealed record KpiGroup(string Category, IReadOnlyList<KpiDto> Items);
+
+    private static IEnumerable<KpiCard> HighlightCards(UptimeReportSummary r)
+    {
+        double? Get(string name) => r.Kpis.FirstOrDefault(k => k.Name == name)?.Value;
+
+        // Drift
+        yield return new("Drift-timer", FormatNumber(Get("ServiceHours_SH"), "F0") + " t", "Timer i drift (Elhub > 0)", "#2A9D8F");
+        yield return new("Nedetid", FormatNumber(Get("ForcedOutageHours_FOH"), "F0") + " t", "Forpliktet, men ikke produsert", "#E76F51");
+        yield return new("Tilgjengelighet", FormatRatio(Get("AvailabilityFactor_AF")), "Drift-timer / (Drift + Nedetid)", "#1E5F8E");
+        yield return new("Bud-leveranse", FormatRatio(Get("BidDelivery")), "Σ Elhub / Σ Spotbud", "#00A99D");
+        // Økonomi
+        yield return new("Total produksjon", FormatNumber(Get("TotalProduction_MWh"), "F2") + " MWh", "Akkumulert Elhub", "#1E5F8E");
+        yield return new("Spotomsetning", FormatNumber(Get("Spotomsetning_NOK"), "N0") + " NOK", "Day-ahead-bruttoinntekt", "#2A9D8F");
+        yield return new("Ubalansekost", FormatNumber(Get("Ubalansekost_NOK"), "N0") + " NOK", "Total kostnad ved å avvike fra Spotbud", "#7E57C2");
+        yield return new("Oppgjør", FormatNumber(Get("Oppgjor_NOK"), "N0") + " NOK", "Sum oppgjør i perioden", "#F39C12");
+    }
+
+    private static string FormatNumber(double? v, string format)
+        => v.HasValue ? v.Value.ToString(format, System.Globalization.CultureInfo.InvariantCulture) : "–";
+
+    private static string FormatRatio(double? v)
+        => v.HasValue ? (v.Value * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " %" : "–";
 
     private static string FormatKpi(KpiDto k)
     {
@@ -231,13 +609,69 @@ else
         return $"{startLocal:yyyy-MM-dd} – {endLocal:yyyy-MM-dd}";
     }
 
-    private static string StateCss(string state) => state switch
+    private static MudBlazor.Color StateColor(string state) => state switch
     {
-        "InService" => "state-inservice",
-        "FO" or "ForcedOutage" => "state-fo",
-        "PO" or "PlannedOutage" => "state-po",
-        "RS" or "ReserveShutdown" => "state-rs",
-        "FD" or "ForcedDerated" => "state-fd",
-        _ => "state-unknown",
+        "InService" => MudBlazor.Color.Success,
+        "FO" or "ForcedOutage" => MudBlazor.Color.Error,
+        "PO" or "PlannedOutage" => MudBlazor.Color.Info,
+        "RS" or "ReserveShutdown" => MudBlazor.Color.Secondary,
+        "FD" or "ForcedDerating" or "ForcedDerated" => MudBlazor.Color.Warning,
+        _ => MudBlazor.Color.Default,
     };
+
+    private static string StateHexColor(string state) => state switch
+    {
+        "InService" => "#2A9D8F",
+        "FO" or "ForcedOutage" => "#E76F51",
+        "PO" or "PlannedOutage" => "#1E5F8E",
+        "RS" or "ReserveShutdown" => "#7E57C2",
+        "FD" or "ForcedDerating" or "ForcedDerated" => "#F39C12",
+        _ => "#9AA5B0",
+    };
+
+    /// <summary>
+    /// Bygger en kort beskrivelse av appens klassifisering for et utvalg
+    /// av timer. Brukes som info-banner øverst i annoterings-dialogen.
+    /// Eksempler:
+    ///   "Drift (3 t)" — alle timene i samme tilstand
+    ///   "2t Drift, 1t Nedetid" — blandet, sortert på flest timer først
+    /// </summary>
+    private static string BuildClassificationSummary(IReadOnlyList<ClassifiedHourDto> hours)
+    {
+        if (hours.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var groups = hours
+            .GroupBy(h => h.State)
+            .Select(g => (State: g.Key, Count: g.Count()))
+            .OrderByDescending(g => g.Count)
+            .ToList();
+
+        if (groups.Count == 1)
+        {
+            return $"{StateDisplayName(groups[0].State)} ({groups[0].Count} t)";
+        }
+        return string.Join(", ", groups.Select(g => $"{g.Count}t {StateDisplayName(g.State)}"));
+    }
+
+    /// <summary>Norske visningsnavn for UnitState. Internt brukes fortsatt
+    /// engelske enum-navn ('ForcedOutage' osv.) i lagring og export.</summary>
+    private static string StateDisplayName(string state) => state switch
+    {
+        "InService" => "Drift",
+        "ForcedOutage" => "Nedetid",
+        "ReserveShutdown" => "Stille",
+        "InformationUnavailable" => "Mangler data",
+        "PlannedOutage" => "Planlagt revisjon",
+        "MaintenanceOutage" => "Vedlikehold",
+        "ResourceUnavailable" => "Vannmangel",
+        "ForcedDerating" => "Tvangs-derating",
+        "PlannedDerating" => "Planlagt derating",
+        _ => state,
+    };
+
+    public sealed record StateSlice(string CanonicalState, string Display, int Hours);
+    private sealed record KpiCard(string Label, string Value, string Sub, string Color);
 }

@@ -94,13 +94,14 @@ public sealed class UptimeReportRenderer : IReportRenderer
         }
         row++;
 
-        // Nøkkel-KPI-er
+        // Nøkkel-KPI-er — matcher den forenklede katalogen i UptimeKpiCalculator
         var highlights = new[]
         {
-            "TotalProduction_MWh", "CapacityFactor_CF", "AvailabilityFactor_AF",
-            "EquivalentAvailabilityFactor_EAF", "ServiceFactor_SF",
-            "ForcedOutageRate_FOR", "ForcedOutageEvents", "MTBF", "MTTR",
-            "PlanFulfillment", "BidAccuracy", "PlanDeviation_MWh", "PlanDeviation_NOK",
+            "ServiceHours_SH", "ForcedOutageHours_FOH", "OutOfServiceHours",
+            "AvailabilityFactor_AF", "BidDelivery", "BidVolume_MWh",
+            "TotalProduction_MWh", "Spotomsetning_NOK",
+            "Ubalansekost_NOK", "RkSalgVsSpot_NOK", "RkKjopVsSpot_NOK",
+            "RkNetto_NOK", "Ubalanseresultat_NOK", "Oppgjor_NOK",
         };
         s.Cell(row, 1).Value = "Nøkkel-KPI-er";
         s.Cell(row, 1).Style.Font.Bold = true;

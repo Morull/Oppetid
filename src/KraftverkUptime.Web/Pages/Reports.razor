@@ -1,103 +1,101 @@
 @page "/reports"
 @inject ReportsApi Api
+@inject NavigationManager Nav
 
 <PageTitle>Rapporter</PageTitle>
 
-<h1>Rapporter</h1>
-
-<div class="filter-row">
-    <label>
-        Anlegg
-        <select @bind="_selectedPlantId" @bind:after="ReloadAsync">
-            <option value="">— velg anlegg —</option>
-            @if (_plants is not null)
-            {
-                @foreach (var p in _plants)
-                {
-                    <option value="@p.Id">@p.Name (@p.Id)</option>
-                }
-            }
-        </select>
-    </label>
-
-    <label>
-        Fra
-        <input type="date" @bind="_from" @bind:after="ReloadAsync" />
-    </label>
-
-    <label>
-        Til
-        <input type="date" @bind="_to" @bind:after="ReloadAsync" />
-    </label>
-
-    <button type="button" @onclick="ClearFiltersAsync">Nullstill filtre</button>
+<div class="dk-hero">
+    <MudText Typo="Typo.h1">Rapporter</MudText>
+    <div class="dk-hero-sub">Importerte avregninger og klassifiserte KPI-rapporter per anlegg.</div>
 </div>
+
+<MudPaper Class="pa-4 mb-4 dk-card" Elevation="0">
+    <MudGrid Spacing="2">
+        <MudItem xs="12" sm="4">
+            <MudSelect T="string" @bind-Value="_selectedPlantId" @bind-Value:after="ReloadAsync"
+                       Label="Anlegg" Variant="Variant.Outlined" Dense="true">
+                @if (_plants is not null)
+                {
+                    @foreach (var p in _plants)
+                    {
+                        <MudSelectItem Value="@p.Id">@p.Name (@p.Id)</MudSelectItem>
+                    }
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudDatePicker Label="Fra" @bind-Date="_from" @bind-Date:after="ReloadAsync"
+                           Clearable="true" Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudDatePicker Label="Til" @bind-Date="_to" @bind-Date:after="ReloadAsync"
+                           Clearable="true" Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="12" sm="2">
+            <MudButton Variant="Variant.Outlined" Color="Color.Default" FullWidth="true"
+                       StartIcon="@Icons.Material.Filled.Restore"
+                       OnClick="ClearFiltersAsync">Nullstill</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
 
 @if (_error is not null)
 {
-    <div class="alert alert-error">@_error</div>
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
 }
 
 @if (string.IsNullOrWhiteSpace(_selectedPlantId))
 {
-    <p>Velg et anlegg for å se importerte avregninger.</p>
-}
-else if (_items is null)
-{
-    <p><em>Laster…</em></p>
-}
-else if (_items.Count == 0)
-{
-    <p>Ingen importer funnet for valgt anlegg og filter.</p>
+    <MudAlert Severity="Severity.Info">Velg et anlegg for å se importerte avregninger.</MudAlert>
 }
 else
 {
-    <table class="reports-table">
-        <thead>
-            <tr>
-                <th>Anlegg</th>
-                <th>Periode</th>
-                <th>Timer</th>
-                <th>Avvik</th>
-                <th>Importert</th>
-                <th>Status</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-        @foreach (var row in _items)
-        {
-            <tr>
-                <td>@row.PlantName</td>
-                <td>@FormatPeriod(row.PeriodStartUtc, row.PeriodEndUtc)</td>
-                <td>@row.HourCount</td>
-                <td>@row.IssueCount</td>
-                <td>@row.ImportedAtUtc.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</td>
-                <td>
-                    @if (row.ReportAvailable)
-                    {
-                        <span class="badge badge-ready">Klar</span>
-                    }
-                    else
-                    {
-                        <span class="badge badge-pending">Behandles</span>
-                    }
-                </td>
-                <td>
-                    @if (row.ReportAvailable)
-                    {
-                        <a href="@($"reports/{row.PlantId}/{row.IdempotencyKey}")">Åpne</a>
-                    }
-                </td>
-            </tr>
-        }
-        </tbody>
-    </table>
+    <MudTable T="SettlementImportSummary" Items="@_items" Loading="@(_items is null)"
+              Hover="true" Striped="true" Elevation="0" Class="dk-card"
+              OnRowClick="OnRowClick" RowStyle="cursor: pointer;">
+        <HeaderContent>
+            <MudTh>Anlegg</MudTh>
+            <MudTh>Periode</MudTh>
+            <MudTh Style="text-align:right">Timer</MudTh>
+            <MudTh Style="text-align:right">Avvik</MudTh>
+            <MudTh>Importert</MudTh>
+            <MudTh>Status</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Anlegg">@context.PlantName</MudTd>
+            <MudTd DataLabel="Periode">@FormatPeriod(context.PeriodStartUtc, context.PeriodEndUtc)</MudTd>
+            <MudTd DataLabel="Timer" Style="text-align:right">@context.HourCount</MudTd>
+            <MudTd DataLabel="Avvik" Style="text-align:right">
+                @if (context.IssueCount > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Text">@context.IssueCount</MudChip>
+                }
+                else
+                {
+                    <span>0</span>
+                }
+            </MudTd>
+            <MudTd DataLabel="Importert">@context.ImportedAtUtc.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</MudTd>
+            <MudTd DataLabel="Status">
+                @if (context.ReportAvailable)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">Klar</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.HourglassTop">Behandles</MudChip>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>Ingen importer funnet for valgt anlegg og filter.</MudText>
+        </NoRecordsContent>
+    </MudTable>
 }
 
 @code {
     private IReadOnlyList<PlantDto>? _plants;
-    private IReadOnlyList<SettlementImportSummary>? _items;
+    private List<SettlementImportSummary>? _items;
     private string _selectedPlantId = string.Empty;
     private DateTime? _from;
     private DateTime? _to;
@@ -131,25 +129,21 @@ else
 
         try
         {
-            DateTimeOffset? from = _from.HasValue
-                ? new DateTimeOffset(_from.Value, TimeSpan.Zero)
-                : null;
-            DateTimeOffset? to = _to.HasValue
-                ? new DateTimeOffset(_to.Value.AddDays(1), TimeSpan.Zero) // inkluderende til-dato
-                : null;
+            DateTimeOffset? from = _from.HasValue ? new DateTimeOffset(_from.Value, TimeSpan.Zero) : null;
+            DateTimeOffset? to = _to.HasValue ? new DateTimeOffset(_to.Value.AddDays(1), TimeSpan.Zero) : null;
 
             if (from.HasValue ^ to.HasValue)
             {
-                // Ikke kall API før begge datoer er satt, ellers returnerer serveren 400.
-                return;
+                return; // vent til begge er satt
             }
 
-            _items = await Api.ListSettlementsAsync(_selectedPlantId, from, to);
+            var result = await Api.ListSettlementsAsync(_selectedPlantId, from, to);
+            _items = result.ToList();
         }
         catch (Exception ex)
         {
             _error = $"Kunne ikke hente rapport-liste: {ex.Message}";
-            _items = Array.Empty<SettlementImportSummary>();
+            _items = new List<SettlementImportSummary>();
         }
     }
 
@@ -160,10 +154,14 @@ else
         await ReloadAsync();
     }
 
+    private void OnRowClick(TableRowClickEventArgs<SettlementImportSummary> args)
+    {
+        if (args.Item is null || !args.Item.ReportAvailable) return;
+        Nav.NavigateTo($"reports/{args.Item.PlantId}/{args.Item.IdempotencyKey}");
+    }
+
     private static string FormatPeriod(DateTimeOffset start, DateTimeOffset end)
     {
-        // Avregningsperioder er normalt én kalendermåned i UTC.
-        // Viser som "feb 2026" hvis lengden er en måned, ellers dato-dato.
         var startLocal = start.ToLocalTime();
         var endLocal = end.ToLocalTime();
         var daysSpan = (endLocal - startLocal).TotalDays;

@@ -13,6 +13,8 @@
     <ProjectReference Include="..\KraftverkUptime.Modules.Settlement\KraftverkUptime.Modules.Settlement.csproj" />
     <ProjectReference Include="..\KraftverkUptime.Modules.Classification\KraftverkUptime.Modules.Classification.csproj" />
     <ProjectReference Include="..\KraftverkUptime.Modules.Reporting\KraftverkUptime.Modules.Reporting.csproj" />
+    <ProjectReference Include="..\KraftverkUptime.Modules.Annotations\KraftverkUptime.Modules.Annotations.csproj" />
+    <ProjectReference Include="..\KraftverkUptime.Modules.Scada\KraftverkUptime.Modules.Scada.csproj" />
   </ItemGroup>
 
   <ItemGroup>

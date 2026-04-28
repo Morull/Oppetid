@@ -1,16 +1,57 @@
 @inherits LayoutComponentBase
+@inject IUserContextProvider UserContext
 
-<div class="page">
-    <aside class="sidebar">
+<MudLayout>
+    <MudAppBar Elevation="1" Dense="true">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"
+                       Edge="Edge.Start" OnClick="ToggleDrawer" />
+        <MudText Typo="Typo.h6" Class="ml-2" Style="font-weight:600; letter-spacing:-0.01em;">KraftverkUptime</MudText>
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="ml-3 dk-version">v1</MudChip>
+
+        <MudSpacer />
+
+        <MudTooltip Text="@(App?.IsDarkMode == true ? "Bytt til lyst tema" : "Bytt til mørkt tema")">
+            <MudIconButton Color="Color.Inherit"
+                           Icon="@(App?.IsDarkMode == true ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                           OnClick="ToggleTheme" />
+        </MudTooltip>
+
+        <MudMenu Icon="@Icons.Material.Filled.AccountCircle"
+                 Color="Color.Inherit"
+                 AnchorOrigin="Origin.BottomRight"
+                 TransformOrigin="Origin.TopRight"
+                 Dense="true">
+            <ChildContent>
+                <div style="padding: 12px 18px; min-width: 220px;">
+                    <MudText Typo="Typo.caption" Style="text-transform:uppercase; letter-spacing:0.06em; color:var(--mud-palette-text-secondary);">Innlogget som</MudText>
+                    <MudText Typo="Typo.body1" Class="mb-2" Style="font-weight:600;">@UserContext.UserId</MudText>
+                    <MudText Typo="Typo.caption" Style="text-transform:uppercase; letter-spacing:0.06em; color:var(--mud-palette-text-secondary);">Organisasjon</MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">@UserContext.OrgId</MudText>
+                    <MudText Typo="Typo.caption" Style="text-transform:uppercase; letter-spacing:0.06em; color:var(--mud-palette-text-secondary);">Roller</MudText>
+                    <MudText Typo="Typo.body2">@(string.Join(", ", UserContext.Roles))</MudText>
+                </div>
+            </ChildContent>
+        </MudMenu>
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen" Elevation="1" ClipMode="DrawerClipMode.Always"
+               Variant="DrawerVariant.Mini" OpenMiniOnHover="true">
         <NavMenu />
-    </aside>
-    <main>
-        <header class="topbar">
-            <strong>KraftverkUptime</strong>
-            <span class="env">v1 skjelett</span>
-        </header>
-        <article class="content px-4">
+    </MudDrawer>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.Large" Class="pa-6">
             @Body
-        </article>
-    </main>
-</div>
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    [CascadingParameter] private App? App { get; set; }
+
+    private bool _drawerOpen = true;
+
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+    private void ToggleTheme() => App?.ToggleDarkMode();
+}

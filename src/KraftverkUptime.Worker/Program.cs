@@ -16,7 +16,9 @@ builder.Services.AddKraftverkInfrastructure(builder.Configuration);
 builder.Services.AddPlatformModules(
     new KraftverkUptime.Modules.Settlement.SettlementModule(),
     new KraftverkUptime.Modules.Classification.ClassificationModule(),
-    new KraftverkUptime.Modules.Reporting.ReportingModule());
+    new KraftverkUptime.Modules.Reporting.ReportingModule(),
+    new KraftverkUptime.Modules.Annotations.AnnotationsModule(),
+    new KraftverkUptime.Modules.Scada.ScadaModule());
 
 builder.Services.AddKraftverkJobLoop();
 

@@ -27,7 +27,9 @@ builder.Services.AddKraftverkInfrastructure(builder.Configuration);
 builder.Services.AddPlatformModules(
     new KraftverkUptime.Modules.Settlement.SettlementModule(),
     new KraftverkUptime.Modules.Classification.ClassificationModule(),
-    new KraftverkUptime.Modules.Reporting.ReportingModule());
+    new KraftverkUptime.Modules.Reporting.ReportingModule(),
+    new KraftverkUptime.Modules.Annotations.AnnotationsModule(),
+    new KraftverkUptime.Modules.Scada.ScadaModule());
 
 // --- Autentisering + autorisasjon ---
 // V1: ingen autentisering koblet til (SystemUserContext). V2: builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)...
@@ -135,6 +137,8 @@ var apiV1 = app.NewApiVersionSet()
 app.MapKraftverkHealth();
 app.MapPlantsV1(apiV1);
 app.MapSettlementsV1(apiV1);
+app.MapAnnotationsV1(apiV1);
+app.MapScadaV1(apiV1);
 
 app.MapGet("/", () => Results.Redirect("/openapi/v1.json"));
 
