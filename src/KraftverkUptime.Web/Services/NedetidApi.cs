@@ -49,6 +49,17 @@ public sealed class NedetidApi
         return resp ?? throw new InvalidOperationException("Tom respons fra /effektivitet.");
     }
 
+    public async Task<PortfolioKpiResponse> GetPortfolioKpisAsync(
+        DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var qs = $"from={Uri.EscapeDataString(fromUtc.UtcDateTime.ToString("o"))}"
+               + $"&to={Uri.EscapeDataString(toUtc.UtcDateTime.ToString("o"))}";
+        var resp = await _http
+            .GetFromJsonAsync<PortfolioKpiResponse>($"api/v1/portfolio/kpis?{qs}", JsonOptions, ct)
+            .ConfigureAwait(false);
+        return resp ?? throw new InvalidOperationException("Tom respons fra /portfolio/kpis.");
+    }
+
     /// <summary>Bygger nedlastings-URL for CSV-eksport (åpnes direkte i ny fane).</summary>
     public Uri BuildCsvUri(string plantId, string endpoint, DateTimeOffset fromUtc, DateTimeOffset toUtc)
     {
@@ -121,6 +132,19 @@ public sealed record VaktRoiEventDto(
     int OverflowTimerInCounterfactual,
     bool OverflowDataMissing,
     string Forklaring);
+
+public sealed record PortfolioKpiResponse(
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    int PlantCount,
+    IReadOnlyList<PortfolioPlantKpi> Plants);
+
+public sealed record PortfolioPlantKpi(
+    string PlantId,
+    string PlantName,
+    double InstalledCapacityMw,
+    int HourCount,
+    IReadOnlyDictionary<string, double?> Kpis);
 
 public sealed record EffektivitetResponse(
     string PlantId,

@@ -20,6 +20,7 @@ using KraftverkUptime.Infrastructure.Storage;
 using KraftverkUptime.Modules.Annotations.Repositories;
 using KraftverkUptime.Modules.Scada.Repositories;
 using KraftverkUptime.Modules.Reporting;
+using KraftverkUptime.Modules.Reporting.Portefolje;
 using KraftverkUptime.Modules.Reporting.Storage;
 using KraftverkUptime.Modules.Settlement.Jobs;
 using KraftverkUptime.Modules.Settlement.Persistence;
@@ -107,6 +108,9 @@ public static class InfrastructureServiceCollectionExtensions
 
         // --- UptimeReport-lagring (blob, JSON) ---
         services.AddSingleton<IUptimeReportStore, KraftverkUptime.Infrastructure.Reporting.BlobUptimeReportStore>();
+
+        // --- Portefølje-aggregator (Steg 6) ---
+        services.AddScoped<IPortfolioQueryService, KraftverkUptime.Infrastructure.Reporting.PortfolioQueryService>();
 
         // --- Events ---
         services.AddSingleton<IEventPublisher, InProcEventPublisher>();
