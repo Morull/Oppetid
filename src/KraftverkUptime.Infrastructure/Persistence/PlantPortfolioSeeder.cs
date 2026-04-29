@@ -22,20 +22,25 @@ public static class PlantPortfolioSeeder
 {
     private const string OwnerOrgId = "dev-org";
 
-    /// <summary>Anleggene som auto-opprettes. PlantId genereres via <see cref="PlantSlug.ToSlug"/>.</summary>
-    private static readonly string[] PortfolioNames =
+    /// <summary>
+    /// Anleggene som auto-opprettes. PlantId genereres via <see cref="PlantSlug.ToSlug"/>.
+    /// <c>InstalledCapacityMw</c> oppgitt fra drifts-leder Dalane Kraft 2026-04-29.
+    /// Løgjen har vi ikke sertifisert effekt for ennå — settes til 0 og må oppdateres
+    /// manuelt før Vakt-ROI gir meningsfulle tall for det anlegget.
+    /// </summary>
+    private static readonly (string Name, double CapacityMw)[] Portfolio =
     [
-        "Løgjen",
-        "Drivdal",
-        "Grødemfoss",
-        "Haukland",
-        "Honnefoss",
-        "Lindland",
-        "Øgreyfoss",
-        "Ørsdalen",
-        "Liavatn",
-        "Vikeså",
-        "Stølskraft",
+        ("Løgjen",     0),     // ikke bekreftet ennå
+        ("Drivdal",    2.3),
+        ("Grødemfoss", 2.8),
+        ("Haukland",   4.9),
+        ("Honnefoss",  3.1),
+        ("Lindland",   8.9),
+        ("Øgreyfoss",  14.6),  // to generatorer
+        ("Ørsdalen",   4.0),
+        ("Liavatn",    2.0),
+        ("Vikeså",     4.0),
+        ("Stølskraft", 1.5),
     ];
 
     public static async Task SeedAsync(IServiceProvider services, CancellationToken ct = default)
@@ -63,7 +68,7 @@ public static class PlantPortfolioSeeder
         var existing = existingIds.ToHashSet(StringComparer.Ordinal);
         var added = 0;
 
-        foreach (var name in PortfolioNames)
+        foreach (var (name, capacity) in Portfolio)
         {
             var id = PlantSlug.ToSlug(name);
             if (string.IsNullOrEmpty(id) || existing.Contains(id)) continue;
@@ -74,13 +79,13 @@ public static class PlantPortfolioSeeder
                 OwnerOrgId = OwnerOrgId,
                 Name = name,
                 Type = PlantType.Regulated, // default for Dalane Kraft-porteføljen
-                InstalledCapacityMw = 0, // placeholder — oppdateres manuelt
+                InstalledCapacityMw = capacity,
                 TimeZone = "Europe/Oslo",
             });
             added++;
             logger.LogInformation(
-                "Bootstrappet anlegg {PlantId} ({Name}) — InstalledCapacityMw=0 (krever manuell oppdatering).",
-                id, name);
+                "Bootstrappet anlegg {PlantId} ({Name}) — InstalledCapacityMw={Capacity}.",
+                id, name, capacity);
         }
 
         if (added > 0)
@@ -91,6 +96,76 @@ public static class PlantPortfolioSeeder
         else
         {
             logger.LogDebug("Plant-bootstrap: alle anlegg eksisterer allerede.");
+        }
+
+        // Idempotent capacity-backfill: fyller inn kapasitet for anlegg som
+        // ble opprettet før vi hadde tallene (eller med 0). Respekterer
+        // manuelle oppdateringer — hvis capacity allerede er satt til noe
+        // annet enn 0 lar vi være å overstyre.
+        await BackfillCapacitiesAsync(db, logger, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Historiske én-skudds-rettelser for kapasiteter som ble persistert med
+    /// feil verdi før porteføljen ble bekreftet. Anvendes kun hvis nåværende
+    /// verdi matcher <c>FromValue</c> eksakt — etter rettelse er regelen
+    /// idempotent (verdien er ikke lenger lik FromValue).
+    /// </summary>
+    private static readonly (string PlantId, double FromValue, double ToValue)[] HistoricalCapacityFixes =
+    [
+        ("drivdal", 2.2, 2.3), // korrigert 2026-04-29 av drifts-leder
+    ];
+
+    /// <summary>
+    /// Setter <see cref="PlantRegistration.InstalledCapacityMw"/> for porteføljens
+    /// anlegg som fortsatt har capacity = 0, samt anvender historiske rettelser
+    /// (f.eks. Drivdal 2.2 → 2.3). Anlegg med andre kapasiteter røres ikke
+    /// (respekt for manuelle oppdateringer fra brukeren).
+    /// </summary>
+    private static async Task BackfillCapacitiesAsync(
+        KraftverkDbContext db, ILogger logger, CancellationToken ct)
+    {
+        var byId = Portfolio.ToDictionary(
+            x => PlantSlug.ToSlug(x.Name), x => (x.Name, x.CapacityMw),
+            StringComparer.Ordinal);
+
+        var allPlants = await db.Plants.IgnoreQueryFilters().ToListAsync(ct).ConfigureAwait(false);
+        var updated = 0;
+
+        foreach (var plant in allPlants)
+        {
+            // 1) Backfill capacity=0 plants fra Portfolio-arrayet
+            if (plant.InstalledCapacityMw == 0
+                && byId.TryGetValue(plant.Id, out var portfolio)
+                && portfolio.CapacityMw > 0)
+            {
+                plant.InstalledCapacityMw = portfolio.CapacityMw;
+                updated++;
+                logger.LogInformation(
+                    "Backfill InstalledCapacityMw for {PlantId} ({Name}): 0 → {Capacity} MW.",
+                    plant.Id, plant.Name, portfolio.CapacityMw);
+                continue;
+            }
+
+            // 2) Anvend historiske én-skudds-rettelser (idempotent)
+            foreach (var (fixId, fromValue, toValue) in HistoricalCapacityFixes)
+            {
+                if (string.Equals(plant.Id, fixId, StringComparison.Ordinal)
+                    && plant.InstalledCapacityMw == fromValue)
+                {
+                    plant.InstalledCapacityMw = toValue;
+                    updated++;
+                    logger.LogInformation(
+                        "Historisk kapasitets-rettelse for {PlantId} ({Name}): {From} → {To} MW.",
+                        plant.Id, plant.Name, fromValue, toValue);
+                    break;
+                }
+            }
+        }
+
+        if (updated > 0)
+        {
+            await db.SaveChangesAsync(ct).ConfigureAwait(false);
         }
     }
 
