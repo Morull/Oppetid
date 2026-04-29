@@ -139,10 +139,19 @@ public static class NedetidEndpoints
         var dataset = await overflow.GetOverflowDatasetAsync(plantId, fromUtc, toUtc, ct)
             .ConfigureAwait(false);
 
+        // Ubalanse-komponent (v3): gjennomsnittlig RK-spot-spread for perioden.
+        // Vakt-ROI redder ubalanse-gebyret i counterfactual-vinduet uavhengig
+        // av magasinstand — så lenge producent var Spotbud-forpliktet.
+        var snittUbalansetillegg = await nedetid
+            .GetAvgImbalancePremiumAsync(plantId, fromUtc, toUtc, ct)
+            .ConfigureAwait(false);
+
         var roi = calculator.Calculate(
             events, plant.InstalledCapacityMw, snittSpot, faktor,
-            dataset.OverflowHours, overflowDataAvailable: dataset.DataAvailable);
-        var response = BuildVaktRoiResponse(plantId, fromUtc, toUtc, plant.InstalledCapacityMw, snittSpot, faktor, roi);
+            dataset.OverflowHours, overflowDataAvailable: dataset.DataAvailable,
+            snittUbalansetillegg_NokMwh: snittUbalansetillegg);
+        var response = BuildVaktRoiResponse(plantId, fromUtc, toUtc, plant.InstalledCapacityMw,
+            snittSpot, faktor, snittUbalansetillegg, roi);
 
         if (string.Equals(format, "csv", StringComparison.OrdinalIgnoreCase))
         {
@@ -231,6 +240,7 @@ public static class NedetidEndpoints
     private static VaktRoiResponse BuildVaktRoiResponse(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc,
         double effektMw, double snittSpot, double faktor,
+        double snittUbalansetillegg,
         IReadOnlyList<VaktRoiResultat> roi)
     {
         var dtos = roi.Select(r => new VaktRoiEventDto(
@@ -241,6 +251,8 @@ public static class NedetidEndpoints
             EkstraTimerSpart: r.EkstraTimerSpart,
             ReddetMwh: r.ReddetMwh,
             ReddetNok: r.ReddetNok,
+            ReddetProduksjon_NOK: r.ReddetProduksjon_NOK,
+            ReddetUbalanse_NOK: r.ReddetUbalanse_NOK,
             OverflowTimerInCounterfactual: r.OverflowTimerInCounterfactual,
             OverflowDataMissing: r.OverflowDataMissing,
             Forklaring: r.Forklaring)).ToList();
@@ -248,6 +260,8 @@ public static class NedetidEndpoints
         var reddbareInnenfor = roi.Count(r => r.ErInnenforVakt && r.ErReddbar);
         var totalReddetMwh = roi.Sum(r => r.ReddetMwh);
         var totalReddetNok = roi.Sum(r => r.ReddetNok);
+        var totalReddetProduksjon = roi.Sum(r => r.ReddetProduksjon_NOK);
+        var totalReddetUbalanse = roi.Sum(r => r.ReddetUbalanse_NOK);
         var snittEkstra = reddbareInnenfor == 0 ? 0
             : roi.Where(r => r.ErInnenforVakt && r.ErReddbar).Average(r => r.EkstraTimerSpart);
 
@@ -257,11 +271,14 @@ public static class NedetidEndpoints
             ToUtc: toUtc,
             InstallertEffektMw: effektMw,
             SnittSpotprisNokMwh: snittSpot,
+            SnittUbalansetilleggNokMwh: snittUbalansetillegg,
             Kapasitetsfaktor: faktor,
             AntallEventsTotalt: roi.Count,
             AntallReddbareInnenforVakt: reddbareInnenfor,
             TotalReddetMwh: totalReddetMwh,
             TotalReddetNok: totalReddetNok,
+            TotalReddetProduksjon_NOK: totalReddetProduksjon,
+            TotalReddetUbalanse_NOK: totalReddetUbalanse,
             SnittEkstraTimerPerEvent: snittEkstra,
             Events: dtos);
     }
@@ -304,7 +321,7 @@ public static class NedetidEndpoints
     private static string BuildVaktRoiCsv(VaktRoiResponse r)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("start_utc;end_utc;varighet_t;state;kategori;cause_code;innenfor_vakt;reddbar;counterfactual_end;ekstra_timer;overflow_timer;overflow_data_missing;reddet_mwh;reddet_nok;forklaring");
+        sb.AppendLine("start_utc;end_utc;varighet_t;state;kategori;cause_code;innenfor_vakt;reddbar;counterfactual_end;ekstra_timer;overflow_timer;overflow_data_missing;reddet_mwh;reddet_produksjon_nok;reddet_ubalanse_nok;reddet_nok;forklaring");
         foreach (var x in r.Events)
         {
             sb.Append(x.Event.StartUtc.UtcDateTime.ToString("o", CultureInfo.InvariantCulture)).Append(';');
@@ -320,6 +337,8 @@ public static class NedetidEndpoints
             sb.Append(x.OverflowTimerInCounterfactual).Append(';');
             sb.Append(x.OverflowDataMissing ? "true" : "false").Append(';');
             sb.Append(x.ReddetMwh.ToString("F2", CultureInfo.InvariantCulture)).Append(';');
+            sb.Append(x.ReddetProduksjon_NOK.ToString("F0", CultureInfo.InvariantCulture)).Append(';');
+            sb.Append(x.ReddetUbalanse_NOK.ToString("F0", CultureInfo.InvariantCulture)).Append(';');
             sb.Append(x.ReddetNok.ToString("F0", CultureInfo.InvariantCulture)).Append(';');
             sb.AppendLine(EscapeCsv(x.Forklaring));
         }

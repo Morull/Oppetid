@@ -22,7 +22,27 @@ public sealed record VaktRoiResultat
     public DateTimeOffset? CounterfactualEndUtc { get; init; }
     public required double EkstraTimerSpart { get; init; }
     public required double ReddetMwh { get; init; }
+
+    /// <summary>
+    /// Total reddet beløp = <see cref="ReddetProduksjon_NOK"/> + <see cref="ReddetUbalanse_NOK"/>.
+    /// Bevart for bakoverkompabilitet med UI som ikke bruker komponentene direkte.
+    /// </summary>
     public required double ReddetNok { get; init; }
+
+    /// <summary>
+    /// Verdien av selve produksjons-tapet vakten reddet. Gjelder kun timer
+    /// med overløp i magasinet (ellers er vannet bare utsatt, ikke tapt).
+    /// </summary>
+    public required double ReddetProduksjon_NOK { get; init; }
+
+    /// <summary>
+    /// Verdien av ubalanse-gebyret vakten reddet. Gjelder ALLE counterfactual-
+    /// timer (uavhengig av magasinstand) fordi Spotbud-forpliktelsen står
+    /// uansett. Beregnes som ekstra_timer × effekt × kapasitetsfaktor ×
+    /// snittUbalansetillegg, der snittUbalansetillegg = max(0, avg(RkPris − Spot))
+    /// over perioden.
+    /// </summary>
+    public required double ReddetUbalanse_NOK { get; init; }
 
     /// <summary>
     /// Antall timer i counterfactual-perioden der det var overløp i magasinet.

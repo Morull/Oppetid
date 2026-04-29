@@ -83,18 +83,27 @@ public sealed class VaktRoiCalculator
     /// en eksplisitt forklaring. Settes typisk false når plantet ikke har
     /// OverflowFlow-tag, eller når data mangler.
     /// </param>
+    /// <param name="snittUbalansetillegg_NokMwh">
+    /// Snitt-tillegg i NOK/MWh som vakten redder ved å unngå ubalanse-gebyr.
+    /// Beregnes typisk som max(0, avg(RkPris − Spotpris)) over perioden:
+    /// hvis RK var dyrere enn spot, så betalte producent denne differansen
+    /// for hver MWh under-leveranse. Default 0 = ingen ubalanse-komponent
+    /// (gir samme oppførsel som v2). Spec: SPEC-VAKT-ROI-UBALANSE.md.
+    /// </param>
     public IReadOnlyList<VaktRoiResultat> Calculate(
         IReadOnlyList<DowntimeEvent> events,
         double installertEffektMw,
         double snittSpotprisNokMwh,
         double kapasitetsfaktor = 0.5,
         IReadOnlySet<DateTimeOffset>? overflowHours = null,
-        bool overflowDataAvailable = false)
+        bool overflowDataAvailable = false,
+        double snittUbalansetillegg_NokMwh = 0)
     {
         ArgumentNullException.ThrowIfNull(events);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(installertEffektMw);
         ArgumentOutOfRangeException.ThrowIfNegative(kapasitetsfaktor);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(kapasitetsfaktor, 1.0);
+        ArgumentOutOfRangeException.ThrowIfNegative(snittUbalansetillegg_NokMwh);
 
         overflowHours ??= new HashSet<DateTimeOffset>();
         var result = new List<VaktRoiResultat>(events.Count);
@@ -115,6 +124,8 @@ public sealed class VaktRoiCalculator
                     EkstraTimerSpart = 0,
                     ReddetMwh = 0,
                     ReddetNok = 0,
+                    ReddetProduksjon_NOK = 0,
+                    ReddetUbalanse_NOK = 0,
                     OverflowTimerInCounterfactual = 0,
                     OverflowDataMissing = false,
                     Forklaring = "Event startet i ordinær arbeidstid — driftspersonell responderer, ikke vakten.",
@@ -133,6 +144,8 @@ public sealed class VaktRoiCalculator
                     EkstraTimerSpart = 0,
                     ReddetMwh = 0,
                     ReddetNok = 0,
+                    ReddetProduksjon_NOK = 0,
+                    ReddetUbalanse_NOK = 0,
                     OverflowTimerInCounterfactual = 0,
                     OverflowDataMissing = false,
                     Forklaring = $"Kategori '{e.Category}' regnes ikke som reddbar (planlagt/marked/data).",
@@ -155,30 +168,23 @@ public sealed class VaktRoiCalculator
                 ? CountOverflowHours(e.EndUtc, counterfactualEnd, overflowHours)
                 : 0;
 
+            // ---- Produksjons-komponent (overflow-betinget, fra v2) -----------
             var reddetMwh = overflowTimer * installertEffektMw * kapasitetsfaktor;
-            var reddetNok = reddetMwh * snittSpotprisNokMwh;
+            var reddetProduksjonNok = reddetMwh * snittSpotprisNokMwh;
 
-            string forklaring;
-            if (ekstraTimer == 0)
-            {
-                forklaring = "Faktisk varighet ville uansett strukket forbi neste arbeidsdag — ingen ekstra ROI.";
-            }
-            else if (!overflowDataAvailable)
-            {
-                forklaring = $"Vakt løste på {e.VarighetTimer:F1} t. SCADA mangler overløps-data for "
-                    + $"counterfactual-perioden ({ekstraTimer:F1} t) — kan ikke beregne ROI.";
-            }
-            else if (overflowTimer == 0)
-            {
-                forklaring = $"Vakt løste på {e.VarighetTimer:F1} t. Counterfactual = {ekstraTimer:F1} t, "
-                    + "men ingen overløp i perioden — vannet ville vært magasinert. Ingen ROI.";
-            }
-            else
-            {
-                forklaring = $"Vakt løste på {e.VarighetTimer:F1} t. Counterfactual = {ekstraTimer:F1} t. "
-                    + $"Av disse hadde {overflowTimer} t overløp i magasinet → {overflowTimer} t reddet "
-                    + $"(≈ {reddetMwh:F1} MWh × {snittSpotprisNokMwh:F0} NOK/MWh).";
-            }
+            // ---- Ubalanse-komponent (alle counterfactual-timer, ny i v3) ----
+            // Spotbud-forpliktelsen står uavhengig av magasinstand — vakten
+            // redder ubalanse-gebyret i hele counterfactual-vinduet.
+            var ubalanseMwh = ekstraTimer * installertEffektMw * kapasitetsfaktor;
+            var reddetUbalanseNok = ubalanseMwh * snittUbalansetillegg_NokMwh;
+
+            var reddetTotalNok = reddetProduksjonNok + reddetUbalanseNok;
+
+            var forklaring = BuildForklaring(
+                e, ekstraTimer, overflowTimer, overflowDataAvailable,
+                reddetMwh, snittSpotprisNokMwh,
+                ubalanseMwh, snittUbalansetillegg_NokMwh,
+                reddetProduksjonNok, reddetUbalanseNok);
 
             result.Add(new VaktRoiResultat
             {
@@ -188,7 +194,9 @@ public sealed class VaktRoiCalculator
                 CounterfactualEndUtc = counterfactualEnd,
                 EkstraTimerSpart = ekstraTimer,
                 ReddetMwh = reddetMwh,
-                ReddetNok = reddetNok,
+                ReddetNok = reddetTotalNok,
+                ReddetProduksjon_NOK = reddetProduksjonNok,
+                ReddetUbalanse_NOK = reddetUbalanseNok,
                 OverflowTimerInCounterfactual = overflowTimer,
                 OverflowDataMissing = !overflowDataAvailable && ekstraTimer > 0,
                 Forklaring = forklaring,
@@ -227,5 +235,70 @@ public sealed class VaktRoiCalculator
     {
         var u = t.UtcDateTime;
         return new DateTimeOffset(u.Year, u.Month, u.Day, u.Hour, 0, 0, TimeSpan.Zero);
+    }
+
+    /// <summary>
+    /// Bygger forklaringsteksten ut fra hvilke ROI-komponenter som er ulik 0.
+    /// Uten ubalanse-komponent matcher meldingen v2 nøyaktig (bakoverkompabilitet
+    /// for tester og UI). Med ubalanse legges en ekstra setning til.
+    /// </summary>
+    private static string BuildForklaring(
+        DowntimeEvent e,
+        double ekstraTimer,
+        int overflowTimer,
+        bool overflowDataAvailable,
+        double reddetMwh, double snittSpot,
+        double ubalanseMwh, double snittUbalansetillegg,
+        double reddetProduksjonNok, double reddetUbalanseNok)
+    {
+        if (ekstraTimer == 0)
+        {
+            return "Faktisk varighet ville uansett strukket forbi neste arbeidsdag — ingen ekstra ROI.";
+        }
+
+        // Ubalanse-komponenten avhenger ikke av overflow-data, så den kan vises
+        // selv når overflow-data mangler.
+        var hasUbalanse = snittUbalansetillegg > 0 && reddetUbalanseNok > 0;
+
+        if (!overflowDataAvailable)
+        {
+            var msg = $"Vakt løste på {e.VarighetTimer:F1} t. SCADA mangler overløps-data for "
+                + $"counterfactual-perioden ({ekstraTimer:F1} t) — kan ikke beregne ROI.";
+            if (hasUbalanse)
+            {
+                msg += $" Ubalanse-gebyr unngått: ≈ {ubalanseMwh:F1} MWh × "
+                    + $"{snittUbalansetillegg:F0} NOK/MWh = {reddetUbalanseNok:F0} NOK.";
+            }
+            return msg;
+        }
+
+        if (overflowTimer == 0)
+        {
+            var msg = $"Vakt løste på {e.VarighetTimer:F1} t. Counterfactual = {ekstraTimer:F1} t, "
+                + "men ingen overløp i perioden — vannet ville vært magasinert.";
+            if (hasUbalanse)
+            {
+                msg += $" Vakten reddet bare ubalanse-gebyret: ≈ {reddetUbalanseNok:F0} NOK "
+                    + $"({ubalanseMwh:F1} MWh × {snittUbalansetillegg:F0} NOK/MWh).";
+            }
+            else
+            {
+                msg += " Ingen ROI.";
+            }
+            return msg;
+        }
+
+        // overflowTimer > 0
+        var produksjonsDel = $"Vakt løste på {e.VarighetTimer:F1} t. Counterfactual = {ekstraTimer:F1} t. "
+            + $"Av disse hadde {overflowTimer} t overløp i magasinet → {overflowTimer} t reddet "
+            + $"(≈ {reddetMwh:F1} MWh × {snittSpot:F0} NOK/MWh = {reddetProduksjonNok:F0} NOK).";
+        if (!hasUbalanse)
+        {
+            return produksjonsDel;
+        }
+        return produksjonsDel
+            + $" Ubalanse-gebyr unngått for hele counterfactual: {reddetUbalanseNok:F0} NOK "
+            + $"(≈ {ubalanseMwh:F1} MWh × {snittUbalansetillegg:F0} NOK/MWh). "
+            + $"Total reddet: {reddetProduksjonNok + reddetUbalanseNok:F0} NOK.";
     }
 }

@@ -108,6 +108,8 @@ public sealed record VaktRoiEventDto(
     double EkstraTimerSpart,
     double ReddetMwh,
     double ReddetNok,
+    double ReddetProduksjon_NOK,
+    double ReddetUbalanse_NOK,
     int OverflowTimerInCounterfactual,
     bool OverflowDataMissing,
     string Forklaring);
@@ -118,10 +120,13 @@ public sealed record VaktRoiResponse(
     DateTimeOffset ToUtc,
     double InstallertEffektMw,
     double SnittSpotprisNokMwh,
+    double SnittUbalansetilleggNokMwh,
     double Kapasitetsfaktor,
     int AntallEventsTotalt,
     int AntallReddbareInnenforVakt,
     double TotalReddetMwh,
     double TotalReddetNok,
+    double TotalReddetProduksjon_NOK,
+    double TotalReddetUbalanse_NOK,
     double SnittEkstraTimerPerEvent,
     IReadOnlyList<VaktRoiEventDto> Events);

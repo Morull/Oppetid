@@ -27,4 +27,18 @@ public interface INedetidQueryService
         DateTimeOffset fromUtc,
         DateTimeOffset toUtc,
         CancellationToken ct);
+
+    /// <summary>
+    /// Beregner snitt-ubalansetillegg for perioden — gjennomsnittlig RK-pris
+    /// minus spotpris over alle timer der RK var dyrere enn spot. Brukes av
+    /// Vakt-ROI v3 til å verdsette ubalanse-gebyret som vakten redder.
+    ///
+    /// Returnerer 0 hvis ingen timer har gyldig (RkPris &gt; Spotpris)-data —
+    /// konservativt anslag som unngår å lage tall ut av ingenting.
+    /// </summary>
+    Task<double> GetAvgImbalancePremiumAsync(
+        string plantId,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        CancellationToken ct);
 }

@@ -115,8 +115,31 @@ else if (_response is not null)
                 <MudText Typo="Typo.body1">@((_response.Kapasitetsfaktor * 100).ToString("F0")) %</MudText>
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Snitt RK-tillegg</MudText>
+                <MudText Typo="Typo.body1">@_response.SnittUbalansetilleggNokMwh.ToString("F0") NOK/MWh</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
                 <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Vakt-modell</MudText>
                 <MudText Typo="Typo.body1">15-07 hverdager + helg, 1.0 t respons</MudText>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @* ---- ROI-splitt (v3): produksjon vs ubalanse ---- *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.h4" Class="mb-2">ROI-komponenter</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                    Reddet produksjon (kun timer med overløp)
+                </MudText>
+                <MudText Typo="Typo.h4">@FormatNok(_response.TotalReddetProduksjon_NOK)</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                    Reddet ubalanse-gebyr (alle counterfactual-timer)
+                </MudText>
+                <MudText Typo="Typo.h4">@FormatNok(_response.TotalReddetUbalanse_NOK)</MudText>
             </MudItem>
         </MudGrid>
     </MudPaper>

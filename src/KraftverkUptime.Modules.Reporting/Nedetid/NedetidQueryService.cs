@@ -101,4 +101,46 @@ public sealed class NedetidQueryService : INedetidQueryService
 
         return events;
     }
+
+    public async Task<double> GetAvgImbalancePremiumAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        if (toUtc <= fromUtc) return 0;
+
+        // Gjenbruker imports + report-store. Trekker klassifiserte rader fra
+        // de samme report-blobbene som ListEventsAsync — DB- og blob-trafikken
+        // dupliseres dessverre, men v3 introduserer ikke en ny modell akkurat nå.
+        var imports = await _imports
+            .ListForPlantAsync(plantId, fromUtc, toUtc, limit: 500, ct)
+            .ConfigureAwait(false);
+        if (imports.Count == 0) return 0;
+
+        double sumDiff = 0;
+        var count = 0;
+
+        foreach (var imp in imports.OrderBy(i => i.ImportedAtUtc))
+        {
+            var report = await _reports
+                .GetAsync(imp.OwnerOrgId, imp.PlantId, imp.IdempotencyKey, ct)
+                .ConfigureAwait(false);
+            if (report is null) continue;
+
+            foreach (var h in report.Classified)
+            {
+                if (h.TimeUtc < fromUtc || h.TimeUtc >= toUtc) continue;
+                var spot = h.Row.SpotprisNokMwh;
+                var rk = h.Row.RkPrisNokMwh;
+                if (!spot.HasValue || !rk.HasValue) continue;
+
+                var diff = rk.Value - spot.Value;
+                if (diff <= 0) continue; // bare timer der RK > spot teller (oppregulering)
+
+                sumDiff += diff;
+                count++;
+            }
+        }
+
+        return count == 0 ? 0 : sumDiff / count;
+    }
 }

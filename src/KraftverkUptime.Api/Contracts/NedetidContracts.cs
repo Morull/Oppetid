@@ -42,8 +42,9 @@ public sealed record NedetidKategoriSummary(
 
 /// <summary>
 /// Wire-DTO for Vakt-ROI per event. <see cref="OverflowTimerInCounterfactual"/>
-/// og <see cref="OverflowDataMissing"/> kommer fra spec 2026-04-29: ROI gjelder
-/// kun timer der det var overløp i magasinet i counterfactual-perioden.
+/// og <see cref="OverflowDataMissing"/> kommer fra spec 2026-04-29 (overløp).
+/// <see cref="ReddetProduksjon_NOK"/> og <see cref="ReddetUbalanse_NOK"/> er
+/// fra spec v3 (ubalanse) og summerer til <see cref="ReddetNok"/>.
 /// </summary>
 public sealed record VaktRoiEventDto(
     NedetidEventDto Event,
@@ -53,6 +54,8 @@ public sealed record VaktRoiEventDto(
     double EkstraTimerSpart,
     double ReddetMwh,
     double ReddetNok,
+    double ReddetProduksjon_NOK,
+    double ReddetUbalanse_NOK,
     int OverflowTimerInCounterfactual,
     bool OverflowDataMissing,
     string Forklaring);
@@ -63,10 +66,13 @@ public sealed record VaktRoiResponse(
     DateTimeOffset ToUtc,
     double InstallertEffektMw,
     double SnittSpotprisNokMwh,
+    double SnittUbalansetilleggNokMwh,
     double Kapasitetsfaktor,
     int AntallEventsTotalt,
     int AntallReddbareInnenforVakt,
     double TotalReddetMwh,
     double TotalReddetNok,
+    double TotalReddetProduksjon_NOK,
+    double TotalReddetUbalanse_NOK,
     double SnittEkstraTimerPerEvent,
     IReadOnlyList<VaktRoiEventDto> Events);

@@ -83,6 +83,8 @@ public class VaktRoiCalculatorTests
         // ROI = 15 × 2.2 × 0.5 × 850 = 14 025 NOK
         r.ReddetMwh.Should().BeApproximately(15 * 2.2 * 0.5, 0.01);
         r.ReddetNok.Should().BeApproximately(15 * 2.2 * 0.5 * 850, 1.0);
+        r.ReddetProduksjon_NOK.Should().BeApproximately(15 * 2.2 * 0.5 * 850, 1.0);
+        r.ReddetUbalanse_NOK.Should().Be(0);  // ingen ubalanse-tillegg → bare produksjon
     }
 
     [Fact]
@@ -270,5 +272,119 @@ public class VaktRoiCalculatorTests
         roi[0].EkstraTimerSpart.Should().BeApproximately(43.0, 0.01); // 13:00 lørdag → 08:00 mandag
         roi[0].OverflowTimerInCounterfactual.Should().Be(43);
         roi[0].ReddetNok.Should().BeGreaterThan(0);
+    }
+
+    // ---- v3: ubalanse-komponent ------------------------------------------
+
+    [Fact]
+    public void V3_Trip_Med_Overlop_Og_Ubalansetillegg_Beregner_Begge_Komponenter()
+    {
+        // Onsdag 16:00-17:30 lokal, full overlap-dekning, snitt-RK-tillegg = 200 NOK/MWh
+        var ev = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 2, 4, 16),
+            EndUtc = OsloLokal(2026, 2, 4, 17, 30),
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            TapMwh = 1.0, TapNok = 850, TimerSettlement = 2,
+        };
+        var counterfactualEnd = OsloLokal(2026, 2, 5, 8);
+        var overflow = OverflowAlleTimer(ev.EndUtc, counterfactualEnd);
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { ev },
+            installertEffektMw: 2.2, snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
+            overflowHours: overflow, overflowDataAvailable: true,
+            snittUbalansetillegg_NokMwh: 200);
+
+        var r = roi[0];
+        // Produksjon: 15 t × 2.2 × 0.5 × 850 = 14 025 NOK
+        r.ReddetProduksjon_NOK.Should().BeApproximately(15 * 2.2 * 0.5 * 850, 1.0);
+        // Ubalanse: 14.5 t (ekstra) × 2.2 × 0.5 × 200 = 3 190 NOK
+        r.ReddetUbalanse_NOK.Should().BeApproximately(14.5 * 2.2 * 0.5 * 200, 1.0);
+        // Total = sum
+        r.ReddetNok.Should().BeApproximately(r.ReddetProduksjon_NOK + r.ReddetUbalanse_NOK, 0.01);
+        r.Forklaring.Should().Contain("Ubalanse-gebyr");
+    }
+
+    [Fact]
+    public void V3_Trip_Uten_Overlop_Med_Ubalansetillegg_Gir_Bare_Ubalanse_ROI()
+    {
+        // Selv uten overløp (vannet trygt magasinert) reddet vakten ubalanse-gebyret
+        // for de timene plant'en var forpliktet til å levere.
+        var ev = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 2, 4, 16),
+            EndUtc = OsloLokal(2026, 2, 4, 17, 30),
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            TapMwh = 1.0, TapNok = 850, TimerSettlement = 2,
+        };
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { ev },
+            installertEffektMw: 2.2, snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
+            overflowHours: new HashSet<DateTimeOffset>(), overflowDataAvailable: true,
+            snittUbalansetillegg_NokMwh: 200);
+
+        var r = roi[0];
+        r.ReddetProduksjon_NOK.Should().Be(0);
+        r.ReddetUbalanse_NOK.Should().BeApproximately(14.5 * 2.2 * 0.5 * 200, 1.0);
+        r.ReddetNok.Should().BeApproximately(14.5 * 2.2 * 0.5 * 200, 1.0);
+        r.Forklaring.Should().Contain("ingen overløp");
+        r.Forklaring.Should().Contain("ubalanse-gebyret");
+    }
+
+    [Fact]
+    public void V3_Mangler_Overlop_Data_Men_Med_Ubalansetillegg_Gir_Ubalanse_ROI()
+    {
+        // SCADA-data mangler for OverflowFlow, men ubalanse-tillegg gjelder uansett.
+        // Vakt-tjenesten reddet ubalanse-gebyret selv om vi ikke kan kvantifisere
+        // produksjonsdelen.
+        var ev = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 2, 4, 16),
+            EndUtc = OsloLokal(2026, 2, 4, 17, 30),
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            TapMwh = 1.0, TapNok = 850, TimerSettlement = 2,
+        };
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { ev },
+            installertEffektMw: 2.2, snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
+            overflowHours: new HashSet<DateTimeOffset>(), overflowDataAvailable: false,
+            snittUbalansetillegg_NokMwh: 200);
+
+        var r = roi[0];
+        r.OverflowDataMissing.Should().BeTrue();
+        r.ReddetProduksjon_NOK.Should().Be(0);
+        r.ReddetUbalanse_NOK.Should().BeApproximately(14.5 * 2.2 * 0.5 * 200, 1.0);
+        r.Forklaring.Should().Contain("SCADA mangler");
+        r.Forklaring.Should().Contain("Ubalanse");
+    }
+
+    [Fact]
+    public void V3_Negativ_Ubalansetillegg_Kastes()
+    {
+        // Negativt tillegg er ikke meningsfullt — kontrakten kaster.
+        var ev = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 2, 4, 16),
+            EndUtc = OsloLokal(2026, 2, 4, 17, 30),
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            TapMwh = 1.0, TapNok = 850, TimerSettlement = 2,
+        };
+
+        var calc = new VaktRoiCalculator();
+        FluentActions.Invoking(() => calc.Calculate(new[] { ev },
+            installertEffektMw: 2.2, snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
+            snittUbalansetillegg_NokMwh: -100))
+            .Should().Throw<ArgumentOutOfRangeException>();
     }
 }
