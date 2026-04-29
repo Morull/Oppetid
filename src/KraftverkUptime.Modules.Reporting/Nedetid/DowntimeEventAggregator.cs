@@ -124,6 +124,13 @@ public static class DowntimeEventAggregator
         if (operlogEvents is { Count: > 0 })
         {
             events = ApplyOperlogOverlay(events, operlogEvents).ToList();
+
+            // Sub-hour trips fra operlog som IKKE manifesterer seg som FO-timer
+            // i settlement (kortvarig stopp innen samme time som elhub > 0)
+            // legges til som synthetiske 1-time events. Bevarer presisjonen
+            // for /nedetid-rapporten — drifts-leder ser alle reelle trips,
+            // ikke bare de som gjorde Elhub-time = 0.
+            events = AddOperlogOnlyFaultEvents(plantId, events, operlogEvents).ToList();
         }
 
         // Rist-deteksjon: trip-events innen ±60 min av rist-falltap-alarm blir
@@ -139,6 +146,65 @@ public static class DowntimeEventAggregator
         }
 
         return events;
+    }
+
+    /// <summary>
+    /// Legger til synthetiske downtime-events fra operlog-fault-events som ikke
+    /// ble dekket av settlement-aggregeringen. Disse representerer typisk korte
+    /// sub-time trips der anlegget restartet innen samme time og dermed ikke
+    /// produserte Elhub=0. Hver slik fault blir en 1-time event som er klar
+    /// for rist-deteksjon (om det finnes en rist-alarm i nærheten).
+    /// </summary>
+    private static IEnumerable<DowntimeEvent> AddOperlogOnlyFaultEvents(
+        string plantId,
+        IList<DowntimeEvent> existingEvents,
+        IReadOnlyList<ClassifiedEvent> operlogEvents)
+    {
+        // Bevar eksisterende events først
+        foreach (var e in existingEvents) yield return e;
+
+        // Bare operlog-faults skal eskaleres til downtime-events.
+        var faults = operlogEvents
+            .Where(o => string.Equals(o.CauseCode, "operlog:fault", StringComparison.Ordinal))
+            .OrderBy(o => o.StartUtc)
+            .ToList();
+
+        // Dedupliser: hvis flere faults er innenfor samme klokketime, lag bare én event.
+        var emittedHours = new HashSet<DateTimeOffset>();
+
+        foreach (var fault in faults)
+        {
+            var faultHour = FloorToHour(fault.StartUtc);
+
+            // Hopp over hvis fault-tidspunktet allerede dekkes av en settlement-event
+            var alreadyCovered = existingEvents.Any(e =>
+                fault.StartUtc >= e.StartUtc && fault.StartUtc < e.EndUtc);
+            if (alreadyCovered) continue;
+
+            // Dedup på time
+            if (!emittedHours.Add(faultHour)) continue;
+
+            yield return new DowntimeEvent
+            {
+                PlantId = plantId,
+                StartUtc = faultHour,
+                EndUtc = faultHour.AddHours(1),
+                State = UnitState.ForcedOutage,
+                Category = DowntimeEventCategory.TripFeil, // overstyres av rist-deteksjon hvis aktuelt
+                CauseCode = fault.CauseCode,
+                TapMwh = 0, // sub-time trip — settlement viste fortsatt produksjon
+                TapNok = 0,
+                TimerSettlement = 0, // markerer at eventet er operlog-only
+                HarOperlogMatch = true,
+                Rationale = fault.Rationale ?? "operlog-only fault (sub-time trip)",
+            };
+        }
+    }
+
+    private static DateTimeOffset FloorToHour(DateTimeOffset t)
+    {
+        var u = t.UtcDateTime;
+        return new DateTimeOffset(u.Year, u.Month, u.Day, u.Hour, 0, 0, TimeSpan.Zero);
     }
 
     private static IEnumerable<DowntimeEvent> ApplyRistDetection(

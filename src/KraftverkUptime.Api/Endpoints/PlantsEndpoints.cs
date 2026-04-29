@@ -192,7 +192,7 @@ public static class PlantsEndpoints
 
     private static async Task<IResult> ResetPlantDataAsync(
         string plantId,
-        ResetPlantDataRequest body,
+        [Microsoft.AspNetCore.Mvc.FromBody] ResetPlantDataRequest body,
         KraftverkDbContext db,
         IQueryContext queryContext,
         ISettlementImportRecorder importRecorder,
