@@ -215,13 +215,21 @@ else if (_response is not null)
         {
             _plants = await ReportsApi.ListPlantsAsync();
 
-            // Initialiser delt filter-state hvis dette er første side i sesjonen.
-            // Default: siste 1 år (treffer historiske imports). Route-param PlantId
-            // overstyrer plant.
-            var defaultPlant = !string.IsNullOrEmpty(PlantId)
-                ? PlantId
-                : (_plants.Count > 0 ? _plants[0].Id : string.Empty);
-            Filter.SetIfEmpty(defaultPlant,
+            // Route-parameter PlantId overstyrer FilterState (eksplisitt forespørsel
+            // fra brukeren). Ellers: behold eksisterende plant fra delt state, eller
+            // velg første anlegg som default ved første side-besøk i sesjonen.
+            if (!string.IsNullOrEmpty(PlantId))
+            {
+                Filter.PlantId = PlantId;
+            }
+            else if (string.IsNullOrEmpty(Filter.PlantId) && _plants.Count > 0)
+            {
+                Filter.PlantId = _plants[0].Id;
+            }
+
+            // Datoer fylles kun hvis ikke allerede satt fra annen side (f.eks. via
+            // synk fra ReportDetail) — slik at kontekst-overgang er sømløs.
+            Filter.SetIfEmpty(Filter.PlantId,
                 fromDate: DateTime.UtcNow.AddYears(-1).Date,
                 toDate: DateTime.UtcNow.Date);
 

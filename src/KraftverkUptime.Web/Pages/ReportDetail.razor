@@ -4,6 +4,7 @@
 @inject ReportsApi Api
 @inject AnnotationsApi AnnotationsApi
 @inject IDialogService DialogService
+@inject FilterState Filter
 
 <PageTitle>Rapport – @PlantId</PageTitle>
 
@@ -285,6 +286,7 @@ else
             else
             {
                 BuildCharts(_report);
+                SyncFilterState(_report);
                 await LoadAnnotationsAsync();
             }
         }
@@ -674,4 +676,17 @@ else
 
     public sealed record StateSlice(string CanonicalState, string Display, int Hours);
     private sealed record KpiCard(string Label, string Value, string Sub, string Color);
+
+    /// <summary>
+    /// Synkroniserer FilterState med rapportens plant + periode slik at /nedetid
+    /// og /vakt-roi automatisk får samme kontekst når brukeren navigerer dit.
+    /// PeriodEndUtc er siste time-stempel (inklusiv); legger til 1 dag for å gi
+    /// /nedetid en eksklusiv til-grense.
+    /// </summary>
+    private void SyncFilterState(UptimeReportSummary report)
+    {
+        Filter.PlantId = report.PlantId;
+        Filter.FromDate = report.PeriodStartUtc.UtcDateTime.ToLocalTime().Date;
+        Filter.ToDate = report.PeriodEndUtc.UtcDateTime.ToLocalTime().Date.AddDays(1);
+    }
 }

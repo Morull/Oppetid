@@ -223,10 +223,18 @@ else if (_response is not null)
         {
             _plants = await ReportsApi.ListPlantsAsync();
 
-            var defaultPlant = !string.IsNullOrEmpty(PlantId)
-                ? PlantId
-                : (_plants.Count > 0 ? _plants[0].Id : string.Empty);
-            Filter.SetIfEmpty(defaultPlant,
+            // Route-parameter overstyrer Filter; ellers behold delt state eller
+            // default til første anlegg.
+            if (!string.IsNullOrEmpty(PlantId))
+            {
+                Filter.PlantId = PlantId;
+            }
+            else if (string.IsNullOrEmpty(Filter.PlantId) && _plants.Count > 0)
+            {
+                Filter.PlantId = _plants[0].Id;
+            }
+
+            Filter.SetIfEmpty(Filter.PlantId,
                 fromDate: DateTime.UtcNow.AddYears(-1).Date,
                 toDate: DateTime.UtcNow.Date);
 
