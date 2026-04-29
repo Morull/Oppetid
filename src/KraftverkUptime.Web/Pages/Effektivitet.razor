@@ -1,0 +1,237 @@
+@page "/effektivitet"
+@page "/effektivitet/{PlantId}"
+@using ApexCharts
+@inject ReportsApi ReportsApi
+@inject NedetidApi NedetidApi
+
+<PageTitle>Effektivitet</PageTitle>
+
+<MudGrid Class="mb-4">
+    <MudItem xs="12" md="8">
+        <MudText Typo="Typo.h1">Effektivitet</MudText>
+        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+            η(P)-kurve, sweet-spot og spesifikt vannforbruk per anlegg.
+            Algoritmen finner sweet-spot fra dataen — fungerer for alle anlegg
+            som har SCADA-rollene generator-effekt, turbin-virkningsgrad og
+            turbin-vannføring.
+        </MudText>
+    </MudItem>
+</MudGrid>
+
+@* ---- Filter ---- *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="string" Value="_plantId" ValueChanged="OnPlantChanged"
+                       Label="Anlegg" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var p in _plants)
+                {
+                    <MudSelectItem Value="@p.Id">@p.Name (@p.Id)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Date="_fromDate" DateChanged="@(d => _fromDate = d)"
+                           Label="Fra dato" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Date="_toDate" DateChanged="@(d => _toDate = d)"
+                           Label="Til dato (eks.)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex justify-end">
+            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Search"
+                       OnClick="LoadAsync"
+                       Disabled="@(_loading || string.IsNullOrEmpty(_plantId) || !_fromDate.HasValue || !_toDate.HasValue)">
+                Hent
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+    <MudText Class="ml-2 d-inline">Henter data…</MudText>
+}
+else if (_response is not null)
+{
+    @if (_response.DataMissing)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            SCADA-data mangler for valgt periode/plant. Sørg for at de tre rollene
+            <strong>GeneratorActivePower</strong>, <strong>TurbineEfficiency</strong>
+            og <strong>TurbineWaterFlow</strong> er konfigurert i signal_map, og at
+            samples er importert.
+        </MudAlert>
+    }
+    else if (_response.ProduksjonsTimer == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            Ingen produksjons-timer (P > 50 kW) i perioden.
+        </MudAlert>
+    }
+    else
+    {
+        @* ---- KPI-kort ---- *@
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Snitt η</MudText>
+                    <MudText Typo="Typo.h3">@_response.SnittEtaPct.ToString("F1") %</MudText>
+                    <MudText Typo="Typo.caption">over @_response.ProduksjonsTimer produksjons-timer</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Sweet-spot effekt</MudText>
+                    <MudText Typo="Typo.h3">@_response.SweetSpotEffektKw.ToString("F0") kW</MudText>
+                    <MudText Typo="Typo.caption">@_response.SweetSpotEtaPct.ToString("F1") % η i bin'en</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #F39C12;">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Spesifikt vannforbruk</MudText>
+                    <MudText Typo="Typo.h3">@_response.SnittSpesifiktVannforbrukM3PerKwh.ToString("F2")</MudText>
+                    <MudText Typo="Typo.caption">m³ per kWh</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #6E59A5;">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Total produksjon</MudText>
+                    <MudText Typo="Typo.h3">@((_response.TotalProduksjonKwh / 1000).ToString("F1")) MWh</MudText>
+                    <MudText Typo="Typo.caption">i perioden</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        @* ---- η(P)-scatter ---- *@
+        <MudPaper Class="pa-4 mb-4" Elevation="1">
+            <MudText Typo="Typo.h3" Class="mb-3">η(P)-kurve</MudText>
+            @if (_response.Punkter.Count > 0)
+            {
+                <ApexChart @key="_chartVersion" TItem="EffektivitetPunkt"
+                           Options="_scatterOptions" Height="380">
+                    <ApexPointSeries TItem="EffektivitetPunkt"
+                                     Items="_response.Punkter"
+                                     Name="Time-snitt"
+                                     SeriesType="SeriesType.Scatter"
+                                     XValue="p => (decimal)p.EffektKw"
+                                     YValue="p => (decimal)p.EtaPct" />
+                    <ApexPointSeries TItem="EffektivitetBin"
+                                     Items="_response.Bins"
+                                     Name="Bin-snitt"
+                                     SeriesType="SeriesType.Line"
+                                     XValue="b => (decimal)b.EffektKwMid"
+                                     YValue="b => (decimal)b.SnittEtaPct" />
+                </ApexChart>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">Ingen punkter å vise.</MudText>
+            }
+        </MudPaper>
+
+        @* ---- Bin-tabell ---- *@
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h3" Class="mb-3">Effekt-bins (bredde 200 kW)</MudText>
+            <MudTable Items="_response.Bins" Hover="true" Dense="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Bin (kW)</MudTh>
+                    <MudTh Style="text-align:right">Antall timer</MudTh>
+                    <MudTh Style="text-align:right">Snitt η (%)</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.EffektKwStart.ToString("F0") – @((context.EffektKwStart + 200).ToString("F0"))</MudTd>
+                    <MudTd Style="text-align:right">@context.Antall</MudTd>
+                    <MudTd Style="text-align:right">@context.SnittEtaPct.ToString("F1")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+}
+
+@code {
+    [Parameter] public string? PlantId { get; set; }
+
+    private IReadOnlyList<PlantDto> _plants = Array.Empty<PlantDto>();
+    private string _plantId = string.Empty;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+
+    private bool _loading;
+    private string? _error;
+    private EffektivitetResponse? _response;
+    private int _chartVersion;
+    private ApexChartOptions<EffektivitetPunkt> _scatterOptions = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _plants = await ReportsApi.ListPlantsAsync();
+
+            _plantId = !string.IsNullOrEmpty(PlantId)
+                ? PlantId
+                : (_plants.Count > 0 ? _plants[0].Id : string.Empty);
+
+            // Default-periode: forrige måned
+            var now = DateTime.UtcNow;
+            var firstOfThisMonth = new DateTime(now.Year, now.Month, 1);
+            _fromDate = firstOfThisMonth.AddMonths(-1);
+            _toDate = firstOfThisMonth;
+
+            if (!string.IsNullOrEmpty(_plantId))
+            {
+                await LoadAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Klarte ikke laste anleggsliste: {ex.Message}";
+        }
+    }
+
+    private Task OnPlantChanged(string newPlantId)
+    {
+        _plantId = newPlantId;
+        return Task.CompletedTask;
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrEmpty(_plantId) || !_fromDate.HasValue || !_toDate.HasValue) return;
+        _loading = true;
+        _error = null;
+        _response = null;
+        try
+        {
+            var fromUtc = new DateTimeOffset(_fromDate.Value.Date, TimeSpan.Zero);
+            var toUtc = new DateTimeOffset(_toDate.Value.Date, TimeSpan.Zero);
+            _response = await NedetidApi.GetEffektivitetAsync(_plantId, fromUtc, toUtc);
+
+            _chartVersion++;
+            _scatterOptions = new ApexChartOptions<EffektivitetPunkt>
+            {
+                Xaxis = new XAxis { Title = new AxisTitle { Text = "Effekt (kW)" } },
+                Yaxis = new List<YAxis> { new() { Title = new AxisTitle { Text = "Virkningsgrad (%)" } } },
+                Markers = new Markers { Size = 4 },
+                Stroke = new Stroke { Width = new ApexCharts.Size(2) },
+                Tooltip = new Tooltip { X = new TooltipX { Show = true } },
+                Colors = new List<string> { "#1E5F8E", "#E76F51" },
+            };
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente effektivitets-data: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

@@ -1,6 +1,7 @@
 using KraftverkUptime.Core.Modules;
 using KraftverkUptime.Core.Reporting;
 using KraftverkUptime.Modules.Classification.Dtos;
+using KraftverkUptime.Modules.Reporting.Effektivitet;
 using KraftverkUptime.Modules.Reporting.Nedetid;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -30,5 +31,8 @@ public sealed class ReportingModule : IPlatformModule
         services.AddScoped<INedetidQueryService, NedetidQueryService>();
         services.AddScoped<IOverflowQueryService, OverflowQueryService>();
         services.AddScoped<VaktRoiCalculator>();
+
+        // Effektivitet (Steg 2 i veikartet — anlegg-uavhengig η(P)/SVF/sweet-spot).
+        services.AddScoped<IEffectivityQueryService, EffektivitetQueryService>();
     }
 }

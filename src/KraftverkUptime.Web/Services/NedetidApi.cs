@@ -41,6 +41,14 @@ public sealed class NedetidApi
         return resp ?? throw new InvalidOperationException("Tom respons fra /vakt-roi.");
     }
 
+    public async Task<EffektivitetResponse> GetEffektivitetAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var url = BuildUrl(plantId, "effektivitet", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        var resp = await _http.GetFromJsonAsync<EffektivitetResponse>(url, JsonOptions, ct).ConfigureAwait(false);
+        return resp ?? throw new InvalidOperationException("Tom respons fra /effektivitet.");
+    }
+
     /// <summary>Bygger nedlastings-URL for CSV-eksport (åpnes direkte i ny fane).</summary>
     public Uri BuildCsvUri(string plantId, string endpoint, DateTimeOffset fromUtc, DateTimeOffset toUtc)
     {
@@ -113,6 +121,32 @@ public sealed record VaktRoiEventDto(
     int OverflowTimerInCounterfactual,
     bool OverflowDataMissing,
     string Forklaring);
+
+public sealed record EffektivitetResponse(
+    string PlantId,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    int ProduksjonsTimer,
+    double SnittEtaPct,
+    double SweetSpotEffektKw,
+    double SweetSpotEtaPct,
+    double SnittSpesifiktVannforbrukM3PerKwh,
+    double TotalProduksjonKwh,
+    bool DataMissing,
+    IReadOnlyList<EffektivitetPunkt> Punkter,
+    IReadOnlyList<EffektivitetBin> Bins);
+
+public sealed record EffektivitetPunkt(
+    DateTimeOffset TimeUtc,
+    double EffektKw,
+    double EtaPct,
+    double VannforingM3PerS);
+
+public sealed record EffektivitetBin(
+    double EffektKwStart,
+    double EffektKwMid,
+    int Antall,
+    double SnittEtaPct);
 
 public sealed record VaktRoiResponse(
     string PlantId,

@@ -1,0 +1,194 @@
+using KraftverkUptime.Core.Domain;
+using KraftverkUptime.Modules.Scada.Repositories;
+using Microsoft.Extensions.Logging;
+
+namespace KraftverkUptime.Modules.Reporting.Effektivitet;
+
+/// <summary>
+/// Standard <see cref="IEffectivityQueryService"/>: aggregerer SCADA-time-rader
+/// fra signal-rolle-mapping og bygger η(P)-histogram + KPI-er.
+///
+/// Sweet-spot finnes algoritmisk: SCADA-rådata bin'es i <see cref="PowerBinKw"/>-
+/// brede effekt-intervaller, snitt-virkningsgrad beregnes per bin med &gt;
+/// <see cref="MinSamplesPerBin"/> samples, og bin'en med høyest snitt vinner.
+/// </summary>
+public sealed class EffektivitetQueryService : IEffectivityQueryService
+{
+    /// <summary>Effekt under denne ignoreres som "ikke-produksjon" (kW).</summary>
+    public const double ProductionThresholdKw = 50;
+
+    /// <summary>Bredde på effekt-bin i kW for sweet-spot-deteksjon.</summary>
+    public const double PowerBinKw = 200;
+
+    /// <summary>Minimum antall samples i en bin før den vurderes som sweet-spot-kandidat.</summary>
+    public const int MinSamplesPerBin = 3;
+
+    private readonly ISignalMapRepository _signalMaps;
+    private readonly IScadaSampleRepository _samples;
+    private readonly ILogger<EffektivitetQueryService> _log;
+
+    public EffektivitetQueryService(
+        ISignalMapRepository signalMaps,
+        IScadaSampleRepository samples,
+        ILogger<EffektivitetQueryService> log)
+    {
+        _signalMaps = signalMaps ?? throw new ArgumentNullException(nameof(signalMaps));
+        _samples = samples ?? throw new ArgumentNullException(nameof(samples));
+        _log = log ?? throw new ArgumentNullException(nameof(log));
+    }
+
+    public async Task<EffektivitetResponse> GetAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        if (toUtc <= fromUtc)
+        {
+            return Empty(plantId, fromUtc, toUtc, dataMissing: false);
+        }
+
+        var powerSignal = await _signalMaps
+            .GetSignalIdForRoleAsync(plantId, SignalRole.GeneratorActivePower, ct)
+            .ConfigureAwait(false);
+        var etaSignal = await _signalMaps
+            .GetSignalIdForRoleAsync(plantId, SignalRole.TurbineEfficiency, ct)
+            .ConfigureAwait(false);
+        var flowSignal = await _signalMaps
+            .GetSignalIdForRoleAsync(plantId, SignalRole.TurbineWaterFlow, ct)
+            .ConfigureAwait(false);
+
+        if (powerSignal is null || etaSignal is null || flowSignal is null)
+        {
+            _log.LogInformation(
+                "Effektivitet for {PlantId}: mangler SCADA-rolle (power={P}, eta={E}, flow={F}).",
+                plantId, powerSignal, etaSignal, flowSignal);
+            return Empty(plantId, fromUtc, toUtc, dataMissing: true);
+        }
+
+        var samples = await _samples
+            .ListAsync(plantId, new[] { powerSignal, etaSignal, flowSignal }, fromUtc, toUtc, ct)
+            .ConfigureAwait(false);
+
+        if (samples.Count == 0)
+        {
+            return Empty(plantId, fromUtc, toUtc, dataMissing: true);
+        }
+
+        // Pivot: gruppere per time-stamp slik at hver rad har (P, η, Q).
+        // SCADA-aggregat er allerede time-aligned (én rad per signal per
+        // klokketime), så string-equality på TimeUtc er trygg.
+        var byHour = new Dictionary<DateTimeOffset, (double? P, double? Eta, double? Q)>();
+        foreach (var s in samples)
+        {
+            byHour.TryGetValue(s.TimeUtc, out var current);
+            if (s.SignalId == powerSignal) current.P = s.Value;
+            else if (s.SignalId == etaSignal) current.Eta = s.Value;
+            else if (s.SignalId == flowSignal) current.Q = s.Value;
+            byHour[s.TimeUtc] = current;
+        }
+
+        var punkter = new List<EffektivitetPunkt>(byHour.Count);
+        double sumEtaPct = 0;
+        var sumP_kWh = 0.0;       // summen av P_kW × 1 t = kWh
+        var sumQ_m3 = 0.0;        // summen av Q_m³/s × 3600 s = m³
+
+        foreach (var (time, vals) in byHour.OrderBy(kv => kv.Key))
+        {
+            if (!vals.P.HasValue || !vals.Eta.HasValue || !vals.Q.HasValue) continue;
+            if (vals.P.Value < ProductionThresholdKw) continue;
+
+            punkter.Add(new EffektivitetPunkt(
+                TimeUtc: time,
+                EffektKw: vals.P.Value,
+                EtaPct: vals.Eta.Value,
+                VannforingM3PerS: vals.Q.Value));
+
+            sumEtaPct += vals.Eta.Value;
+            sumP_kWh += vals.P.Value;        // 1 hour × kW = kWh
+            sumQ_m3 += vals.Q.Value * 3600;
+        }
+
+        if (punkter.Count == 0)
+        {
+            return Empty(plantId, fromUtc, toUtc, dataMissing: false);
+        }
+
+        var snittEta = sumEtaPct / punkter.Count;
+        var svf = sumP_kWh > 0 ? sumQ_m3 / sumP_kWh : 0;
+
+        var bins = ComputeBins(punkter);
+        var (sweetSpotKw, sweetSpotEta) = FindSweetSpot(bins);
+
+        return new EffektivitetResponse(
+            PlantId: plantId,
+            FromUtc: fromUtc,
+            ToUtc: toUtc,
+            ProduksjonsTimer: punkter.Count,
+            SnittEtaPct: snittEta,
+            SweetSpotEffektKw: sweetSpotKw,
+            SweetSpotEtaPct: sweetSpotEta,
+            SnittSpesifiktVannforbrukM3PerKwh: svf,
+            TotalProduksjonKwh: sumP_kWh,
+            DataMissing: false,
+            Punkter: punkter,
+            Bins: bins);
+    }
+
+    /// <summary>
+    /// Bin'er punkter på <see cref="PowerBinKw"/>-brede effekt-intervaller og
+    /// returnerer ikke-tomme bins sortert på start-effekt.
+    /// </summary>
+    private static IReadOnlyList<EffektivitetBin> ComputeBins(IReadOnlyList<EffektivitetPunkt> punkter)
+    {
+        var grouped = new Dictionary<int, (int Count, double SumEta)>();
+        foreach (var p in punkter)
+        {
+            var bucketIndex = (int)Math.Floor(p.EffektKw / PowerBinKw);
+            grouped.TryGetValue(bucketIndex, out var current);
+            current.Count++;
+            current.SumEta += p.EtaPct;
+            grouped[bucketIndex] = current;
+        }
+
+        var bins = new List<EffektivitetBin>(grouped.Count);
+        foreach (var (idx, agg) in grouped.OrderBy(kv => kv.Key))
+        {
+            var start = idx * PowerBinKw;
+            bins.Add(new EffektivitetBin(
+                EffektKwStart: start,
+                EffektKwMid: start + PowerBinKw / 2,
+                Antall: agg.Count,
+                SnittEtaPct: agg.SumEta / agg.Count));
+        }
+        return bins;
+    }
+
+    private static (double Kw, double EtaPct) FindSweetSpot(IReadOnlyList<EffektivitetBin> bins)
+    {
+        EffektivitetBin? best = null;
+        foreach (var bin in bins)
+        {
+            if (bin.Antall < MinSamplesPerBin) continue;
+            if (best is null || bin.SnittEtaPct > best.SnittEtaPct)
+            {
+                best = bin;
+            }
+        }
+        return best is null ? (0, 0) : (best.EffektKwMid, best.SnittEtaPct);
+    }
+
+    private static EffektivitetResponse Empty(
+        string plantId, DateTimeOffset from, DateTimeOffset to, bool dataMissing) =>
+        new(
+            PlantId: plantId,
+            FromUtc: from,
+            ToUtc: to,
+            ProduksjonsTimer: 0,
+            SnittEtaPct: 0,
+            SweetSpotEffektKw: 0,
+            SweetSpotEtaPct: 0,
+            SnittSpesifiktVannforbrukM3PerKwh: 0,
+            TotalProduksjonKwh: 0,
+            DataMissing: dataMissing,
+            Punkter: Array.Empty<EffektivitetPunkt>(),
+            Bins: Array.Empty<EffektivitetBin>());
+}
