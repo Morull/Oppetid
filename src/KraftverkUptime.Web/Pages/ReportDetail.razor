@@ -682,11 +682,18 @@ else
     /// og /vakt-roi automatisk får samme kontekst når brukeren navigerer dit.
     /// PeriodEndUtc er siste time-stempel (inklusiv); legger til 1 dag for å gi
     /// /nedetid en eksklusiv til-grense.
+    ///
+    /// Dato-Kind settes til Unspecified slik at <c>new DateTimeOffset(d, TimeSpan.Zero)</c>
+    /// i Nedetid/VaktRoi senere ikke kaster Argument_OffsetLocalMismatch.
+    /// Local-kind krever lokal-offset, Utc-kind krever offset=Zero,
+    /// Unspecified godtar begge.
     /// </summary>
     private void SyncFilterState(UptimeReportSummary report)
     {
         Filter.PlantId = report.PlantId;
-        Filter.FromDate = report.PeriodStartUtc.UtcDateTime.ToLocalTime().Date;
-        Filter.ToDate = report.PeriodEndUtc.UtcDateTime.ToLocalTime().Date.AddDays(1);
+        Filter.FromDate = DateTime.SpecifyKind(
+            report.PeriodStartUtc.UtcDateTime.ToLocalTime().Date, DateTimeKind.Unspecified);
+        Filter.ToDate = DateTime.SpecifyKind(
+            report.PeriodEndUtc.UtcDateTime.ToLocalTime().Date.AddDays(1), DateTimeKind.Unspecified);
     }
 }
