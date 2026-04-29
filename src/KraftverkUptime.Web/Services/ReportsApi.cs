@@ -33,6 +33,24 @@ public sealed class ReportsApi
         return env?.Items ?? (IReadOnlyList<PlantDto>)Array.Empty<PlantDto>();
     }
 
+    public async Task<PlantDto?> GetPlantAsync(string plantId, CancellationToken ct = default)
+    {
+        var uri = new Uri($"api/v1/plants/{Uri.EscapeDataString(plantId)}", UriKind.Relative);
+        var resp = await _http.GetAsync(uri, ct).ConfigureAwait(false);
+        if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<PlantDto>(JsonOptions, ct).ConfigureAwait(false);
+    }
+
+    public async Task<PlantDto> UpdatePlantAsync(string plantId, UpdatePlantRequest body, CancellationToken ct = default)
+    {
+        var uri = new Uri($"api/v1/plants/{Uri.EscapeDataString(plantId)}", UriKind.Relative);
+        var resp = await _http.PutAsJsonAsync(uri, body, JsonOptions, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<PlantDto>(JsonOptions, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Tom respons fra plant-update.");
+    }
+
     public async Task<IReadOnlyList<SettlementImportSummary>> ListSettlementsAsync(
         string plantId,
         DateTimeOffset? fromUtc = null,
@@ -179,6 +197,13 @@ public sealed class ReportsApi
 
 public sealed record PlantDto(
     string Id, string Name, string Type, double InstalledCapacityMw, string TimeZone);
+
+/// <summary>
+/// Body for <c>PUT /api/v1/plants/{plantId}</c>. <see cref="Type"/> er enum-string —
+/// "Regulated", "RunOfRiver", "Mixed" eller "Pumped".
+/// </summary>
+public sealed record UpdatePlantRequest(
+    string Name, string Type, double InstalledCapacityMw, string TimeZone);
 
 public sealed record PagedEnvelope<T>(
     IReadOnlyList<T> Items, string? NextCursor, int PageSize);

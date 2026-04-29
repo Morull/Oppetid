@@ -1,0 +1,152 @@
+@page "/plants/{PlantId}/admin"
+@inject ReportsApi Api
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>@($"Admin: {_form?.Name ?? PlantId}")</PageTitle>
+
+<MudGrid Class="mb-4">
+    <MudItem xs="12">
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
+                   Href="/plants" Class="mb-2">
+            Tilbake til anlegg
+        </MudButton>
+        <MudText Typo="Typo.h1">Admin: @PlantId</MudText>
+        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+            Oppdater kanonisk navn, type, installert effekt og tidssone for anlegget.
+            Brukes typisk for å fylle inn <strong>InstalledCapacityMw</strong> for nye
+            auto-opprettede anlegg.
+        </MudText>
+    </MudItem>
+</MudGrid>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+    <MudText Class="ml-2 d-inline">Henter…</MudText>
+}
+else if (_form is null)
+{
+    <MudAlert Severity="Severity.Error">@(_loadError ?? "Anlegget ble ikke funnet.")</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4" Elevation="1" Style="max-width:680px;">
+        <MudStack Spacing="3">
+            <MudTextField Label="Plant-ID" Value="@PlantId" Disabled="true"
+                          Variant="Variant.Outlined"
+                          HelperText="Slug-en endres ikke. Slett og opprett på nytt for ny ID." />
+
+            <MudTextField @bind-Value="_form.Name" Label="Navn (kanonisk, med æ/ø/å)"
+                          Required="true" Variant="Variant.Outlined" />
+
+            <MudSelect T="string" @bind-Value="_form.Type" Label="Type"
+                       Variant="Variant.Outlined" Required="true">
+                <MudSelectItem Value="@("Regulated")">Regulated (magasinkraft)</MudSelectItem>
+                <MudSelectItem Value="@("RunOfRiver")">RunOfRiver (elvekraft)</MudSelectItem>
+                <MudSelectItem Value="@("Mixed")">Mixed (kombinasjon)</MudSelectItem>
+                <MudSelectItem Value="@("Pumped")">Pumped (pumpekraft)</MudSelectItem>
+            </MudSelect>
+
+            <MudNumericField T="double" @bind-Value="_form.InstalledCapacityMw"
+                             Label="Installert effekt (MW)"
+                             Min="0" Max="1000" Step="0.1" Format="F2"
+                             Required="true" Variant="Variant.Outlined"
+                             HelperText="0 = krever oppsett. Vakt-ROI gir 0 NOK for anlegg uten kapasitet." />
+
+            <MudTextField @bind-Value="_form.TimeZone" Label="Tidssone (IANA)"
+                          Required="true" Variant="Variant.Outlined"
+                          HelperText="F.eks. Europe/Oslo. Påvirker DST-tolkning av settlement-data." />
+
+            <div class="d-flex justify-end" style="gap:8px;">
+                <MudButton Variant="Variant.Text" Href="/plants">Avbryt</MudButton>
+                <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Save"
+                           OnClick="OnSaveAsync" Disabled="@_saving">
+                    @(_saving ? "Lagrer…" : "Lagre")
+                </MudButton>
+            </div>
+
+            @if (_saveError is not null)
+            {
+                <MudAlert Severity="Severity.Error">@_saveError</MudAlert>
+            }
+        </MudStack>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public string PlantId { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private bool _saving;
+    private string? _loadError;
+    private string? _saveError;
+    private FormModel? _form;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var plant = await Api.GetPlantAsync(PlantId);
+            if (plant is null)
+            {
+                _loadError = $"Anlegget '{PlantId}' eksisterer ikke.";
+            }
+            else
+            {
+                _form = new FormModel
+                {
+                    Name = plant.Name,
+                    Type = plant.Type,
+                    InstalledCapacityMw = plant.InstalledCapacityMw,
+                    TimeZone = plant.TimeZone,
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            _loadError = $"Kunne ikke hente anlegg: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnSaveAsync()
+    {
+        if (_form is null) return;
+        _saving = true;
+        _saveError = null;
+        try
+        {
+            var body = new UpdatePlantRequest(_form.Name, _form.Type, _form.InstalledCapacityMw, _form.TimeZone);
+            await Api.UpdatePlantAsync(PlantId, body);
+            Snackbar.Add($"{_form.Name} oppdatert.", Severity.Success);
+            Nav.NavigateTo("/plants");
+        }
+        catch (HttpRequestException ex)
+        {
+            _saveError = $"Lagring feilet: {ex.Message}";
+            Snackbar.Add(_saveError, Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            _saveError = $"Uventet feil: {ex.Message}";
+            Snackbar.Add(_saveError, Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private sealed class FormModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Type { get; set; } = "Regulated";
+        public double InstalledCapacityMw { get; set; }
+        public string TimeZone { get; set; } = "Europe/Oslo";
+    }
+}

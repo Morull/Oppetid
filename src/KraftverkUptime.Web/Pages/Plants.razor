@@ -157,6 +157,13 @@ else
                                            @onclick:stopPropagation="true">
                                     Rapporter
                                 </MudButton>
+                                <MudButton Variant="Variant.Text"
+                                           Color="@(p.InstalledCapacityMw <= 0 ? MudBlazor.Color.Error : MudBlazor.Color.Default)"
+                                           StartIcon="@Icons.Material.Filled.Settings"
+                                           Href="@($"plants/{plantId}/admin")"
+                                           @onclick:stopPropagation="true">
+                                    Admin
+                                </MudButton>
                                 @if (state.LastUpload is not null)
                                 {
                                     <MudSpacer />
