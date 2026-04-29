@@ -138,6 +138,14 @@ public sealed class ScadaMasterCsvParser
         {
             // Mark as Unspecified, then attach plant tz, then convert to UTC.
             var unspec = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
+
+            // DST-spring: 02:00-02:59 eksisterer ikke i Europe/Oslo den siste
+            // søndagen i mars. Skip dem framfor å mappe til samme UTC som 03:00.
+            if (tz.IsInvalidTime(unspec))
+            {
+                return false;
+            }
+
             try
             {
                 utc = new DateTimeOffset(unspec, tz.GetUtcOffset(unspec)).ToUniversalTime();
@@ -145,7 +153,15 @@ public sealed class ScadaMasterCsvParser
             }
             catch (ArgumentException)
             {
-                // Tvetydig DST-tid — bruk standard offset
+                // Tvetydig DST-tid (oktober) — bruk DST-offset (sommertid, første forekomst)
+                if (tz.IsAmbiguousTime(unspec))
+                {
+                    var offsets = tz.GetAmbiguousTimeOffsets(unspec);
+                    var pick = offsets[0];
+                    foreach (var o in offsets) { if (o > pick) pick = o; }
+                    utc = new DateTimeOffset(unspec, pick).ToUniversalTime();
+                    return true;
+                }
                 utc = new DateTimeOffset(unspec, tz.BaseUtcOffset).ToUniversalTime();
                 return true;
             }

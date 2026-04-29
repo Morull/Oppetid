@@ -25,25 +25,35 @@ public sealed class EfScadaSampleRepository : IScadaSampleRepository
         ArgumentNullException.ThrowIfNull(samples);
         if (samples.Count == 0) return 0;
 
+        // Dedupliser input mot (AssetId, SignalId, TimeUtc) — siste verdi vinner.
+        // Beskytter mot DST-overgangs-edge-cases der parser-en kan produsere
+        // duplikater hvis datakilden inneholder både 02:00 og 03:00 lokal i
+        // mars-overgangen.
+        var deduped = new Dictionary<(string, string, DateTimeOffset), ScadaSample>(samples.Count);
+        foreach (var s in samples)
+        {
+            deduped[(s.AssetId, s.SignalId, s.TimeUtc)] = s;
+        }
+
         // Idempotens via upsert: vi sletter eksisterende rader for de
         // (asset_id, signal_id, time_utc)-kombinasjonene vi skal skrive,
         // og setter dem inn på nytt. Holder API-kontrakten enkel.
-        var assetIds = samples.Select(s => s.AssetId).Distinct().ToList();
-        var minTime = samples.Min(s => s.TimeUtc);
-        var maxTime = samples.Max(s => s.TimeUtc);
+        var assetIds = deduped.Values.Select(s => s.AssetId).Distinct().ToList();
+        var minTime = deduped.Values.Min(s => s.TimeUtc);
+        var maxTime = deduped.Values.Max(s => s.TimeUtc);
 
         var existing = await _db.SampleFacts
             .Where(x => assetIds.Contains(x.AssetId) && x.TimeUtc >= minTime && x.TimeUtc <= maxTime)
             .ToListAsync(ct).ConfigureAwait(false);
 
-        var keys = samples.Select(s => (s.AssetId, s.SignalId, s.TimeUtc)).ToHashSet();
+        var keys = new HashSet<(string, string, DateTimeOffset)>(deduped.Keys);
         var toRemove = existing.Where(e => keys.Contains((e.AssetId, e.SignalId, e.TimeUtc))).ToList();
         if (toRemove.Count > 0)
         {
             _db.SampleFacts.RemoveRange(toRemove);
         }
 
-        foreach (var s in samples)
+        foreach (var s in deduped.Values)
         {
             _db.SampleFacts.Add(new SampleFactEntry
             {
@@ -56,7 +66,7 @@ public sealed class EfScadaSampleRepository : IScadaSampleRepository
         }
 
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
-        return samples.Count;
+        return deduped.Count;
     }
 
     public async Task<IReadOnlyList<ScadaSample>> ListAsync(
