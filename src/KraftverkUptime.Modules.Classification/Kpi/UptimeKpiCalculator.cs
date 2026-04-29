@@ -52,6 +52,14 @@ public sealed class UptimeKpiCalculator
         int foh = stateCounts.GetValueOrDefault(UnitState.ForcedOutage);
         int oos = stateCounts.GetValueOrDefault(UnitState.ReserveShutdown);
         int iuh = stateCounts.GetValueOrDefault(UnitState.InformationUnavailable);
+        int poh = stateCounts.GetValueOrDefault(UnitState.PlannedOutage);
+        int moh = stateCounts.GetValueOrDefault(UnitState.MaintenanceOutage);
+        int forcedDerating = stateCounts.GetValueOrDefault(UnitState.ForcedDerating);
+        int plannedDerating = stateCounts.GetValueOrDefault(UnitState.PlannedDerating);
+        int resourceUnavailable = stateCounts.GetValueOrDefault(UnitState.ResourceUnavailable);
+
+        // Event-counting for MTBF/MTTR: tell sammenhengende blokker av ForcedOutage-timer.
+        var foEvents = CountStateEvents(classified, UnitState.ForcedOutage);
 
         var kpis = new List<KpiResult>();
 
@@ -69,6 +77,38 @@ public sealed class UptimeKpiCalculator
         kpis.Add(new("AvailabilityFactor_AF",
             SafeRatio(sh, sh + foh), "ratio", sh + foh, avgConf, "drift",
             "AF = SH / (SH + FOH). Andel av forpliktede timer hvor verket faktisk leverte."));
+
+        // -------------------------------------------------------------------
+        // EVENT-BASERTE KPI-er (Steg 4 i veikartet) — MTBF/MTTR/FOR/EAF
+        // -------------------------------------------------------------------
+        // FOR (Forced Outage Rate) = FOH / (FOH + SH) per IEEE 762.
+        // Skiller seg fra (1 − AF) ved at den ikke teller med Reserve/Planned/Maintenance.
+        kpis.Add(new("ForcedOutageRate_FOR",
+            SafeRatio(foh, foh + sh), "ratio", foh + sh, avgConf, "drift",
+            "FOR = FOH / (FOH + SH). Andel av forpliktede timer som var uvarslede stopp."));
+
+        // EAF (Equivalent Availability Factor) korrigert for derating:
+        //   EAF = (AH − POH − MOH − EFDH) / period_hours
+        //   AH = total_period − FOH − ResourceUnavailable
+        //   EFDH = 0.5 × (ForcedDerating + PlannedDerating)  (proxy: 50 % effekt-tap)
+        // Hvis vi ikke har derating-data blir EFDH=0 og EAF reduserer naturlig til (AH − POH − MOH) / period.
+        var availableHours = ph - foh - resourceUnavailable;
+        var efdh = 0.5 * (forcedDerating + plannedDerating);
+        var eaf = ph == 0 ? (double?)null : (availableHours - poh - moh - efdh) / (double)ph;
+        kpis.Add(new("EquivalentAvailabilityFactor_EAF",
+            eaf, "ratio", ph, avgConf, "drift",
+            "EAF = (AH − POH − MOH − EFDH) / period_hours. Tilgjengelig kapasitet justert for derating."));
+
+        // MTBF (Mean Time Between Failures) = total drift-timer / antall FO-events
+        // MTTR (Mean Time To Repair) = total FO-timer / antall FO-events
+        kpis.Add(new("ForcedOutageEvents", foEvents, "events", ph, avgConf, "drift",
+            "Antall sammenhengende blokker av ForcedOutage-timer i perioden."));
+        kpis.Add(new("MTBF_hours",
+            foEvents == 0 ? null : (double?)sh / foEvents, "hours", ph, avgConf, "drift",
+            "Mean Time Between Failures = SH / FO-events. Snitt-tid med drift mellom havari."));
+        kpis.Add(new("MTTR_hours",
+            foEvents == 0 ? null : (double?)foh / foEvents, "hours", ph, avgConf, "drift",
+            "Mean Time To Repair = FOH / FO-events. Snitt-varighet av et havari."));
 
         // -------------------------------------------------------------------
         // MARKED — leverte vi det vi lovet day-ahead?
@@ -199,5 +239,32 @@ public sealed class UptimeKpiCalculator
     {
         if (den == 0 || double.IsNaN(den)) return null;
         return num / den;
+    }
+
+    /// <summary>
+    /// Teller hvor mange sammenhengende blokker en gitt state har i sekvensen.
+    /// To rader med samme state regnes som samme event hvis de er nabotimer
+    /// (forrige + 1 t = neste). State-bytte og time-hopp avslutter event'et.
+    /// </summary>
+    public static int CountStateEvents(IReadOnlyList<ClassifiedHourlyRow> classified, UnitState state)
+    {
+        if (classified.Count == 0) return 0;
+        var sorted = classified.OrderBy(c => c.TimeUtc).ToList();
+        var events = 0;
+        DateTimeOffset? prevHour = null;
+        foreach (var row in sorted)
+        {
+            if (row.State != state)
+            {
+                prevHour = null;
+                continue;
+            }
+            if (prevHour is null || row.TimeUtc != prevHour.Value.AddHours(1))
+            {
+                events++;
+            }
+            prevHour = row.TimeUtc;
+        }
+        return events;
     }
 }
