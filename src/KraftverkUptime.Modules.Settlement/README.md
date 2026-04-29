@@ -1,7 +1,10 @@
 # KraftverkUptime.Modules.Settlement
 
-Leser månedlig oppgjørseksport fra Elhub/eSett-portalen (Excel) og produserer
-normalisert tidsserie + datakvalitetsrapport. Dette er Nivå-0-dataen som
+Leser månedlig oppgjørseksport fra **KAIA-portalen** (Excel) og produserer
+normalisert tidsserie + datakvalitetsrapport. KAIA aggregerer underliggende
+data fra Elhub (målt produksjon), eSett (ubalanse-oppgjør) og Nord Pool
+(spotpris) — kolonnenavnene i eksporten beholder Elhub/eSett-terminologi
+fordi KAIA bruker dem som-er. Dette er Nivå-0-dataen som
 `UptimeAnalyzer.Settlement` bygger klassifisering og KPI-er på.
 
 ## Designvalg

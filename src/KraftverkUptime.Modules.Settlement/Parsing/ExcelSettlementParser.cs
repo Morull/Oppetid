@@ -10,7 +10,11 @@ using Microsoft.Extensions.Logging;
 namespace KraftverkUptime.Modules.Settlement.Parsing;
 
 /// <summary>
-/// Konkret parser for månedlig portaleksport-Excel.
+/// Konkret parser for månedlig KAIA-portaleksport-Excel. KAIA aggregerer
+/// data fra Elhub (målt produksjon), eSett (ubalanse-oppgjør) og Nord Pool
+/// (spotpris) til ett felles oppgjør per måned. Kolonnenavnene
+/// (<c>MWh-Elhub</c>, <c>MWh-eSett</c> osv.) beholder originaltermene siden
+/// det er KAIA sin valgte eksport-navngiving.
 ///
 /// Strukturen i filen (per v1-skjema):
 ///  – Første fane = Summering (aggregater for hele perioden).

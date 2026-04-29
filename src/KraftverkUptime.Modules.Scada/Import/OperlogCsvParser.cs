@@ -4,8 +4,9 @@ using KraftverkUptime.Core.Domain;
 namespace KraftverkUptime.Modules.Scada.Import;
 
 /// <summary>
-/// Parser for Drivdal-format operlog-CSV. Eventer fra SCADA-operatorlog
-/// og alarm-tabellen, med sekund-presisjon på timestamps.
+/// Parser for KraftScada operlog-CSV. Eventer fra operatorlog og alarm-tabellen,
+/// med sekund-presisjon på timestamps. Anlegg-uavhengig — fungerer for alle
+/// stasjoner i KraftScada-eksporten via station-feltet (se <see cref="ParseMultiPlant"/>).
 ///
 /// Format (verifisert mot operlog-export-2026-04-28...csv):
 /// <code>

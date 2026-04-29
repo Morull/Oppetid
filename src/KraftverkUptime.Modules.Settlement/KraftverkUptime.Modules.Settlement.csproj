@@ -3,7 +3,7 @@
   <PropertyGroup>
     <RootNamespace>KraftverkUptime.Modules.Settlement</RootNamespace>
     <AssemblyName>KraftverkUptime.Modules.Settlement</AssemblyName>
-    <Description>Parser for Elhub/eSett-portaleksport. Leser månedlig oppgjørs-Excel, validerer skjema, produserer normalisert tidsserie + datakvalitetsrapport.</Description>
+    <Description>Parser for KAIA-portaleksport (oppgjørsdata aggregert fra Elhub/eSett/Nord Pool). Leser månedlig oppgjørs-Excel, validerer skjema, produserer normalisert tidsserie + datakvalitetsrapport.</Description>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 

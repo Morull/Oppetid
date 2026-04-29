@@ -5,9 +5,11 @@ using KraftverkUptime.Core.Domain;
 namespace KraftverkUptime.Modules.Scada.Import;
 
 /// <summary>
-/// Parser for Drivdal-format SCADA master-CSV.
+/// Parser for KraftScada master-CSV (time-aggregert tidsserie-eksport).
+/// Anlegg-uavhengig — kolonne-prefikset (Cluster1.NAME) brukes til å
+/// identifisere signal_id og er agnostisk for plantnavn.
 ///
-/// Format (verifisert mot eksport-22-tags-avg-hour-...csv):
+/// Format (verifisert mot eksport-22-tags-avg-hour-...csv fra Drivdal):
 /// <code>
 ///   DateTime;Value (Cluster1.NAME1);Unit (Cluster1.NAME1);Value (Cluster1.NAME2);...
 ///   2026-02-01 10:00:00.000;151.0027;moh;0.084;m3/s;...
