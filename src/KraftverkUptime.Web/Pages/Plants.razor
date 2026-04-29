@@ -8,7 +8,7 @@
 <div class="d-flex justify-space-between align-center mb-4">
     <MudText Typo="Typo.h1">Anlegg</MudText>
     <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
-        Tips: dra en Excel-fil rett på anleggs-kortet for å starte rapport-generering.
+        Tips: dra Excel (avregning) eller CSV (SCADA / operlog) rett på anleggs-kortet.
     </MudText>
 </div>
 
@@ -41,7 +41,7 @@ else
             var state = GetState(plantId);
             <MudItem xs="12" sm="6" md="4">
                 <MudFileUpload T="IBrowserFile"
-                               Accept=".xlsx,.xls"
+                               Accept=".xlsx,.xls,.csv"
                                MaximumFileCount="1"
                                FilesChanged="@(file => OnFileDroppedAsync(plantId, file))"
                                Hidden="@false"
@@ -83,10 +83,10 @@ else
                                     <MudProgressLinear Color="MudBlazor.Color.Primary" Indeterminate="true" Class="mt-3" />
                                     <MudText Typo="Typo.caption" Class="mt-1">Laster opp @state.FileName…</MudText>
                                 }
-                                else if (state.LastUpload is not null)
+                                else if (state.LastSuccessMessage is not null)
                                 {
                                     <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3">
-                                        Mottatt — klassifisering pågår.
+                                        @state.LastSuccessMessage
                                     </MudAlert>
                                 }
                                 else if (state.Error is not null)
@@ -173,12 +173,11 @@ else
             return;
         }
 
-        // Light validation før vi forplikter oss til en stream.
         var name = file.Name;
-        if (!name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)
-            && !name.EndsWith(".xls", StringComparison.OrdinalIgnoreCase))
+        var kind = DetectKind(name);
+        if (kind is null)
         {
-            state.Error = $"Filtype ikke støttet: {name}. Kun .xlsx aksepteres.";
+            state.Error = $"Filtype ikke støttet: {name}. Aksepterer .xlsx (avregning) og .csv (SCADA / operlog).";
             StateHasChanged();
             return;
         }
@@ -193,19 +192,46 @@ else
         state.FileName = name;
         state.Error = null;
         state.LastUpload = null;
+        state.LastSuccessMessage = null;
         StateHasChanged();
 
         try
         {
             await using var stream = file.OpenReadStream(MaxUploadBytes);
-            var contentType = string.IsNullOrWhiteSpace(file.ContentType)
-                ? XlsxContentType
-                : file.ContentType;
 
-            state.LastUpload = await Api.UploadSettlementAsync(plantId, stream, name, contentType);
-            Snackbar.Add(
-                $"{name} mottatt for {plantId} — klassifisering pågår.",
-                Severity.Success);
+            switch (kind)
+            {
+                case UploadKind.Settlement:
+                {
+                    var contentType = string.IsNullOrWhiteSpace(file.ContentType)
+                        ? XlsxContentType
+                        : file.ContentType;
+                    state.LastUpload = await Api.UploadSettlementAsync(plantId, stream, name, contentType);
+                    state.LastSuccessMessage = "Avregning mottatt — klassifisering pågår.";
+                    Snackbar.Add($"{name} mottatt for {plantId} — klassifisering pågår.", Severity.Success);
+                    break;
+                }
+                case UploadKind.ScadaMaster:
+                {
+                    var result = await Api.UploadScadaMasterAsync(plantId, stream, name);
+                    state.LastSuccessMessage =
+                        $"SCADA master importert: {result.SamplesWritten} samples, {result.SignalCount} signaler.";
+                    Snackbar.Add(
+                        $"{name}: {result.SamplesWritten} samples for {result.SignalCount} signaler.",
+                        Severity.Success);
+                    break;
+                }
+                case UploadKind.ScadaOperlog:
+                {
+                    var result = await Api.UploadScadaOperlogAsync(plantId, stream, name);
+                    state.LastSuccessMessage =
+                        $"Operlog importert: {result.EventsWritten} events ({result.RowsSkipped} skippet).";
+                    Snackbar.Add(
+                        $"{name}: {result.EventsWritten} operlog-events skrevet.",
+                        Severity.Success);
+                    break;
+                }
+            }
         }
         catch (HttpRequestException ex)
         {
@@ -225,6 +251,37 @@ else
         }
     }
 
+    /// <summary>
+    /// Bestemmer hvilket endepunkt en fil skal sendes til ut fra navnet:
+    /// <list type="bullet">
+    ///   <item>.xlsx/.xls → settlement (avregning)</item>
+    ///   <item>.csv med "operlog" i filnavnet → SCADA operlog</item>
+    ///   <item>annen .csv → SCADA master (tidsserier)</item>
+    /// </list>
+    /// </summary>
+    private static UploadKind? DetectKind(string fileName)
+    {
+        if (fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)
+            || fileName.EndsWith(".xls", StringComparison.OrdinalIgnoreCase))
+        {
+            return UploadKind.Settlement;
+        }
+        if (fileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+        {
+            return fileName.Contains("operlog", StringComparison.OrdinalIgnoreCase)
+                ? UploadKind.ScadaOperlog
+                : UploadKind.ScadaMaster;
+        }
+        return null;
+    }
+
+    private enum UploadKind
+    {
+        Settlement,
+        ScadaMaster,
+        ScadaOperlog,
+    }
+
     private static MudBlazor.Color TypeColor(string type) => type switch
     {
         "Regulated" => MudBlazor.Color.Primary,
@@ -240,5 +297,7 @@ else
         public string? FileName { get; set; }
         public string? Error { get; set; }
         public SettlementUploadResponse? LastUpload { get; set; }
+        /// <summary>Vises i kortet etter siste vellykkede opplasting (uavhengig av type).</summary>
+        public string? LastSuccessMessage { get; set; }
     }
 }

@@ -104,6 +104,52 @@ public sealed class ReportsApi
             .ConfigureAwait(false);
         return body ?? throw new InvalidOperationException("Tom respons fra upload-endepunkt.");
     }
+
+    /// <summary>
+    /// Laster opp SCADA master-CSV (tidsserier). Speiler API-endepunktet
+    /// <c>POST /api/v1/plants/{plantId}/scada</c>.
+    /// </summary>
+    public async Task<ScadaImportResultDto> UploadScadaMasterAsync(
+        string plantId, Stream fileStream, string fileName, CancellationToken ct = default)
+    {
+        var resp = await PostScadaCsvAsync(
+            $"api/v1/plants/{Uri.EscapeDataString(plantId)}/scada",
+            fileStream, fileName, ct).ConfigureAwait(false);
+        return await resp.Content
+            .ReadFromJsonAsync<ScadaImportResultDto>(JsonOptions, ct)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Tom respons fra SCADA master-upload.");
+    }
+
+    /// <summary>
+    /// Laster opp SCADA operlog-CSV (events). Speiler API-endepunktet
+    /// <c>POST /api/v1/plants/{plantId}/scada/operlog</c>.
+    /// </summary>
+    public async Task<OperlogImportResultDto> UploadScadaOperlogAsync(
+        string plantId, Stream fileStream, string fileName, CancellationToken ct = default)
+    {
+        var resp = await PostScadaCsvAsync(
+            $"api/v1/plants/{Uri.EscapeDataString(plantId)}/scada/operlog",
+            fileStream, fileName, ct).ConfigureAwait(false);
+        return await resp.Content
+            .ReadFromJsonAsync<OperlogImportResultDto>(JsonOptions, ct)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Tom respons fra SCADA operlog-upload.");
+    }
+
+    private async Task<HttpResponseMessage> PostScadaCsvAsync(
+        string relativeUrl, Stream fileStream, string fileName, CancellationToken ct)
+    {
+        using var form = new MultipartFormDataContent();
+        using var fileContent = new StreamContent(fileStream);
+        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("text/csv");
+        form.Add(fileContent, "file", fileName);
+
+        var response = await _http.PostAsync(new Uri(relativeUrl, UriKind.Relative), form, ct)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return response;
+    }
 }
 
 // --------- DTO-er -----------------------------------------------------------
@@ -154,6 +200,19 @@ public sealed record KpiDto(
     double Confidence,
     string Category,
     string Definition);
+
+public sealed record ScadaImportResultDto(
+    string PlantId,
+    int SignalCount,
+    int RowsParsed,
+    int RowsSkipped,
+    int SamplesWritten);
+
+public sealed record OperlogImportResultDto(
+    string PlantId,
+    int RowsParsed,
+    int RowsSkipped,
+    int EventsWritten);
 
 public sealed record ClassifiedHourDto(
     DateTimeOffset TimeUtc,
