@@ -63,6 +63,13 @@ public enum SignalRole
     /// <summary>Falltap over inntaksrist (mm).</summary>
     GridFallLoss,
 
+    /// <summary>
+    /// Overløps-vannføring (m³/s). Verdi > 0 betyr at vann renner forbi turbinen
+    /// uten å produsere kraft — produksjon som ikke skjer mens denne er aktiv
+    /// kunne uansett ikke vært utnyttet.
+    /// </summary>
+    OverflowFlow,
+
     /// <summary>Tilstand-indikator (lager-temp, vikling-temp, olje-temp).</summary>
     ConditionTemperature,
 

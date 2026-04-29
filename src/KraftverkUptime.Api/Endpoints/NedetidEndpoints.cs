@@ -95,6 +95,7 @@ public static class NedetidEndpoints
         string? format,
         double? kapasitetsfaktor,
         INedetidQueryService nedetid,
+        IOverflowQueryService overflow,
         VaktRoiCalculator calculator,
         KraftverkDbContext db,
         IQueryContext queryContext,
@@ -130,7 +131,17 @@ public static class NedetidEndpoints
 
         var faktor = Math.Clamp(kapasitetsfaktor ?? 0.5, 0.0, 1.0);
 
-        var roi = calculator.Calculate(events, plant.InstalledCapacityMw, snittSpot, faktor);
+        // Overløps-justering: vakt-ROI gjelder kun timer der det var overløp i
+        // magasinet. Hent settet av overløps-timer + data-coverage for hele
+        // perioden i én spørring; calculator filtrerer per event mot settet.
+        // DataAvailable=false (tag mangler eller ingen samples i perioden)
+        // gir konservativt ROI=0 + flagger eventene som missing data.
+        var dataset = await overflow.GetOverflowDatasetAsync(plantId, fromUtc, toUtc, ct)
+            .ConfigureAwait(false);
+
+        var roi = calculator.Calculate(
+            events, plant.InstalledCapacityMw, snittSpot, faktor,
+            dataset.OverflowHours, overflowDataAvailable: dataset.DataAvailable);
         var response = BuildVaktRoiResponse(plantId, fromUtc, toUtc, plant.InstalledCapacityMw, snittSpot, faktor, roi);
 
         if (string.Equals(format, "csv", StringComparison.OrdinalIgnoreCase))
@@ -230,6 +241,8 @@ public static class NedetidEndpoints
             EkstraTimerSpart: r.EkstraTimerSpart,
             ReddetMwh: r.ReddetMwh,
             ReddetNok: r.ReddetNok,
+            OverflowTimerInCounterfactual: r.OverflowTimerInCounterfactual,
+            OverflowDataMissing: r.OverflowDataMissing,
             Forklaring: r.Forklaring)).ToList();
 
         var reddbareInnenfor = roi.Count(r => r.ErInnenforVakt && r.ErReddbar);
@@ -291,7 +304,7 @@ public static class NedetidEndpoints
     private static string BuildVaktRoiCsv(VaktRoiResponse r)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("start_utc;end_utc;varighet_t;state;kategori;cause_code;innenfor_vakt;reddbar;counterfactual_end;ekstra_timer;reddet_mwh;reddet_nok;forklaring");
+        sb.AppendLine("start_utc;end_utc;varighet_t;state;kategori;cause_code;innenfor_vakt;reddbar;counterfactual_end;ekstra_timer;overflow_timer;overflow_data_missing;reddet_mwh;reddet_nok;forklaring");
         foreach (var x in r.Events)
         {
             sb.Append(x.Event.StartUtc.UtcDateTime.ToString("o", CultureInfo.InvariantCulture)).Append(';');
@@ -304,6 +317,8 @@ public static class NedetidEndpoints
             sb.Append(x.ErReddbar ? "true" : "false").Append(';');
             sb.Append(x.CounterfactualEndUtc?.UtcDateTime.ToString("o", CultureInfo.InvariantCulture) ?? "").Append(';');
             sb.Append(x.EkstraTimerSpart.ToString("F2", CultureInfo.InvariantCulture)).Append(';');
+            sb.Append(x.OverflowTimerInCounterfactual).Append(';');
+            sb.Append(x.OverflowDataMissing ? "true" : "false").Append(';');
             sb.Append(x.ReddetMwh.ToString("F2", CultureInfo.InvariantCulture)).Append(';');
             sb.Append(x.ReddetNok.ToString("F0", CultureInfo.InvariantCulture)).Append(';');
             sb.AppendLine(EscapeCsv(x.Forklaring));

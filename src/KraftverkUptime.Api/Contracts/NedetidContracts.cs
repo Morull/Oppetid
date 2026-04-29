@@ -41,7 +41,9 @@ public sealed record NedetidKategoriSummary(
     double TotalTapNok);
 
 /// <summary>
-/// Wire-DTO for Vakt-ROI per event.
+/// Wire-DTO for Vakt-ROI per event. <see cref="OverflowTimerInCounterfactual"/>
+/// og <see cref="OverflowDataMissing"/> kommer fra spec 2026-04-29: ROI gjelder
+/// kun timer der det var overløp i magasinet i counterfactual-perioden.
 /// </summary>
 public sealed record VaktRoiEventDto(
     NedetidEventDto Event,
@@ -51,6 +53,8 @@ public sealed record VaktRoiEventDto(
     double EkstraTimerSpart,
     double ReddetMwh,
     double ReddetNok,
+    int OverflowTimerInCounterfactual,
+    bool OverflowDataMissing,
     string Forklaring);
 
 public sealed record VaktRoiResponse(

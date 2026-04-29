@@ -13,7 +13,7 @@
     <!-- NU1902 = moderate severity NuGet audit warning. TODO: bump
          OpenTelemetry-pakkene til 1.15.3+ for aa fjerne kilden, deretter
          kan NU1902 fjernes herfra. -->
-    <NoWarn>$(NoWarn);CS1591;CA1062;CA2007;CA1515;CA1711;CA1707;CA1822;CA1848;CA1873;CA1859;CA1861;CA1805;CA1031;CA1034;CA1056;CA1819;CA2227;CA1303;IDE0008;IDE0011;IDE0059;IDE0060;IDE0078;NU1902</NoWarn>
+    <NoWarn>$(NoWarn);CS1591;CA1003;CA1062;CA2007;CA1515;CA1711;CA1707;CA1822;CA1848;CA1873;CA1859;CA1861;CA1805;CA1031;CA1034;CA1056;CA1819;CA2227;CA1303;IDE0008;IDE0011;IDE0059;IDE0060;IDE0078;NU1902</NoWarn>
     <InvariantGlobalization>true</InvariantGlobalization>
     <Deterministic>true</Deterministic>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>

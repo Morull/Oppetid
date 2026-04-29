@@ -28,6 +28,7 @@ public sealed class ReportingModule : IPlatformModule
 
         // Nedetids-analyse + Vakt-ROI (priortet 1 i 2026-04-28-overleveringen).
         services.AddScoped<INedetidQueryService, NedetidQueryService>();
+        services.AddScoped<IOverflowQueryService, OverflowQueryService>();
         services.AddScoped<VaktRoiCalculator>();
     }
 }

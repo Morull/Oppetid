@@ -108,6 +108,8 @@ public sealed record VaktRoiEventDto(
     double EkstraTimerSpart,
     double ReddetMwh,
     double ReddetNok,
+    int OverflowTimerInCounterfactual,
+    bool OverflowDataMissing,
     string Forklaring);
 
 public sealed record VaktRoiResponse(

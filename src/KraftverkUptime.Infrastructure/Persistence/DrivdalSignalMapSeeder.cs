@@ -43,7 +43,7 @@ public static class DrivdalSignalMapSeeder
         ("DRIVDAL_INNTAK_MAGASIN_TOT_VF_PV",        "Cluster1.DRIVDAL_INNTAK_MAGASIN_TOT_VF_PV",        "m3/s",    SignalRole.Other),
         ("DRIVDAL_INNTAK_MINVF_LITER_PV",           "Cluster1.DRIVDAL_INNTAK_MINVF_LITER_PV",           "l/s",     SignalRole.Other),
         ("DRIVDAL_INNTAK_MINVF_CM_PV",              "Cluster1.DRIVDAL_INNTAK_MINVF_CM_PV",              "cm",      SignalRole.Other),
-        ("DRIVDAL_INNTAK_NIVA_OVERLOP_VF_PV",       "Cluster1.DRIVDAL_INNTAK_NIVA_OVERLOP_VF_PV",       "m3/s",    SignalRole.Other),
+        ("DRIVDAL_INNTAK_NIVA_OVERLOP_VF_PV",       "Cluster1.DRIVDAL_INNTAK_NIVA_OVERLOP_VF_PV",       "m3/s",    SignalRole.OverflowFlow),
 
         ("DRIVDAL_G1_KONTROLL_AGC_DB_SP",           "Cluster1.DRIVDAL_G1_KONTROLL_AGC_DB_SP",           "None",    SignalRole.Other),
         ("DRIVDAL_KRST_KONTROLL_KOM_AL",            "Cluster1.DRIVDAL_KRST_KONTROLL_KOM_AL",            "None",    SignalRole.CommunicationAlarm),
@@ -100,6 +100,28 @@ public static class DrivdalSignalMapSeeder
         else
         {
             logger.LogDebug("Drivdal signal-map already present, skipping seed.");
+        }
+
+        await UpgradeRolesAsync(db, logger, ct).ConfigureAwait(false);
+    }
+
+    // Idempotent rolle-oppgraderinger for eksisterende DB-er som ble seedet
+    // før Mappings-tabellen fikk nye roller. Kan fjernes når EF-migrasjoner
+    // tar over rolle-styringen.
+    private static async Task UpgradeRolesAsync(KraftverkDbContext db, ILogger logger, CancellationToken ct)
+    {
+        var overflow = await db.SignalMaps
+            .FirstOrDefaultAsync(x => x.PlantId == PlantId
+                && x.SignalId == "DRIVDAL_INNTAK_NIVA_OVERLOP_VF_PV", ct)
+            .ConfigureAwait(false);
+        if (overflow is not null && overflow.Role != SignalRole.OverflowFlow)
+        {
+            overflow.Role = SignalRole.OverflowFlow;
+            overflow.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            logger.LogInformation(
+                "Drivdal signal-map: oppgraderte rollen for {SignalId} til OverflowFlow.",
+                overflow.SignalId);
         }
     }
 

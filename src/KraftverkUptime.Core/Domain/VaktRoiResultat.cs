@@ -24,6 +24,17 @@ public sealed record VaktRoiResultat
     public required double ReddetMwh { get; init; }
     public required double ReddetNok { get; init; }
 
+    /// <summary>
+    /// Antall timer i counterfactual-perioden der det var overløp i magasinet.
+    /// Det er disse timene vakt-tjenesten faktisk reddet produksjon for —
+    /// ellers ville vannet rent forbi turbinen og kunne ikke vært utnyttet
+    /// uavhengig av om turbinen kjørte.
+    /// </summary>
+    public required int OverflowTimerInCounterfactual { get; init; }
+
+    /// <summary>True hvis SCADA-data manglet for hele eller deler av counterfactual-perioden.</summary>
+    public required bool OverflowDataMissing { get; init; }
+
     /// <summary>Forklaring for visning: hvorfor eventet ble (eller ikke ble) regnet.</summary>
     public required string Forklaring { get; init; }
 }

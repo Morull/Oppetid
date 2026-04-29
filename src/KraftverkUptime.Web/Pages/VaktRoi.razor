@@ -160,6 +160,7 @@ else if (_response is not null)
                 <MudTh>Vakt-vindu</MudTh>
                 <MudTh>Reddbar</MudTh>
                 <MudTh Style="text-align:right">Ekstra (t)</MudTh>
+                <MudTh Style="text-align:right">Overløp</MudTh>
                 <MudTh Style="text-align:right">Reddet (NOK)</MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -170,6 +171,7 @@ else if (_response is not null)
                 <MudTd DataLabel="Vakt-vindu">@(context.ErInnenforVakt ? "Ja" : "–")</MudTd>
                 <MudTd DataLabel="Reddbar">@(context.ErReddbar ? "Ja" : "–")</MudTd>
                 <MudTd DataLabel="Ekstra" Style="text-align:right">@(context.ErInnenforVakt && context.ErReddbar ? context.EkstraTimerSpart.ToString("F1") : "–")</MudTd>
+                <MudTd DataLabel="Overløp" Style="text-align:right">@DisplayOverflow(context)</MudTd>
                 <MudTd DataLabel="Reddet" Style="text-align:right">@(context.ReddetNok > 0 ? FormatNok(context.ReddetNok) : "–")</MudTd>
             </RowTemplate>
         </MudTable>
@@ -335,6 +337,14 @@ else if (_response is not null)
 
     private static string FormatNok(double nok)
         => nok.ToString("N0", NorskTall);
+
+    private static string DisplayOverflow(VaktRoiEventDto e)
+    {
+        if (!e.ErInnenforVakt || !e.ErReddbar) return "–";
+        if (e.OverflowDataMissing) return "Mangler data";
+        if (e.OverflowTimerInCounterfactual <= 0) return "0 t";
+        return $"{e.OverflowTimerInCounterfactual} t";
+    }
 
     private static string DisplayKategori(string kategori) => kategori switch
     {
