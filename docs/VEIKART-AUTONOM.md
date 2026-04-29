@@ -180,14 +180,14 @@ Forventet: alle 11 anlegg listet med KPI-er for valgt periode.
 
 | Steg | Status | Commit | Notater |
 |---|---|---|---|
-| 0 — Multi-anleggs-import | ⏳ | – | Spec: `docs/SPEC-MULTIPLANT-IMPORT.md` |
-| 1 — Plant-admin-UI | ⏳ | – | Avhenger av 0; bruker-input til effekt-tall |
-| 2 — Effektivitets-side | ⏳ | – | Anlegg-uavhengig algoritme |
-| 3 — ScadaClassifier (9-state) | ⏳ | – | Krever SCADA-data per anlegg |
-| 4 — Event-KPI-er | ⏳ | – | Avhenger av 3 |
-| 5 — FusionClassifier | ⏳ | – | Avhenger av 3 |
-| 6 — Portefølje-dashboard | ⏳ | – | Avhenger av 4 |
-| 7 — Operlog andre anlegg | ⏳ Bruker-input | – | Trenger CSV-er fra Morten |
+| 0 — Multi-anleggs-import | ✅ | bde36fc | 9 imports for feb-2026, 11 plants i DB |
+| 1 — Plant-admin-UI | ✅ | 5b1717c | PUT /plants/{id} + admin-side. 10/11 effekt-tall fra drifts-leder |
+| 2 — Effektivitets-side | ✅ | (steg 2) | η(P)/sweet-spot/SVF; algoritme-basert sweet-spot. Drivdal feb-2026: 1900 kW, SVF 4.28 |
+| 3 — ScadaClassifier (9-state) | ✅ | 49ddf3c | Pure-funksjon, 13 tester per state-path |
+| 4 — Event-KPI-er | ✅ | 6aade60 | MTBF/MTTR/FOR/EAF + 8 tester |
+| 5 — FusionClassifier | ✅ | (steg 5) | Konflikt: SCADA > settlement for state, settlement.Row beholdes |
+| 6 — Portefølje-dashboard | ✅ | (steg 6) | /portefolje + GET /portfolio/kpis. 9 anlegg listed for feb-2026 |
+| 7 — Operlog andre anlegg | ✅ kode / ⏳ data | 070243f | MapEvent verifisert anlegg-uavhengig (13 tester); CSV-er fra andre anlegg ⏳ |
 
 Statuskoder: ⏳ pending, 🔨 in progress, ✅ done, ⚠️ blokkert (se notater)
 
