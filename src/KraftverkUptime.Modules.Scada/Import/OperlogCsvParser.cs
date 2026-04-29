@@ -29,18 +29,40 @@ public sealed class OperlogCsvParser
         ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
         ArgumentNullException.ThrowIfNull(reader);
 
+        // Single-plant: alle rader tilhører samme plant uavhengig av station.
+        var multi = ParseMultiPlant(ownerOrgId, reader, _ => plantId);
+        var events = multi.EventsByPlantId.TryGetValue(plantId, out var list)
+            ? list
+            : Array.Empty<ClassifiedEvent>();
+        return new OperlogParseResult(plantId, multi.RowsParsed, multi.RowsSkipped, events);
+    }
+
+    /// <summary>
+    /// Multi-plant-variant: én CSV med events fra flere stasjoner.
+    /// Hver rad rutes til riktig anlegg via <paramref name="stationToPlantId"/>-
+    /// callbacken. Rader der callbacken returnerer null (ukjent stasjon)
+    /// telles som <see cref="MultiPlantOperlogParseResult.UnknownStations"/>.
+    /// </summary>
+    public MultiPlantOperlogParseResult ParseMultiPlant(
+        string ownerOrgId,
+        TextReader reader,
+        Func<string, string?> stationToPlantId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerOrgId);
+        ArgumentNullException.ThrowIfNull(reader);
+        ArgumentNullException.ThrowIfNull(stationToPlantId);
+
         var headerLine = reader.ReadLine()
             ?? throw new InvalidDataException("Tom operlog-CSV — manglende header-rad.");
         var headers = headerLine.Split(';').Select(h => h.Trim()).ToList();
 
         int IdxOf(string name) => headers.FindIndex(h => h.Equals(name, StringComparison.OrdinalIgnoreCase));
         var iTimestamp = IdxOf("timestamp");
+        var iStation = IdxOf("station");
         var iTag = IdxOf("tag");
         var iText = IdxOf("text");
-        var iValue = IdxOf("value");
         var iAlarmType = IdxOf("alarmType");
         var iOffTimestamp = IdxOf("offTimestamp");
-        var iUsername = IdxOf("username");
 
         if (iTimestamp < 0 || iTag < 0)
         {
@@ -48,7 +70,8 @@ public sealed class OperlogCsvParser
                 "Operlog-CSV mangler påkrevde kolonner (timestamp, tag).");
         }
 
-        var events = new List<ClassifiedEvent>();
+        var byPlant = new Dictionary<string, List<ClassifiedEvent>>(StringComparer.Ordinal);
+        var unknownStations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var rowsParsed = 0;
         var rowsSkipped = 0;
 
@@ -68,18 +91,32 @@ public sealed class OperlogCsvParser
 
             var tag = cols[iTag].Trim();
             var text = iText >= 0 ? cols[iText] : "";
-            var value = iValue >= 0 ? cols[iValue] : "";
             var alarmType = iAlarmType >= 0 ? cols[iAlarmType] : "";
-            var username = iUsername >= 0 ? cols[iUsername] : "";
+            var station = iStation >= 0 ? cols[iStation].Trim() : "";
 
             var (state, cause) = MapEvent(tag, alarmType);
-            if (state is null) { rowsSkipped++; continue; }  // settpunkt-endring eller annet uten state-impact
+            if (state is null) { rowsSkipped++; continue; }
+
+            // Rute hver event til plant via station-callback. Tom station eller
+            // ukjent navn → tell som unknown og skip raden.
+            var plantId = string.IsNullOrEmpty(station) ? null : stationToPlantId(station);
+            if (string.IsNullOrEmpty(plantId))
+            {
+                rowsSkipped++;
+                if (!string.IsNullOrEmpty(station)) unknownStations.Add(station);
+                continue;
+            }
 
             var rationale = string.IsNullOrWhiteSpace(text)
                 ? $"operlog: {tag}"
                 : $"operlog: {tag} — {text}";
 
-            events.Add(new ClassifiedEvent(
+            if (!byPlant.TryGetValue(plantId, out var bucket))
+            {
+                bucket = new List<ClassifiedEvent>();
+                byPlant[plantId] = bucket;
+            }
+            bucket.Add(new ClassifiedEvent(
                 Id: 0,
                 OwnerOrgId: ownerOrgId,
                 PlantId: plantId,
@@ -93,7 +130,17 @@ public sealed class OperlogCsvParser
             rowsParsed++;
         }
 
-        return new OperlogParseResult(plantId, rowsParsed, rowsSkipped, events);
+        var roBuckets = byPlant.ToDictionary(
+            kv => kv.Key,
+            kv => (IReadOnlyList<ClassifiedEvent>)kv.Value,
+            StringComparer.Ordinal);
+
+        return new MultiPlantOperlogParseResult(
+            RowsParsed: rowsParsed,
+            RowsSkipped: rowsSkipped,
+            UnknownStations: unknownStations.Count,
+            UnknownStationNames: unknownStations.ToList(),
+            EventsByPlantId: roBuckets);
     }
 
     /// <summary>
@@ -145,3 +192,15 @@ public sealed record OperlogParseResult(
     int RowsParsed,
     int RowsSkipped,
     IReadOnlyList<ClassifiedEvent> Events);
+
+/// <summary>
+/// Resultat fra <see cref="OperlogCsvParser.ParseMultiPlant"/> — én CSV
+/// kan inneholde events fra flere stasjoner. Fordeling per plant ligger i
+/// <see cref="EventsByPlantId"/>.
+/// </summary>
+public sealed record MultiPlantOperlogParseResult(
+    int RowsParsed,
+    int RowsSkipped,
+    int UnknownStations,
+    IReadOnlyList<string> UnknownStationNames,
+    IReadOnlyDictionary<string, IReadOnlyList<ClassifiedEvent>> EventsByPlantId);

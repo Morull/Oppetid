@@ -124,6 +124,29 @@ public sealed class ReportsApi
     }
 
     /// <summary>
+    /// Laster opp én operlog-CSV med events fra flere stasjoner.
+    /// Speiler <c>POST /api/v1/operlog/multi-plant</c>. Splitter på station-feltet
+    /// og ruter hver event til riktig anlegg.
+    /// </summary>
+    public async Task<MultiPlantOperlogResponse> UploadMultiPlantOperlogAsync(
+        Stream fileStream, string fileName, CancellationToken ct = default)
+    {
+        using var form = new MultipartFormDataContent();
+        using var fileContent = new StreamContent(fileStream);
+        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("text/csv");
+        form.Add(fileContent, "file", fileName);
+
+        var resp = await _http.PostAsync(
+            new Uri("api/v1/operlog/multi-plant", UriKind.Relative), form, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+
+        return await resp.Content
+            .ReadFromJsonAsync<MultiPlantOperlogResponse>(JsonOptions, ct)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Tom respons fra multi-plant operlog upload.");
+    }
+
+    /// <summary>
     /// Laster opp en multi-anleggs-eksport (én Excel med flere plant-faner).
     /// Speiler <c>POST /api/v1/settlements/multi-plant</c>. Auto-oppretter
     /// nye plants ved behov.
@@ -248,6 +271,17 @@ public sealed record KpiDto(
     double Confidence,
     string Category,
     string Definition);
+
+public sealed record MultiPlantOperlogResponse(
+    int TotalRowsParsed,
+    int TotalRowsSkipped,
+    int UnknownStations,
+    IReadOnlyList<string> UnknownStationNames,
+    IReadOnlyList<PlantOperlogResultDto> PerPlant);
+
+public sealed record PlantOperlogResultDto(
+    string PlantId,
+    int EventsImported);
 
 public sealed record MultiPlantImportResultDto(
     string PlantId,

@@ -13,6 +13,50 @@
     </MudText>
 </div>
 
+@* ---- Multi-anleggs operlog-opplasting (én CSV med events fra alle stasjoner) ---- *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudFileUpload T="IBrowserFile"
+                   Accept=".csv"
+                   MaximumFileCount="1"
+                   FilesChanged="@OnMultiPlantOperlogDroppedAsync"
+                   Hidden="@false"
+                   InputClass="dk-multi-dropzoneInput"
+                   InputStyle="opacity:0"
+                   Class="@(_multiOperlogState.IsUploading ? "dk-multi-dropzone dk-multi-dropzone--busy" : "dk-multi-dropzone")">
+        <ActivatorContent>
+            <div class="d-flex align-center" style="gap:16px;">
+                <MudIcon Icon="@Icons.Material.Filled.Notifications"
+                         Color="MudBlazor.Color.Secondary" Size="MudBlazor.Size.Large" />
+                <div style="flex:1;">
+                    <MudText Typo="Typo.h4">Last opp multi-anleggs operlog</MudText>
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                        Én .csv med events fra alle stasjoner — splittes på <code>station</code>-feltet
+                        og rutes til riktig anlegg via slug-matching.
+                    </MudText>
+                </div>
+                @if (_multiOperlogState.IsUploading)
+                {
+                    <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Small" />
+                }
+            </div>
+            @if (_multiOperlogState.LastSuccessMessage is not null)
+            {
+                <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3">@_multiOperlogState.LastSuccessMessage</MudAlert>
+                @if (_multiOperlogState.UnknownStations.Count > 0)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                        Ukjente stasjoner skippet: @string.Join(", ", _multiOperlogState.UnknownStations)
+                    </MudAlert>
+                }
+            }
+            else if (_multiOperlogState.Error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">@_multiOperlogState.Error</MudAlert>
+            }
+        </ActivatorContent>
+    </MudFileUpload>
+</MudPaper>
+
 @* ---- Multi-anleggs-opplasting (én Excel med 9+ plant-faner) ---- *@
 <MudPaper Class="pa-4 mb-4" Elevation="1">
     <MudFileUpload T="IBrowserFile"
@@ -196,6 +240,9 @@ else
     /// <summary>State for multi-anleggs-opplasting (egen drop-zone øverst).</summary>
     private readonly MultiPlantUploadState _multiState = new();
 
+    /// <summary>State for multi-anleggs operlog-opplasting.</summary>
+    private readonly MultiPlantOperlogUploadState _multiOperlogState = new();
+
     protected override async Task OnInitializedAsync()
     {
         try
@@ -366,6 +413,69 @@ else
         public bool IsUploading { get; set; }
         public string? Error { get; set; }
         public string? LastSuccessMessage { get; set; }
+    }
+
+    private sealed class MultiPlantOperlogUploadState
+    {
+        public bool IsUploading { get; set; }
+        public string? Error { get; set; }
+        public string? LastSuccessMessage { get; set; }
+        public List<string> UnknownStations { get; } = new();
+    }
+
+    private async Task OnMultiPlantOperlogDroppedAsync(IBrowserFile? file)
+    {
+        if (file is null || _multiOperlogState.IsUploading) return;
+
+        if (!file.Name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+        {
+            _multiOperlogState.Error = $"Forventer .csv. Fikk: {file.Name}";
+            return;
+        }
+        // Operlog-CSV kan være 50+ MB for full Q1 — egen grense via API filter.
+        const long maxBytes = 100L * 1024 * 1024;
+        if (file.Size > maxBytes)
+        {
+            _multiOperlogState.Error = $"Filen er for stor ({file.Size / 1_048_576} MB). Maks 100 MB.";
+            return;
+        }
+
+        _multiOperlogState.IsUploading = true;
+        _multiOperlogState.Error = null;
+        _multiOperlogState.LastSuccessMessage = null;
+        _multiOperlogState.UnknownStations.Clear();
+        StateHasChanged();
+
+        try
+        {
+            await using var stream = file.OpenReadStream(maxBytes);
+            var result = await Api.UploadMultiPlantOperlogAsync(stream, file.Name);
+
+            var totalEvents = result.PerPlant.Sum(p => p.EventsImported);
+            _multiOperlogState.LastSuccessMessage =
+                $"{totalEvents} operlog-events importert til {result.PerPlant.Count} anlegg "
+                + $"({result.TotalRowsParsed} parset, {result.TotalRowsSkipped} skip).";
+            if (result.UnknownStations > 0)
+            {
+                _multiOperlogState.UnknownStations.AddRange(result.UnknownStationNames);
+            }
+            Snackbar.Add(_multiOperlogState.LastSuccessMessage, Severity.Success);
+        }
+        catch (HttpRequestException ex)
+        {
+            _multiOperlogState.Error = $"Multi-plant operlog-import feilet: {ex.Message}";
+            Snackbar.Add(_multiOperlogState.Error, Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            _multiOperlogState.Error = $"Uventet feil: {ex.Message}";
+            Snackbar.Add(_multiOperlogState.Error, Severity.Error);
+        }
+        finally
+        {
+            _multiOperlogState.IsUploading = false;
+            StateHasChanged();
+        }
     }
 
     private async Task OnMultiPlantDroppedAsync(IBrowserFile? file)

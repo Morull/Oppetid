@@ -117,6 +117,49 @@ public sealed class ScadaImportService : IScadaImportService
             EventsWritten: result.Events.Count);
     }
 
+    public async Task<MultiPlantOperlogImportResult> ImportOperlogMultiPlantAsync(
+        string ownerOrgId,
+        Stream csvStream,
+        Func<string, string?> stationToPlantId,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerOrgId);
+        ArgumentNullException.ThrowIfNull(csvStream);
+        ArgumentNullException.ThrowIfNull(stationToPlantId);
+
+        using var buffer = new MemoryStream();
+        await csvStream.CopyToAsync(buffer, ct).ConfigureAwait(false);
+        buffer.Position = 0;
+
+        using var reader = new StreamReader(
+            buffer,
+            Encoding.UTF8,
+            detectEncodingFromByteOrderMarks: true,
+            leaveOpen: true);
+
+        var parser = new OperlogCsvParser();
+        var result = parser.ParseMultiPlant(ownerOrgId, reader, stationToPlantId);
+
+        var perPlant = new List<PlantOperlogResult>(result.EventsByPlantId.Count);
+        foreach (var (plantId, events) in result.EventsByPlantId)
+        {
+            await _eventRepo.UpsertManyAsync(events, ct).ConfigureAwait(false);
+            perPlant.Add(new PlantOperlogResult(plantId, events.Count));
+        }
+
+        _logger.LogInformation(
+            "Multi-plant operlog-import: {Parsed} events parsed, {Skipped} skip, " +
+            "{PlantCount} plants, {Unknown} ukjente stasjoner.",
+            result.RowsParsed, result.RowsSkipped, perPlant.Count, result.UnknownStations);
+
+        return new MultiPlantOperlogImportResult(
+            TotalRowsParsed: result.RowsParsed,
+            TotalRowsSkipped: result.RowsSkipped,
+            UnknownStations: result.UnknownStations,
+            UnknownStationNames: result.UnknownStationNames,
+            PerPlant: perPlant);
+    }
+
     private static TimeZoneInfo? TryFindTz(string id)
     {
         try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
