@@ -10,7 +10,10 @@
   <ItemGroup>
     <ProjectReference Include="..\KraftverkUptime.Core\KraftverkUptime.Core.csproj" />
     <ProjectReference Include="..\KraftverkUptime.Modules.Classification\KraftverkUptime.Modules.Classification.csproj" />
+    <ProjectReference Include="..\KraftverkUptime.Modules.Settlement\KraftverkUptime.Modules.Settlement.csproj" />
+    <ProjectReference Include="..\KraftverkUptime.Modules.Scada\KraftverkUptime.Modules.Scada.csproj" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.4" />
     <PackageReference Include="ClosedXML" Version="0.104.0" />
     <PackageReference Include="System.IO.Packaging" Version="10.0.4" />
   </ItemGroup>

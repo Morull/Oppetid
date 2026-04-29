@@ -1,0 +1,368 @@
+@page "/nedetid"
+@page "/nedetid/{PlantId}"
+@using ApexCharts
+@implements IDisposable
+@inject ReportsApi ReportsApi
+@inject NedetidApi NedetidApi
+@inject FilterState Filter
+@inject NavigationManager Nav
+
+<PageTitle>Nedetids-analyse</PageTitle>
+
+<MudGrid Class="mb-4">
+    <MudItem xs="12" md="8">
+        <MudText Typo="Typo.h1">Nedetids-analyse</MudText>
+        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+            Hendelser, varighet og produksjons-tap per kategori for valgt periode.
+        </MudText>
+    </MudItem>
+</MudGrid>
+
+@* ---- Periode + plant-velger ---- *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="string" Value="Filter.PlantId" ValueChanged="OnPlantChanged" Label="Anlegg" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var p in _plants)
+                {
+                    <MudSelectItem Value="@p.Id">@p.Name (@p.Id)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Date="Filter.FromDate" DateChanged="@(d => Filter.FromDate = d)" Label="Fra dato" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Date="Filter.ToDate" DateChanged="@(d => Filter.ToDate = d)" Label="Til dato (eks.)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex justify-end">
+            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Search"
+                       OnClick="LoadAsync"
+                       Disabled="@(_loading || !Filter.ErKlar)">
+                Hent
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+    <MudText Class="ml-2">Henter data…</MudText>
+}
+else if (_response is not null)
+{
+    @* ---- KPI-kort ---- *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #E76F51;">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Antall events</MudText>
+                <MudText Typo="Typo.h3">@_response.AntallEvents</MudText>
+                <MudText Typo="Typo.caption">@_response.AntallEvents nedetid-hendelser</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #F39C12;">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Total nedetid</MudText>
+                <MudText Typo="Typo.h3">@_response.TotalNedetidTimer.ToString("F1")</MudText>
+                <MudText Typo="Typo.caption">timer</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Estimert tap</MudText>
+                <MudText Typo="Typo.h3">@_response.TotalTapMwh.ToString("F1")</MudText>
+                <MudText Typo="Typo.caption">MWh (plan/spotbud i nedetidstimene)</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Tap i NOK</MudText>
+                <MudText Typo="Typo.h3">@FormatNok(_response.TotalTapNok)</MudText>
+                <MudText Typo="Typo.caption">brutto, basert på spotpris</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* ---- Donut + trend ---- *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="5">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h3" Class="mb-3">Tap per kategori</MudText>
+                @if (_response.KategoriSummaries.Count > 0)
+                {
+                    <ApexChart @key="_chartVersion" TItem="NedetidKategoriSummary"
+                               Options="_donutOptions" Height="300">
+                        <ApexPointSeries TItem="NedetidKategoriSummary"
+                                         Items="_response.KategoriSummaries"
+                                         Name="Tap NOK"
+                                         SeriesType="SeriesType.Donut"
+                                         XValue="s => DisplayKategori(s.Kategori)"
+                                         YAggregate="xs => (decimal)xs.Sum(x => x.TotalTapNok)" />
+                    </ApexChart>
+                }
+                else
+                {
+                    <MudText>Ingen events i perioden.</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="7">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h3" Class="mb-3">Nedetid per uke</MudText>
+                @if (_weeklyTrend.Count > 0)
+                {
+                    <ApexChart @key="_chartVersion" TItem="WeeklyPoint"
+                               Options="_trendOptions" Height="300">
+                        <ApexPointSeries TItem="WeeklyPoint"
+                                         Items="_weeklyTrend"
+                                         Name="Timer nedetid"
+                                         SeriesType="SeriesType.Bar"
+                                         XValue="p => p.WeekStart.UtcDateTime"
+                                         YValue="p => (decimal)p.Hours" />
+                    </ApexChart>
+                }
+                else
+                {
+                    <MudText>Ingen nedetid i perioden.</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* ---- Hendelses-tabell + CSV ---- *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <div class="d-flex justify-space-between align-center mb-3">
+            <MudText Typo="Typo.h3">Hendelser (@_response.AntallEvents)</MudText>
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.Download"
+                       Href="@_csvUrl"
+                       Target="_blank"
+                       Disabled="@(_csvUrl is null)">
+                Last ned CSV
+            </MudButton>
+        </div>
+        <MudTable Items="_response.Events" Hover="true" Dense="true" Elevation="0"
+                  FixedHeader="true" Height="500px" Virtualize="true">
+            <HeaderContent>
+                <MudTh>Start</MudTh>
+                <MudTh>Slutt</MudTh>
+                <MudTh Style="text-align:right">Varighet (t)</MudTh>
+                <MudTh>Kategori</MudTh>
+                <MudTh>Cause</MudTh>
+                <MudTh Style="text-align:right">Tap (MWh)</MudTh>
+                <MudTh Style="text-align:right">Tap (NOK)</MudTh>
+                <MudTh>Operlog</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Start">@FormatLocal(context.StartUtc)</MudTd>
+                <MudTd DataLabel="Slutt">@FormatLocal(context.EndUtc)</MudTd>
+                <MudTd DataLabel="Varighet" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.VarighetTimer.ToString("F1")</MudTd>
+                <MudTd DataLabel="Kategori">
+                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="@KategoriColor(context.Kategori)">@DisplayKategori(context.Kategori)</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Cause">@(context.CauseCode ?? "–")</MudTd>
+                <MudTd DataLabel="Tap (MWh)" Style="text-align:right">@context.TapMwh.ToString("F2")</MudTd>
+                <MudTd DataLabel="Tap (NOK)" Style="text-align:right">@FormatNok(context.TapNok)</MudTd>
+                <MudTd DataLabel="Operlog">@(context.HarOperlogMatch ? "✓" : "")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+
+    @* ---- Kategori-summary-tabell ---- *@
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudText Typo="Typo.h3" Class="mb-3">Per kategori</MudText>
+        <MudTable Items="_response.KategoriSummaries" Hover="true" Dense="true" Elevation="0">
+            <HeaderContent>
+                <MudTh>Kategori</MudTh>
+                <MudTh Style="text-align:right">Antall</MudTh>
+                <MudTh Style="text-align:right">Total timer</MudTh>
+                <MudTh Style="text-align:right">Total tap (NOK)</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@DisplayKategori(context.Kategori)</MudTd>
+                <MudTd Style="text-align:right">@context.Antall</MudTd>
+                <MudTd Style="text-align:right">@context.TotalTimer.ToString("F1")</MudTd>
+                <MudTd Style="text-align:right">@FormatNok(context.TotalTapNok)</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public string? PlantId { get; set; }
+
+    private IReadOnlyList<PlantDto> _plants = Array.Empty<PlantDto>();
+    private bool _loading;
+    private string? _error;
+    private NedetidResponse? _response;
+    private string? _csvUrl;
+    private List<WeeklyPoint> _weeklyTrend = new();
+    private int _chartVersion;
+
+    private ApexChartOptions<NedetidKategoriSummary> _donutOptions = new();
+    private ApexChartOptions<WeeklyPoint> _trendOptions = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Filter.OnChange += StateHasChanged;
+        try
+        {
+            _plants = await ReportsApi.ListPlantsAsync();
+
+            // Initialiser delt filter-state hvis dette er første side i sesjonen.
+            // Default: siste 1 år (treffer historiske imports). Route-param PlantId
+            // overstyrer plant.
+            var defaultPlant = !string.IsNullOrEmpty(PlantId)
+                ? PlantId
+                : (_plants.Count > 0 ? _plants[0].Id : string.Empty);
+            Filter.SetIfEmpty(defaultPlant,
+                fromDate: DateTime.UtcNow.AddYears(-1).Date,
+                toDate: DateTime.UtcNow.Date);
+
+            // Hvis vi navigerte hit fra en annen side med samme filter, gjenbruk
+            // cachet respons istedenfor å kalle API på nytt.
+            if (Filter.HasFreshNedetid())
+            {
+                _response = Filter.CachedNedetid;
+                BuildCharts(_response!);
+                _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "nedetid",
+                    new DateTimeOffset(Filter.FromDate!.Value.Date, TimeSpan.Zero),
+                    new DateTimeOffset(Filter.ToDate!.Value.Date, TimeSpan.Zero)).ToString();
+            }
+            else if (Filter.ErKlar)
+            {
+                await LoadAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Klarte ikke laste anleggsliste: {ex.Message}";
+        }
+    }
+
+    public void Dispose()
+    {
+        Filter.OnChange -= StateHasChanged;
+    }
+
+    private Task OnPlantChanged(string newPlantId)
+    {
+        Filter.PlantId = newPlantId;
+        return Task.CompletedTask;
+    }
+
+    private async Task LoadAsync()
+    {
+        if (!Filter.ErKlar) return;
+        _loading = true;
+        _error = null;
+        _response = null;
+        try
+        {
+            var fromUtc = new DateTimeOffset(Filter.FromDate!.Value.Date, TimeSpan.Zero);
+            var toUtc = new DateTimeOffset(Filter.ToDate!.Value.Date, TimeSpan.Zero);
+            _response = await NedetidApi.GetNedetidAsync(Filter.PlantId, fromUtc, toUtc);
+            _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "nedetid", fromUtc, toUtc).ToString();
+            Filter.StoreNedetid(_response);
+            BuildCharts(_response);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente nedetids-data: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void BuildCharts(NedetidResponse r)
+    {
+        _chartVersion++;
+
+        _donutOptions = new ApexChartOptions<NedetidKategoriSummary>
+        {
+            Colors = r.KategoriSummaries.Select(s => KategoriHex(s.Kategori)).ToList(),
+            Legend = new Legend { Position = LegendPosition.Bottom },
+            PlotOptions = new PlotOptions { Pie = new PlotOptionsPie { Donut = new PlotOptionsDonut { Size = "65%" } } },
+        };
+
+        // Weekly trend
+        _weeklyTrend = r.Events
+            .GroupBy(e => StartOfWeek(e.StartUtc))
+            .Select(g => new WeeklyPoint(g.Key, g.Sum(x => x.VarighetTimer)))
+            .OrderBy(p => p.WeekStart)
+            .ToList();
+
+        _trendOptions = new ApexChartOptions<WeeklyPoint>
+        {
+            Xaxis = new XAxis { Type = XAxisType.Datetime },
+            Tooltip = new Tooltip { X = new TooltipX { Format = "dd MMM yyyy" } },
+            Colors = new List<string> { "#E76F51" },
+        };
+    }
+
+    private static DateTimeOffset StartOfWeek(DateTimeOffset dt)
+    {
+        var local = dt.ToLocalTime();
+        var diff = (7 + (int)local.DayOfWeek - (int)DayOfWeek.Monday) % 7;
+        return new DateTimeOffset(local.Date.AddDays(-diff), local.Offset);
+    }
+
+    private static string FormatLocal(DateTimeOffset dt)
+        => dt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    // Norsk tallformat hardkodet — Blazor WASM kjører med InvariantGlobalization=true
+    // og GetCultureInfo("nb-NO") kaster CultureNotFoundException.
+    private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
+    {
+        NumberGroupSeparator = " ",
+        NumberDecimalSeparator = ",",
+        NumberGroupSizes = new[] { 3 },
+    };
+
+    private static string FormatNok(double nok)
+        => nok.ToString("N0", NorskTall);
+
+    private static string DisplayKategori(string kategori) => kategori switch
+    {
+        "TripFeil" => "Trip / feil",
+        "EksternForstyrrelse" => "Ekstern forstyrrelse",
+        "PlanlagtVedlikehold" => "Planlagt vedlikehold",
+        "Markedstopp" => "Markedstopp",
+        "Ressursmangel" => "Ressursmangel",
+        "DataMangel" => "Datamangel",
+        "UkjentNedetid" => "Ukjent nedetid",
+        _ => kategori,
+    };
+
+    private static MudBlazor.Color KategoriColor(string kategori) => kategori switch
+    {
+        "TripFeil" => MudBlazor.Color.Error,
+        "EksternForstyrrelse" => MudBlazor.Color.Warning,
+        "PlanlagtVedlikehold" => MudBlazor.Color.Info,
+        "Markedstopp" => MudBlazor.Color.Secondary,
+        "Ressursmangel" => MudBlazor.Color.Default,
+        "DataMangel" => MudBlazor.Color.Default,
+        _ => MudBlazor.Color.Default,
+    };
+
+    private static string KategoriHex(string kategori) => kategori switch
+    {
+        "TripFeil" => "#E76F51",
+        "EksternForstyrrelse" => "#F39C12",
+        "PlanlagtVedlikehold" => "#1E5F8E",
+        "Markedstopp" => "#7E57C2",
+        "Ressursmangel" => "#00A99D",
+        "DataMangel" => "#9AA5B0",
+        _ => "#9AA5B0",
+    };
+
+    public sealed record WeeklyPoint(DateTimeOffset WeekStart, double Hours);
+}

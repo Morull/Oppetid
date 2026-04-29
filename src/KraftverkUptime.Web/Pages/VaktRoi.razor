@@ -1,0 +1,352 @@
+@page "/vakt-roi"
+@page "/vakt-roi/{PlantId}"
+@using ApexCharts
+@implements IDisposable
+@inject ReportsApi ReportsApi
+@inject NedetidApi NedetidApi
+@inject FilterState Filter
+
+<PageTitle>Vakt-ROI</PageTitle>
+
+<MudGrid Class="mb-4">
+    <MudItem xs="12" md="8">
+        <MudText Typo="Typo.h1">Vakt-ROI</MudText>
+        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+            Hvor mye produksjons-tap reddet vakt-ordningen i perioden — counterfactual: vente til neste arbeidsdag 08:00.
+        </MudText>
+    </MudItem>
+</MudGrid>
+
+@* ---- Filter ---- *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="string" Value="Filter.PlantId" ValueChanged="OnPlantChanged" Label="Anlegg" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var p in _plants)
+                {
+                    <MudSelectItem Value="@p.Id">@p.Name (@p.Id)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="2">
+            <MudDatePicker Date="Filter.FromDate" DateChanged="@(d => Filter.FromDate = d)" Label="Fra dato" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="2">
+            <MudDatePicker Date="Filter.ToDate" DateChanged="@(d => Filter.ToDate = d)" Label="Til dato (eks.)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="2">
+            <MudNumericField T="double" @bind-Value="_kapasitetsfaktor" Label="Kap.faktor"
+                             Min="0.1" Max="1.0" Step="0.05" Format="F2"
+                             Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="2">
+            <MudNumericField T="double" @bind-Value="_aarligVaktKost" Label="Årlig vakt-kost (NOK)"
+                             Step="50000" Format="N0"
+                             Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="1" Class="d-flex justify-end">
+            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Search"
+                       OnClick="LoadAsync"
+                       Disabled="@(_loading || !Filter.ErKlar)">
+                Hent
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+    <MudText Class="ml-2">Henter data…</MudText>
+}
+else if (_response is not null)
+{
+    @* ---- KPI-kort ---- *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Reddet brutto</MudText>
+                <MudText Typo="Typo.h3">@FormatNok(_response.TotalReddetNok)</MudText>
+                <MudText Typo="Typo.caption">NOK i perioden (@PeriodLabel)</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Reddbare events innenfor vakt</MudText>
+                <MudText Typo="Typo.h3">@_response.AntallReddbareInnenforVakt</MudText>
+                <MudText Typo="Typo.caption">av @_response.AntallEventsTotalt totale events</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #F39C12;">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Snitt ekstra-timer spart</MudText>
+                <MudText Typo="Typo.h3">@_response.SnittEkstraTimerPerEvent.ToString("F1")</MudText>
+                <MudText Typo="Typo.caption">timer per reddbar event</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="@RoiCardStyle()">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Årlig estimat vs. vakt-kost</MudText>
+                <MudText Typo="Typo.h3">@FormatNok(EstimertAarligReddet())</MudText>
+                <MudText Typo="Typo.caption">@RoiSubText()</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* ---- Forutsetninger ---- *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.h4" Class="mb-2">Forutsetninger</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Installert effekt</MudText>
+                <MudText Typo="Typo.body1">@_response.InstallertEffektMw.ToString("F2") MW</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Snitt spotpris</MudText>
+                <MudText Typo="Typo.body1">@_response.SnittSpotprisNokMwh.ToString("F0") NOK/MWh</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Kapasitetsfaktor</MudText>
+                <MudText Typo="Typo.body1">@((_response.Kapasitetsfaktor * 100).ToString("F0")) %</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Vakt-modell</MudText>
+                <MudText Typo="Typo.body1">15-07 hverdager + helg, 1.0 t respons</MudText>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @* ---- Trend (reddet NOK per måned) ---- *@
+    @if (_monthlyTrend.Count > 0)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="1">
+            <MudText Typo="Typo.h3" Class="mb-3">Reddet NOK per måned</MudText>
+            <ApexChart @key="_chartVersion" TItem="MonthlyPoint"
+                       Options="_trendOptions" Height="280">
+                <ApexPointSeries TItem="MonthlyPoint"
+                                 Items="_monthlyTrend"
+                                 Name="Reddet NOK"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="p => p.MonthStart.UtcDateTime"
+                                 YValue="p => (decimal)p.ReddetNok" />
+            </ApexChart>
+        </MudPaper>
+    }
+
+    @* ---- Event-tabell ---- *@
+    <MudPaper Class="pa-4" Elevation="1">
+        <div class="d-flex justify-space-between align-center mb-3">
+            <MudText Typo="Typo.h3">Hendelser med ROI-vurdering</MudText>
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.Download"
+                       Href="@_csvUrl"
+                       Target="_blank"
+                       Disabled="@(_csvUrl is null)">
+                Last ned CSV
+            </MudButton>
+        </div>
+        <MudTable Items="_response.Events" Hover="true" Dense="true" Elevation="0"
+                  FixedHeader="true" Height="500px" Virtualize="true">
+            <HeaderContent>
+                <MudTh>Start</MudTh>
+                <MudTh>Slutt</MudTh>
+                <MudTh Style="text-align:right">Faktisk (t)</MudTh>
+                <MudTh>Kategori</MudTh>
+                <MudTh>Vakt-vindu</MudTh>
+                <MudTh>Reddbar</MudTh>
+                <MudTh Style="text-align:right">Ekstra (t)</MudTh>
+                <MudTh Style="text-align:right">Reddet (NOK)</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Start">@FormatLocal(context.Event.StartUtc)</MudTd>
+                <MudTd DataLabel="Slutt">@FormatLocal(context.Event.EndUtc)</MudTd>
+                <MudTd DataLabel="Faktisk" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.Event.VarighetTimer.ToString("F1")</MudTd>
+                <MudTd DataLabel="Kategori">@DisplayKategori(context.Event.Kategori)</MudTd>
+                <MudTd DataLabel="Vakt-vindu">@(context.ErInnenforVakt ? "Ja" : "–")</MudTd>
+                <MudTd DataLabel="Reddbar">@(context.ErReddbar ? "Ja" : "–")</MudTd>
+                <MudTd DataLabel="Ekstra" Style="text-align:right">@(context.ErInnenforVakt && context.ErReddbar ? context.EkstraTimerSpart.ToString("F1") : "–")</MudTd>
+                <MudTd DataLabel="Reddet" Style="text-align:right">@(context.ReddetNok > 0 ? FormatNok(context.ReddetNok) : "–")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public string? PlantId { get; set; }
+
+    private IReadOnlyList<PlantDto> _plants = Array.Empty<PlantDto>();
+    private double _kapasitetsfaktor = 0.5;
+    private double _aarligVaktKost = 200_000;
+    private bool _loading;
+    private string? _error;
+    private VaktRoiResponse? _response;
+    private string? _csvUrl;
+    private List<MonthlyPoint> _monthlyTrend = new();
+    private int _chartVersion;
+
+    private ApexChartOptions<MonthlyPoint> _trendOptions = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Filter.OnChange += StateHasChanged;
+        try
+        {
+            _plants = await ReportsApi.ListPlantsAsync();
+
+            var defaultPlant = !string.IsNullOrEmpty(PlantId)
+                ? PlantId
+                : (_plants.Count > 0 ? _plants[0].Id : string.Empty);
+            Filter.SetIfEmpty(defaultPlant,
+                fromDate: DateTime.UtcNow.AddYears(-1).Date,
+                toDate: DateTime.UtcNow.Date);
+
+            if (Filter.HasFreshVaktRoi())
+            {
+                _response = Filter.CachedVaktRoi;
+                BuildCharts(_response!);
+                _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "vakt-roi",
+                    new DateTimeOffset(Filter.FromDate!.Value.Date, TimeSpan.Zero),
+                    new DateTimeOffset(Filter.ToDate!.Value.Date, TimeSpan.Zero)).ToString();
+            }
+            else if (Filter.ErKlar)
+            {
+                await LoadAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Klarte ikke laste anleggsliste: {ex.Message}";
+        }
+    }
+
+    public void Dispose()
+    {
+        Filter.OnChange -= StateHasChanged;
+    }
+
+    private Task OnPlantChanged(string newPlantId)
+    {
+        Filter.PlantId = newPlantId;
+        return Task.CompletedTask;
+    }
+
+    private async Task LoadAsync()
+    {
+        if (!Filter.ErKlar) return;
+        _loading = true;
+        _error = null;
+        _response = null;
+        try
+        {
+            var fromUtc = new DateTimeOffset(Filter.FromDate!.Value.Date, TimeSpan.Zero);
+            var toUtc = new DateTimeOffset(Filter.ToDate!.Value.Date, TimeSpan.Zero);
+            _response = await NedetidApi.GetVaktRoiAsync(Filter.PlantId, fromUtc, toUtc, _kapasitetsfaktor);
+            _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "vakt-roi", fromUtc, toUtc).ToString();
+            Filter.StoreVaktRoi(_response);
+            BuildCharts(_response);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente Vakt-ROI: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void BuildCharts(VaktRoiResponse r)
+    {
+        _chartVersion++;
+        _monthlyTrend = r.Events
+            .Where(e => e.ReddetNok > 0)
+            .GroupBy(e => StartOfMonth(e.Event.StartUtc))
+            .Select(g => new MonthlyPoint(g.Key, g.Sum(x => x.ReddetNok)))
+            .OrderBy(p => p.MonthStart)
+            .ToList();
+
+        _trendOptions = new ApexChartOptions<MonthlyPoint>
+        {
+            Xaxis = new XAxis { Type = XAxisType.Datetime },
+            Tooltip = new Tooltip { X = new TooltipX { Format = "MMM yyyy" } },
+            Colors = new List<string> { "#2A9D8F" },
+        };
+    }
+
+    private double EstimertAarligReddet()
+    {
+        if (_response is null) return 0;
+        var dager = (_response.ToUtc - _response.FromUtc).TotalDays;
+        if (dager <= 0) return 0;
+        return _response.TotalReddetNok * (365.25 / dager);
+    }
+
+    private string PeriodLabel
+    {
+        get
+        {
+            if (_response is null) return "";
+            return $"{_response.FromUtc:yyyy-MM-dd} – {_response.ToUtc:yyyy-MM-dd}";
+        }
+    }
+
+    private string RoiSubText()
+    {
+        var aarlig = EstimertAarligReddet();
+        if (_aarligVaktKost <= 0) return "Sett inn vakt-kost for ROI-sammenlikning";
+        var diff = aarlig - _aarligVaktKost;
+        var ratio = aarlig / _aarligVaktKost;
+        if (diff >= 0)
+        {
+            return $"Reddet ≈ {ratio:F1}× vakt-kosten";
+        }
+        return $"Reddet < vakt-kost (~{ratio:F1}×)";
+    }
+
+    private string RoiCardStyle()
+    {
+        var diff = EstimertAarligReddet() - _aarligVaktKost;
+        var color = diff >= 0 ? "#2A9D8F" : "#E76F51";
+        return $"border-left: 4px solid {color};";
+    }
+
+    private static DateTimeOffset StartOfMonth(DateTimeOffset dt)
+    {
+        var l = dt.ToLocalTime();
+        return new DateTimeOffset(new DateTime(l.Year, l.Month, 1), l.Offset);
+    }
+
+    private static string FormatLocal(DateTimeOffset dt)
+        => dt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    // Norsk tallformat hardkodet — Blazor WASM kjører med InvariantGlobalization=true
+    // og GetCultureInfo("nb-NO") kaster CultureNotFoundException.
+    private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
+    {
+        NumberGroupSeparator = " ",
+        NumberDecimalSeparator = ",",
+        NumberGroupSizes = new[] { 3 },
+    };
+
+    private static string FormatNok(double nok)
+        => nok.ToString("N0", NorskTall);
+
+    private static string DisplayKategori(string kategori) => kategori switch
+    {
+        "TripFeil" => "Trip / feil",
+        "EksternForstyrrelse" => "Ekstern forstyrrelse",
+        "PlanlagtVedlikehold" => "Planlagt vedlikehold",
+        "Markedstopp" => "Markedstopp",
+        "Ressursmangel" => "Ressursmangel",
+        "DataMangel" => "Datamangel",
+        "UkjentNedetid" => "Ukjent nedetid",
+        _ => kategori,
+    };
+
+    public sealed record MonthlyPoint(DateTimeOffset MonthStart, double ReddetNok);
+}

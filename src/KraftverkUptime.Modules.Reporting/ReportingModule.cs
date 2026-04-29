@@ -1,6 +1,7 @@
 using KraftverkUptime.Core.Modules;
 using KraftverkUptime.Core.Reporting;
 using KraftverkUptime.Modules.Classification.Dtos;
+using KraftverkUptime.Modules.Reporting.Nedetid;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace KraftverkUptime.Modules.Reporting;
@@ -24,5 +25,9 @@ public sealed class ReportingModule : IPlatformModule
 
         services.AddScoped<IReportBuilder<UptimeReport>, UptimeReportBuilder>();
         services.AddScoped<IReportRenderer, UptimeReportRenderer>();
+
+        // Nedetids-analyse + Vakt-ROI (priortet 1 i 2026-04-28-overleveringen).
+        services.AddScoped<INedetidQueryService, NedetidQueryService>();
+        services.AddScoped<VaktRoiCalculator>();
     }
 }

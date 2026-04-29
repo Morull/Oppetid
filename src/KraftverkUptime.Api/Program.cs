@@ -139,6 +139,7 @@ app.MapPlantsV1(apiV1);
 app.MapSettlementsV1(apiV1);
 app.MapAnnotationsV1(apiV1);
 app.MapScadaV1(apiV1);
+app.MapNedetidV1(apiV1);
 
 app.MapGet("/", () => Results.Redirect("/openapi/v1.json"));
 

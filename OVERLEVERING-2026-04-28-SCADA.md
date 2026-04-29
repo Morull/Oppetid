@@ -80,16 +80,56 @@ Reelle verdier hentet fra dataen:
 
 ## Neste sesjon — anbefalt rekkefølge
 
+**Prioritet 1 — leverbart raskt (drifts-leder-presentasjon):**
+
 | # | Steg | Estimat |
 |---|---|---|
-| 1 | `ScadaClassifier` med 9-state-regler basert på `sample_facts` | 1-2 dager |
-| 2 | `FusionClassifier` (SCADA + settlement + annoteringer) | 1 dag |
-| 3 | Nye event-baserte KPI-er (MTBF/MTTR/FOR/EAF) | 1 dag |
-| 4 | Drivdal effektivitets-side (η-kurve, sweet-spot, spesifikt vannforbruk) | 1 dag |
-| 5 | `kpi_facts`-tabell + portefølje-trender på tvers av anlegg | 1-2 dager |
-| 6 | UI for SCADA-opplastning (drag-drop på /plants for .csv) | 2-3 t |
+| 1 | **Nedetids-analyse v1** for drifts-leder: hendelses-tabell, total nedetid per kategori, tap i NOK, trend-graf, CSV-eksport. Bruker eksisterende settlement-klassifisering + operlog-events vi allerede har importert. Side `/nedetid/{plantId}`. | **1 dag** |
+| 2 | **Vakt-ROI-analyse**: kost-ved-å-vente-til-neste-arbeidsdag-per-event. Counterfactual end-time = neste arbeidsdag 08:00 hvis trip skjer etter 15:00. Tap = effekt × spotpris × ekstra timer. Aggregert årssum = vakt-tjenestens verdi. Side `/vakt-roi/{plantId}`. | **1.5 dag** etter steg 1 |
+| 3 | Drivdal effektivitets-side (η-kurve, sweet-spot, spesifikt vannforbruk) | 1 dag |
+
+Disse tre gir ledelsen tre konkrete leveranser fra samme datakilde i løpet av 3-4 dager.
+
+**Prioritet 2 — presisjons-løft:**
+
+| # | Steg | Estimat |
+|---|---|---|
+| 4 | `ScadaClassifier` med 9-state-regler basert på `sample_facts` | 1-2 dager |
+| 5 | `FusionClassifier` (SCADA + settlement + annoteringer) | 1 dag |
+| 6 | Nye event-baserte KPI-er (MTBF/MTTR/FOR/EAF) | 1 dag |
+
+**Prioritet 3 — portefølje-skala:**
+
+| # | Steg | Estimat |
+|---|---|---|
+| 7 | `kpi_facts`-tabell + portefølje-trender på tvers av anlegg | 1-2 dager |
+| 8 | UI for SCADA-opplastning (drag-drop på /plants for .csv) | 2-3 t |
 
 Foundation er solid — alle disse stegene bygger på eksisterende `sample_facts` / `classified_events` / `signal_map`-data uten å touche backend-foundationen.
+
+## Vakt-ROI: åpne spørsmål før implementasjon
+
+Disse må avklares før Vakt-ROI-side bygges (steg 2):
+
+1. **Vakttider** — er det 15:00-08:00 hverdager + helg/helligdag? Eller annet?
+2. **Responstid med vakt** — typisk 1-2 t? Konstant eller anleggs-spesifikk?
+3. **Counterfactual responstid uten vakt** — neste arbeidsdag 08:00? Eller mer realistisk modell (driftspersonell oppdager feilen X timer etter kl 08)?
+4. **Fjernreset/gjenstart fra hjemmekontor** — er det "vakt" eller "uten vakt"?
+5. **Skal feil som krever fysisk oppmøte** (turbin-skade) skilles fra feil som kan resettes eksternt (relé-fall)?
+
+Disse svarene avgjør hvilken kost-modell vi velger. Default-foreslag: 15-08 hverdager + helg, 1.5 t responstid med vakt, 16 t (neste 08) uten vakt, ingen skille mellom fjernreset/oppmøte i v1.
+
+## Eksempel-beregning Vakt-ROI
+
+Drivdal har installert 2.2 MW. Hvis det er én trip kl. 16:00 onsdag som ble fikset kl. 17:30 med vakt:
+
+- Med vakt: 1.5 t nedetid
+- Uten vakt: vent til torsdag 08:00 = 16 t nedetid
+- Ekstra nedetid: 14.5 t
+- Snittpris × effekt: 2.0 MW × 850 NOK/MWh × 14.5 t ≈ 24 700 NOK i tapt produksjon
+
+5-10 slike events i året: 125 000 - 250 000 NOK reddet per år.
+Sammenlign mot årlig vakt-bemanningskostnad → ROI på vakt-ordningen.
 
 ## Kommandoer for morgenen
 

@@ -34,3 +34,6 @@ node_modules/
 # Logs
 *.log
 logs/
+
+# Claude Code worktrees
+.claude/worktrees/

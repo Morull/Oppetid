@@ -1,0 +1,323 @@
+using System.Globalization;
+using System.Text;
+using Asp.Versioning;
+using Asp.Versioning.Builder;
+using KraftverkUptime.Api.Contracts;
+using KraftverkUptime.Core.Domain;
+using KraftverkUptime.Core.Security;
+using KraftverkUptime.Infrastructure.Persistence;
+using KraftverkUptime.Modules.Reporting.Nedetid;
+using Microsoft.EntityFrameworkCore;
+
+namespace KraftverkUptime.Api.Endpoints;
+
+/// <summary>
+/// Endepunkter for nedetids-analyse og vakt-ROI:
+///
+///   GET /api/v1/plants/{plantId}/nedetid?from=&amp;to=&amp;format=json|csv
+///   GET /api/v1/plants/{plantId}/vakt-roi?from=&amp;to=&amp;format=json|csv
+///
+/// Begge er anonyme i v1 (samme nivå som settlements). Bruker felles
+/// <see cref="INedetidQueryService"/> for event-aggregering, og
+/// <see cref="VaktRoiCalculator"/> for counterfactual-analysen.
+/// </summary>
+public static class NedetidEndpoints
+{
+    public static IEndpointRouteBuilder MapNedetidV1(this IEndpointRouteBuilder endpoints, ApiVersionSet versionSet)
+    {
+        var group = endpoints.MapGroup("/api/v{version:apiVersion}/plants/{plantId}")
+            .WithTags("Nedetid")
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(new ApiVersion(1, 0));
+
+        group.MapGet("/nedetid", GetNedetidAsync)
+            .WithName("GetNedetid")
+            .WithSummary("Henter aggregerte nedetids-events for et anlegg i gitt periode.")
+            .AllowAnonymous()
+            .Produces<NedetidResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapGet("/vakt-roi", GetVaktRoiAsync)
+            .WithName("GetVaktRoi")
+            .WithSummary("Beregner Vakt-ROI: hvor mye produksjons-tap reddet vakten i perioden.")
+            .AllowAnonymous()
+            .Produces<VaktRoiResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        return endpoints;
+    }
+
+    private static async Task<IResult> GetNedetidAsync(
+        string plantId,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        string? format,
+        INedetidQueryService nedetid,
+        KraftverkDbContext db,
+        IQueryContext queryContext,
+        CancellationToken ct)
+    {
+        if (!TryValidatePeriod(from, to, out var fromUtc, out var toUtc, out var problem))
+        {
+            return problem!;
+        }
+
+        var plant = await queryContext.Apply(db.Plants.AsQueryable())
+            .FirstOrDefaultAsync(p => p.Id == plantId, ct).ConfigureAwait(false);
+        if (plant is null)
+        {
+            return Results.Problem(
+                title: "Anlegg ikke funnet",
+                detail: $"Plant {plantId} eksisterer ikke.",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var events = await nedetid.ListEventsAsync(plantId, fromUtc, toUtc, ct).ConfigureAwait(false);
+        var response = BuildNedetidResponse(plantId, fromUtc, toUtc, events);
+
+        if (string.Equals(format, "csv", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.File(
+                fileContents: Encoding.UTF8.GetBytes(BuildNedetidCsv(response)),
+                contentType: "text/csv",
+                fileDownloadName: $"{plantId}-nedetid-{fromUtc:yyyyMMdd}-{toUtc:yyyyMMdd}.csv");
+        }
+
+        return Results.Ok(response);
+    }
+
+    private static async Task<IResult> GetVaktRoiAsync(
+        string plantId,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        string? format,
+        double? kapasitetsfaktor,
+        INedetidQueryService nedetid,
+        VaktRoiCalculator calculator,
+        KraftverkDbContext db,
+        IQueryContext queryContext,
+        CancellationToken ct)
+    {
+        if (!TryValidatePeriod(from, to, out var fromUtc, out var toUtc, out var problem))
+        {
+            return problem!;
+        }
+
+        var plant = await queryContext.Apply(db.Plants.AsQueryable())
+            .FirstOrDefaultAsync(p => p.Id == plantId, ct).ConfigureAwait(false);
+        if (plant is null)
+        {
+            return Results.Problem(
+                title: "Anlegg ikke funnet",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var events = await nedetid.ListEventsAsync(plantId, fromUtc, toUtc, ct).ConfigureAwait(false);
+
+        // Beregn snitt-spotpris fra klassifiserte rader vi alt har lest. For å
+        // unngå dobbel-spørring, bruker vi en enkel proxy: sum tap_nok / sum tap_mwh
+        // over events. Hvis tap_mwh = 0 (alle events har plan=0), faller vi tilbake til
+        // 500 NOK/MWh som forsiktig anslag.
+        double snittSpot = 500;
+        var sumTapMwh = events.Sum(e => e.TapMwh);
+        var sumTapNok = events.Sum(e => e.TapNok);
+        if (sumTapMwh > 0 && sumTapNok > 0)
+        {
+            snittSpot = sumTapNok / sumTapMwh;
+        }
+
+        var faktor = Math.Clamp(kapasitetsfaktor ?? 0.5, 0.0, 1.0);
+
+        var roi = calculator.Calculate(events, plant.InstalledCapacityMw, snittSpot, faktor);
+        var response = BuildVaktRoiResponse(plantId, fromUtc, toUtc, plant.InstalledCapacityMw, snittSpot, faktor, roi);
+
+        if (string.Equals(format, "csv", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.File(
+                fileContents: Encoding.UTF8.GetBytes(BuildVaktRoiCsv(response)),
+                contentType: "text/csv",
+                fileDownloadName: $"{plantId}-vakt-roi-{fromUtc:yyyyMMdd}-{toUtc:yyyyMMdd}.csv");
+        }
+
+        return Results.Ok(response);
+    }
+
+    // ---- helpers --------------------------------------------------------------
+
+    private static bool TryValidatePeriod(
+        DateTimeOffset? from, DateTimeOffset? to,
+        out DateTimeOffset fromUtc, out DateTimeOffset toUtc,
+        out IResult? problem)
+    {
+        fromUtc = default;
+        toUtc = default;
+        problem = null;
+
+        if (!from.HasValue || !to.HasValue)
+        {
+            problem = Results.Problem(
+                title: "Manglende periode",
+                detail: "Både 'from' og 'to' må oppgis (ISO-8601, UTC).",
+                statusCode: StatusCodes.Status400BadRequest);
+            return false;
+        }
+
+        fromUtc = from.Value.ToUniversalTime();
+        toUtc = to.Value.ToUniversalTime();
+
+        if (toUtc <= fromUtc)
+        {
+            problem = Results.Problem(
+                title: "Ugyldig periode",
+                detail: "'to' må være etter 'from'.",
+                statusCode: StatusCodes.Status400BadRequest);
+            return false;
+        }
+
+        // Maks 2 år for å unngå at noen ber om all data ved et uhell.
+        if ((toUtc - fromUtc).TotalDays > 730)
+        {
+            problem = Results.Problem(
+                title: "Periode for lang",
+                detail: "Maks 2 år per spørring (730 dager).",
+                statusCode: StatusCodes.Status400BadRequest);
+            return false;
+        }
+
+        return true;
+    }
+
+    private static NedetidResponse BuildNedetidResponse(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc,
+        IReadOnlyList<DowntimeEvent> events)
+    {
+        var dtos = events.Select(MapEvent).ToList();
+
+        var grouped = events
+            .GroupBy(e => e.Category)
+            .Select(g => new NedetidKategoriSummary(
+                Kategori: g.Key.ToString(),
+                Antall: g.Count(),
+                TotalTimer: g.Sum(e => e.VarighetTimer),
+                TotalTapNok: g.Sum(e => e.TapNok)))
+            .OrderByDescending(s => s.TotalTapNok)
+            .ToList();
+
+        return new NedetidResponse(
+            PlantId: plantId,
+            FromUtc: fromUtc,
+            ToUtc: toUtc,
+            AntallEvents: events.Count,
+            TotalNedetidTimer: events.Sum(e => e.VarighetTimer),
+            TotalTapMwh: events.Sum(e => e.TapMwh),
+            TotalTapNok: events.Sum(e => e.TapNok),
+            KategoriSummaries: grouped,
+            Events: dtos);
+    }
+
+    private static VaktRoiResponse BuildVaktRoiResponse(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc,
+        double effektMw, double snittSpot, double faktor,
+        IReadOnlyList<VaktRoiResultat> roi)
+    {
+        var dtos = roi.Select(r => new VaktRoiEventDto(
+            Event: MapEvent(r.Event),
+            ErInnenforVakt: r.ErInnenforVakt,
+            ErReddbar: r.ErReddbar,
+            CounterfactualEndUtc: r.CounterfactualEndUtc,
+            EkstraTimerSpart: r.EkstraTimerSpart,
+            ReddetMwh: r.ReddetMwh,
+            ReddetNok: r.ReddetNok,
+            Forklaring: r.Forklaring)).ToList();
+
+        var reddbareInnenfor = roi.Count(r => r.ErInnenforVakt && r.ErReddbar);
+        var totalReddetMwh = roi.Sum(r => r.ReddetMwh);
+        var totalReddetNok = roi.Sum(r => r.ReddetNok);
+        var snittEkstra = reddbareInnenfor == 0 ? 0
+            : roi.Where(r => r.ErInnenforVakt && r.ErReddbar).Average(r => r.EkstraTimerSpart);
+
+        return new VaktRoiResponse(
+            PlantId: plantId,
+            FromUtc: fromUtc,
+            ToUtc: toUtc,
+            InstallertEffektMw: effektMw,
+            SnittSpotprisNokMwh: snittSpot,
+            Kapasitetsfaktor: faktor,
+            AntallEventsTotalt: roi.Count,
+            AntallReddbareInnenforVakt: reddbareInnenfor,
+            TotalReddetMwh: totalReddetMwh,
+            TotalReddetNok: totalReddetNok,
+            SnittEkstraTimerPerEvent: snittEkstra,
+            Events: dtos);
+    }
+
+    private static NedetidEventDto MapEvent(DowntimeEvent e) => new(
+        PlantId: e.PlantId,
+        StartUtc: e.StartUtc,
+        EndUtc: e.EndUtc,
+        VarighetTimer: e.VarighetTimer,
+        State: e.State.ToString(),
+        Kategori: e.Category.ToString(),
+        CauseCode: e.CauseCode,
+        TapMwh: e.TapMwh,
+        TapNok: e.TapNok,
+        TimerSettlement: e.TimerSettlement,
+        HarOperlogMatch: e.HarOperlogMatch,
+        Rationale: e.Rationale);
+
+    private static string BuildNedetidCsv(NedetidResponse r)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("start_utc;end_utc;varighet_t;state;kategori;cause_code;tap_mwh;tap_nok;timer_settlement;har_operlog;rationale");
+        foreach (var e in r.Events)
+        {
+            sb.Append(e.StartUtc.UtcDateTime.ToString("o", CultureInfo.InvariantCulture)).Append(';');
+            sb.Append(e.EndUtc.UtcDateTime.ToString("o", CultureInfo.InvariantCulture)).Append(';');
+            sb.Append(e.VarighetTimer.ToString("F2", CultureInfo.InvariantCulture)).Append(';');
+            sb.Append(e.State).Append(';');
+            sb.Append(e.Kategori).Append(';');
+            sb.Append(EscapeCsv(e.CauseCode)).Append(';');
+            sb.Append(e.TapMwh.ToString("F3", CultureInfo.InvariantCulture)).Append(';');
+            sb.Append(e.TapNok.ToString("F0", CultureInfo.InvariantCulture)).Append(';');
+            sb.Append(e.TimerSettlement).Append(';');
+            sb.Append(e.HarOperlogMatch ? "true" : "false").Append(';');
+            sb.AppendLine(EscapeCsv(e.Rationale));
+        }
+        return sb.ToString();
+    }
+
+    private static string BuildVaktRoiCsv(VaktRoiResponse r)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("start_utc;end_utc;varighet_t;state;kategori;cause_code;innenfor_vakt;reddbar;counterfactual_end;ekstra_timer;reddet_mwh;reddet_nok;forklaring");
+        foreach (var x in r.Events)
+        {
+            sb.Append(x.Event.StartUtc.UtcDateTime.ToString("o", CultureInfo.InvariantCulture)).Append(';');
+            sb.Append(x.Event.EndUtc.UtcDateTime.ToString("o", CultureInfo.InvariantCulture)).Append(';');
+            sb.Append(x.Event.VarighetTimer.ToString("F2", CultureInfo.InvariantCulture)).Append(';');
+            sb.Append(x.Event.State).Append(';');
+            sb.Append(x.Event.Kategori).Append(';');
+            sb.Append(EscapeCsv(x.Event.CauseCode)).Append(';');
+            sb.Append(x.ErInnenforVakt ? "true" : "false").Append(';');
+            sb.Append(x.ErReddbar ? "true" : "false").Append(';');
+            sb.Append(x.CounterfactualEndUtc?.UtcDateTime.ToString("o", CultureInfo.InvariantCulture) ?? "").Append(';');
+            sb.Append(x.EkstraTimerSpart.ToString("F2", CultureInfo.InvariantCulture)).Append(';');
+            sb.Append(x.ReddetMwh.ToString("F2", CultureInfo.InvariantCulture)).Append(';');
+            sb.Append(x.ReddetNok.ToString("F0", CultureInfo.InvariantCulture)).Append(';');
+            sb.AppendLine(EscapeCsv(x.Forklaring));
+        }
+        return sb.ToString();
+    }
+
+    private static string EscapeCsv(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        if (value.Contains(';') || value.Contains('"') || value.Contains('\n') || value.Contains('\r'))
+        {
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
+        }
+        return value;
+    }
+}
