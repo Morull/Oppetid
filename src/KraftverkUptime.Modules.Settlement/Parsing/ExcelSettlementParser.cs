@@ -271,7 +271,12 @@ public sealed class ExcelSettlementParser : ISettlementParser
         // Sortér på UTC for konsistens
         rows.Sort((a, b) => a.TimeUtc.CompareTo(b.TimeUtc));
 
-        return (schemaVersion, rows);
+        // 15-min eksporter aggregeres til time-rader. Detekteringen ser på
+        // de første 3 tids-radene; hvis alle differanser er 15 min slås
+        // hver 4 rader sammen til én time. 60-min eksporter går uendret igjennom.
+        var aggregated = HourlyAggregator.Process(rows, issues);
+
+        return (schemaVersion, aggregated);
 
         // Lokal funksjon for framtidig å koble CancellationToken inn her –
         // ClosedXML er syntaktisk synkron så vi sjekker ikke per rad nå.
