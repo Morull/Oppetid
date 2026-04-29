@@ -87,4 +87,58 @@ public sealed class BlobUptimeReportStore : IUptimeReportStore
 
         return report;
     }
+
+    public async Task DeleteAsync(
+        string ownerOrgId, string plantId, string idempotencyKey, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerOrgId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
+
+        var path = BuildBlobPath(ownerOrgId, plantId, idempotencyKey);
+        await _fileStorage.DeleteAsync(path, ct).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "UptimeReport slettet for plant {PlantId} (org {OrgId}, key {Key})",
+            plantId, ownerOrgId, idempotencyKey);
+    }
+
+    public async Task<int> DeleteAllForPlantAsync(
+        string ownerOrgId, string plantId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerOrgId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+
+        var prefix = $"reports/{ownerOrgId}/{plantId}/";
+        var deleted = await DeleteByPrefixAsync(prefix, ct).ConfigureAwait(false);
+        _logger.LogInformation(
+            "UptimeReport-blobs slettet for plant {PlantId} (org {OrgId}): {Count}",
+            plantId, ownerOrgId, deleted);
+        return deleted;
+    }
+
+    public async Task<int> DeleteAllAsync(string ownerOrgId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerOrgId);
+
+        var prefix = $"reports/{ownerOrgId}/";
+        var deleted = await DeleteByPrefixAsync(prefix, ct).ConfigureAwait(false);
+        _logger.LogInformation(
+            "UptimeReport-blobs slettet for hele org {OrgId}: {Count}", ownerOrgId, deleted);
+        return deleted;
+    }
+
+    private async Task<int> DeleteByPrefixAsync(string prefix, CancellationToken ct)
+    {
+        var paths = new List<string>();
+        await foreach (var path in _fileStorage.ListAsync(prefix, ct).ConfigureAwait(false))
+        {
+            paths.Add(path);
+        }
+        foreach (var path in paths)
+        {
+            await _fileStorage.DeleteAsync(path, ct).ConfigureAwait(false);
+        }
+        return paths.Count;
+    }
 }

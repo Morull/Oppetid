@@ -137,5 +137,12 @@ public class ClassifyOnImportedHandlerTests
         public Task<UptimeReport?> GetAsync(
             string ownerOrgId, string plantId, string idempotencyKey, CancellationToken ct)
             => Task.FromResult(LastReport);
+
+        public Task DeleteAsync(string ownerOrgId, string plantId, string idempotencyKey, CancellationToken ct)
+            => Task.CompletedTask;
+        public Task<int> DeleteAllForPlantAsync(string ownerOrgId, string plantId, CancellationToken ct)
+            => Task.FromResult(0);
+        public Task<int> DeleteAllAsync(string ownerOrgId, CancellationToken ct)
+            => Task.FromResult(0);
     }
 }

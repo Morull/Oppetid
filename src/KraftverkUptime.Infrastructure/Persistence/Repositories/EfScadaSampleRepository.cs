@@ -89,6 +89,19 @@ public sealed class EfScadaSampleRepository : IScadaSampleRepository
             .ExecuteDeleteAsync(ct).ConfigureAwait(false);
     }
 
+    public async Task<int> DeleteAllForPlantAsync(string plantId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        return await _db.SampleFacts
+            .Where(x => x.AssetId == plantId)
+            .ExecuteDeleteAsync(ct).ConfigureAwait(false);
+    }
+
+    public async Task<int> DeleteAllAsync(CancellationToken ct)
+    {
+        return await _db.SampleFacts.ExecuteDeleteAsync(ct).ConfigureAwait(false);
+    }
+
     private static ScadaSample ToDomain(SampleFactEntry e) =>
         new(e.AssetId, e.SignalId, e.TimeUtc, e.Value, e.Quality);
 }

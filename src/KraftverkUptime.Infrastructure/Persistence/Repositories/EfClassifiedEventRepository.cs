@@ -96,6 +96,22 @@ public sealed class EfClassifiedEventRepository : IClassifiedEventRepository
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
 
+    public async Task<int> DeleteAllForPlantAsync(string plantId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        return await _db.ClassifiedEvents
+            .Where(x => x.PlantId == plantId)
+            .ExecuteDeleteAsync(ct).ConfigureAwait(false);
+    }
+
+    public async Task<int> DeleteAllAsync(string ownerOrgId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerOrgId);
+        return await _db.ClassifiedEvents
+            .Where(x => x.OwnerOrgId == ownerOrgId)
+            .ExecuteDeleteAsync(ct).ConfigureAwait(false);
+    }
+
     private static ClassifiedEvent ToDomain(ClassifiedEventEntry e) => new(
         e.Id, e.OwnerOrgId, e.PlantId, e.StartUtc, e.EndUtc,
         e.State, e.CauseCode, e.Confidence, e.SourcesJson, e.Rationale);

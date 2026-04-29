@@ -51,6 +51,39 @@ public sealed class ReportsApi
             ?? throw new InvalidOperationException("Tom respons fra plant-update.");
     }
 
+    /// <summary>Sletter en spesifikk settlement-import + tilhørende rapport-blob.</summary>
+    public async Task DeleteSettlementAsync(string plantId, string idempotencyKey, CancellationToken ct = default)
+    {
+        var uri = new Uri(
+            $"api/v1/plants/{Uri.EscapeDataString(plantId)}/settlements/{Uri.EscapeDataString(idempotencyKey)}",
+            UriKind.Relative);
+        var resp = await _http.DeleteAsync(uri, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
+    /// Sletter ALL importert data for et anlegg (settlement, classified events,
+    /// SCADA samples, annotations, report-blobs). Plant-raden beholdes.
+    /// confirmText må være lik plantId for å bekrefte.
+    /// </summary>
+    public async Task<ResetResultDto> ResetPlantDataAsync(
+        string plantId, string confirmText, CancellationToken ct = default)
+    {
+        var uri = new Uri(
+            $"api/v1/plants/{Uri.EscapeDataString(plantId)}/data",
+            UriKind.Relative);
+        var body = new ResetPlantDataRequestDto(confirmText);
+        var json = System.Text.Json.JsonSerializer.Serialize(body, JsonOptions);
+        using var req = new HttpRequestMessage(HttpMethod.Delete, uri)
+        {
+            Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
+        };
+        var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<ResetResultDto>(JsonOptions, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Tom respons fra plant data-reset.");
+    }
+
     public async Task<IReadOnlyList<SettlementImportSummary>> ListSettlementsAsync(
         string plantId,
         DateTimeOffset? fromUtc = null,
@@ -227,6 +260,17 @@ public sealed record PlantDto(
 /// </summary>
 public sealed record UpdatePlantRequest(
     string Name, string Type, double InstalledCapacityMw, string TimeZone);
+
+/// <summary>Bekreftelses-body for <c>DELETE /api/v1/plants/{plantId}/data</c>.</summary>
+public sealed record ResetPlantDataRequestDto(string ConfirmText);
+
+public sealed record ResetResultDto(
+    string PlantId,
+    int ReportsDeleted,
+    int ImportsDeleted,
+    int EventsDeleted,
+    int SamplesDeleted,
+    int AnnotationsDeleted);
 
 public sealed record PagedEnvelope<T>(
     IReadOnlyList<T> Items, string? NextCursor, int PageSize);

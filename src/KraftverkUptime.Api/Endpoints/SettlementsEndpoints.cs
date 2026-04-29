@@ -85,6 +85,13 @@ public static class SettlementsEndpoints
             .Produces(StatusCodes.Status200OK, contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        group.MapDelete("/{idempotencyKey}", DeleteSettlementAsync)
+            .WithName("DeleteSettlement")
+            .WithSummary("Sletter en spesifikk settlement-import + tilhørende rapport-blob.")
+            .AllowAnonymous()
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         return endpoints;
     }
 
@@ -229,6 +236,32 @@ public static class SettlementsEndpoints
             fileStream: stream,
             contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             fileDownloadName: fileName);
+    }
+
+    private static async Task<IResult> DeleteSettlementAsync(
+        string plantId,
+        string idempotencyKey,
+        ISettlementImportRecorder recorder,
+        IUptimeReportStore reportStore,
+        CancellationToken ct)
+    {
+        var record = await recorder
+            .FindByIdempotencyKeyAsync(plantId, idempotencyKey, ct)
+            .ConfigureAwait(false);
+        if (record is null)
+        {
+            return Results.Problem(
+                title: "Import ikke funnet",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        // Slett blob først (idempotent — om den allerede mangler er det OK)
+        await reportStore.DeleteAsync(record.OwnerOrgId, record.PlantId, record.IdempotencyKey, ct)
+            .ConfigureAwait(false);
+        // Slett DB-raden — etter at blob er borte for å unngå dangling pointer
+        await recorder.DeleteAsync(plantId, idempotencyKey, ct).ConfigureAwait(false);
+
+        return Results.NoContent();
     }
 
     private static async Task<IResult> UploadAsync(

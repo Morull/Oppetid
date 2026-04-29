@@ -34,4 +34,28 @@ public interface IUptimeReportStore
         string plantId,
         string idempotencyKey,
         CancellationToken ct);
+
+    /// <summary>
+    /// Sletter en spesifikk lagret rapport. No-op hvis den ikke finnes.
+    /// </summary>
+    Task DeleteAsync(
+        string ownerOrgId,
+        string plantId,
+        string idempotencyKey,
+        CancellationToken ct);
+
+    /// <summary>
+    /// Sletter alle rapporter for et anlegg. Returnerer antall slettede objekter.
+    /// </summary>
+    Task<int> DeleteAllForPlantAsync(
+        string ownerOrgId,
+        string plantId,
+        CancellationToken ct);
+
+    /// <summary>
+    /// Sletter alle rapporter for organisasjonen. Returnerer antall slettede objekter.
+    /// </summary>
+    Task<int> DeleteAllAsync(
+        string ownerOrgId,
+        CancellationToken ct);
 }

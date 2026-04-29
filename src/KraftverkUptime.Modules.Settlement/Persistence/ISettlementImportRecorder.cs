@@ -54,4 +54,13 @@ public interface ISettlementImportRecorder
         DateTimeOffset? toUtc,
         int limit,
         CancellationToken ct);
+
+    /// <summary>Sletter en import-rad (idempotent — no-op hvis raden ikke finnes).</summary>
+    Task<bool> DeleteAsync(string plantId, string idempotencyKey, CancellationToken ct);
+
+    /// <summary>Sletter alle import-rader for et anlegg. Returnerer antall slettede rader.</summary>
+    Task<int> DeleteAllForPlantAsync(string plantId, CancellationToken ct);
+
+    /// <summary>Sletter alle import-rader for organisasjonen. Returnerer antall slettede rader.</summary>
+    Task<int> DeleteAllAsync(string ownerOrgId, CancellationToken ct);
 }

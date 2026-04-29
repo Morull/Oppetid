@@ -25,4 +25,10 @@ public interface IScadaSampleRepository
 
     /// <summary>Sletter alle samples for et anlegg eldre enn cutoff. Brukes til retensjon ved behov.</summary>
     Task<int> DeleteOlderThanAsync(string plantId, DateTimeOffset cutoffUtc, CancellationToken ct);
+
+    /// <summary>Sletter ALLE samples for et anlegg. Brukes ved data-reset.</summary>
+    Task<int> DeleteAllForPlantAsync(string plantId, CancellationToken ct);
+
+    /// <summary>Sletter alle samples for organisasjonen. Brukes ved full system-reset.</summary>
+    Task<int> DeleteAllAsync(CancellationToken ct);
 }

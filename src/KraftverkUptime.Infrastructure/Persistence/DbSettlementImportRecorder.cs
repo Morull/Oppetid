@@ -136,6 +136,34 @@ public sealed class DbSettlementImportRecorder : ISettlementImportRecorder
         return rows.ConvertAll(ToRecord);
     }
 
+    public async Task<bool> DeleteAsync(string plantId, string idempotencyKey, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
+
+        var deleted = await _db.SettlementImports
+            .Where(x => x.PlantId == plantId && x.IdempotencyKey == idempotencyKey)
+            .ExecuteDeleteAsync(ct)
+            .ConfigureAwait(false);
+        return deleted > 0;
+    }
+
+    public async Task<int> DeleteAllForPlantAsync(string plantId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        return await _db.SettlementImports
+            .Where(x => x.PlantId == plantId)
+            .ExecuteDeleteAsync(ct).ConfigureAwait(false);
+    }
+
+    public async Task<int> DeleteAllAsync(string ownerOrgId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerOrgId);
+        return await _db.SettlementImports
+            .Where(x => x.OwnerOrgId == ownerOrgId)
+            .ExecuteDeleteAsync(ct).ConfigureAwait(false);
+    }
+
     private static SettlementImportRecord ToRecord(SettlementImport row) => new()
     {
         OwnerOrgId = row.OwnerOrgId,

@@ -42,4 +42,10 @@ public interface IDowntimeAnnotationRepository
 
     /// <summary>Soft-delete. Returnerer true hvis raden eksisterte og ble markert.</summary>
     Task<bool> SoftDeleteAsync(long id, string? deletedBy, CancellationToken ct);
+
+    /// <summary>
+    /// Hard-sletter alle annoteringer for et anlegg (inkludert soft-deleted).
+    /// Brukes ved data-reset. Returnerer antall slettede rader.
+    /// </summary>
+    Task<int> DeleteAllForPlantAsync(string plantId, CancellationToken ct);
 }

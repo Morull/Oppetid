@@ -24,4 +24,10 @@ public interface IClassifiedEventRepository
     /// for å unngå dobbel-import av samme operlog-event.
     /// </summary>
     Task UpsertManyAsync(IReadOnlyCollection<ClassifiedEvent> events, CancellationToken ct);
+
+    /// <summary>Sletter alle events for et anlegg. Returnerer antall slettede rader.</summary>
+    Task<int> DeleteAllForPlantAsync(string plantId, CancellationToken ct);
+
+    /// <summary>Sletter alle events for organisasjonen. Returnerer antall slettede rader.</summary>
+    Task<int> DeleteAllAsync(string ownerOrgId, CancellationToken ct);
 }

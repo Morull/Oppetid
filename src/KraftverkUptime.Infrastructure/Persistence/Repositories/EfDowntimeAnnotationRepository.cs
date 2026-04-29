@@ -147,6 +147,16 @@ public sealed class EfDowntimeAnnotationRepository : IDowntimeAnnotationReposito
         return true;
     }
 
+    public async Task<int> DeleteAllForPlantAsync(string plantId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        // IgnoreQueryFilters slik at også soft-deleted rader fjernes.
+        return await _db.DowntimeAnnotations
+            .IgnoreQueryFilters()
+            .Where(x => x.PlantId == plantId)
+            .ExecuteDeleteAsync(ct).ConfigureAwait(false);
+    }
+
     private static DowntimeAnnotation ToDomain(DowntimeAnnotationEntry e) => new(
         e.Id,
         e.OwnerOrgId,

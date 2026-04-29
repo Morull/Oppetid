@@ -73,6 +73,44 @@ else
             }
         </MudStack>
     </MudPaper>
+
+    @* ---- Farezone — slett data ---- *@
+    <MudPaper Class="pa-4 mt-6" Elevation="1" Style="max-width:680px; border:1px solid #E76F51;">
+        <MudExpansionPanel Text="Farezone — slett data" Style="background:transparent;">
+            <ChildContent>
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">
+                    Sletter ALL importert data for dette anlegget — settlement-imports,
+                    klassifiserte events, SCADA-samples, annoteringer og rapport-blobs.
+                    Plant-raden, signal_map og kapasitets-konfigurasjon beholdes.
+                    <strong>Kan ikke angres.</strong>
+                </MudAlert>
+                <MudTextField @bind-Value="_resetConfirmText"
+                              Label="@($"Skriv plant-id ({PlantId}) for å bekrefte")"
+                              Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Immediate="true" />
+                <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Error"
+                           StartIcon="@Icons.Material.Filled.DeleteForever"
+                           OnClick="OnResetAsync"
+                           Disabled="@(_resetting || !string.Equals(_resetConfirmText, PlantId, StringComparison.Ordinal))"
+                           Class="mt-3">
+                    @(_resetting ? "Sletter…" : "Slett all data")
+                </MudButton>
+
+                @if (_resetResult is not null)
+                {
+                    <MudAlert Severity="Severity.Success" Class="mt-3">
+                        Slettet: @_resetResult.ImportsDeleted imports, @_resetResult.ReportsDeleted rapporter,
+                        @_resetResult.EventsDeleted events, @_resetResult.SamplesDeleted samples,
+                        @_resetResult.AnnotationsDeleted annoteringer.
+                    </MudAlert>
+                }
+                @if (_resetError is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Class="mt-3">@_resetError</MudAlert>
+                }
+            </ChildContent>
+        </MudExpansionPanel>
+    </MudPaper>
 }
 
 @code {
@@ -83,6 +121,12 @@ else
     private string? _loadError;
     private string? _saveError;
     private FormModel? _form;
+
+    // Reset-state (egen seksjon)
+    private string _resetConfirmText = string.Empty;
+    private bool _resetting;
+    private string? _resetError;
+    private ResetResultDto? _resetResult;
 
     protected override async Task OnInitializedAsync()
     {
@@ -139,6 +183,34 @@ else
         finally
         {
             _saving = false;
+        }
+    }
+
+    private async Task OnResetAsync()
+    {
+        if (!string.Equals(_resetConfirmText, PlantId, StringComparison.Ordinal)) return;
+        _resetting = true;
+        _resetError = null;
+        _resetResult = null;
+        try
+        {
+            _resetResult = await Api.ResetPlantDataAsync(PlantId, _resetConfirmText);
+            Snackbar.Add($"All data slettet for {PlantId}.", Severity.Success);
+            _resetConfirmText = string.Empty;
+        }
+        catch (HttpRequestException ex)
+        {
+            _resetError = $"Sletting feilet: {ex.Message}";
+            Snackbar.Add(_resetError, Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            _resetError = $"Uventet feil: {ex.Message}";
+            Snackbar.Add(_resetError, Severity.Error);
+        }
+        finally
+        {
+            _resetting = false;
         }
     }
 

@@ -1,14 +1,20 @@
 using Asp.Versioning;
 using Asp.Versioning.Builder;
+using KraftverkUptime.Api.Options;
 using KraftverkUptime.Api.Paging;
 using KraftverkUptime.Core.Domain;
 using KraftverkUptime.Core.Paging;
 using KraftverkUptime.Core.Security;
 using KraftverkUptime.Infrastructure.Persistence;
+using KraftverkUptime.Modules.Annotations.Repositories;
+using KraftverkUptime.Modules.Reporting.Storage;
+using KraftverkUptime.Modules.Scada.Repositories;
+using KraftverkUptime.Modules.Settlement.Persistence;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace KraftverkUptime.Api.Endpoints;
@@ -40,6 +46,14 @@ public static class PlantsEndpoints
             .WithName("UpdatePlant")
             .WithSummary("Oppdaterer navn, type, kapasitet og tidssone for et anlegg.")
             .RequireAuthorization(AuthorizationPolicies.PlantAdmin);
+
+        group.MapDelete("/{plantId}/data", ResetPlantDataAsync)
+            .WithName("ResetPlantData")
+            .WithSummary("Sletter ALL importert data for et anlegg. Plant-raden beholdes.")
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
+            .Produces(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         return endpoints;
     }
@@ -173,7 +187,73 @@ public static class PlantsEndpoints
             plant.TimeZone,
         });
     }
+
+    // ---- DELETE /api/v1/plants/{plantId}/data --------------------------
+
+    private static async Task<IResult> ResetPlantDataAsync(
+        string plantId,
+        ResetPlantDataRequest body,
+        KraftverkDbContext db,
+        IQueryContext queryContext,
+        ISettlementImportRecorder importRecorder,
+        IUptimeReportStore reportStore,
+        IClassifiedEventRepository eventRepo,
+        IScadaSampleRepository sampleRepo,
+        IDowntimeAnnotationRepository annotationRepo,
+        IOptions<SettlementUploadOptions> uploadOptions,
+        ILogger<PlantsResetLogger> logger,
+        CancellationToken ct)
+    {
+        if (body is null || !string.Equals(body.ConfirmText, plantId, StringComparison.Ordinal))
+        {
+            return Results.Problem(
+                title: "Bekreftelse mangler eller feil",
+                detail: $"For å slette data må 'confirmText' være satt til '{plantId}'.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var plant = await queryContext.Apply(db.Plants.AsQueryable())
+            .FirstOrDefaultAsync(p => p.Id == plantId, ct).ConfigureAwait(false);
+        if (plant is null)
+        {
+            return Results.Problem(
+                title: "Anlegg ikke funnet",
+                detail: $"Plant '{plantId}' eksisterer ikke.",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var ownerOrgId = uploadOptions.Value.DevDefaultOwnerOrgId ?? "dev-org";
+
+        // Sletter i rekkefølge: blob først (mister referansen om DB-rad er borte),
+        // så DB-radene. Idempotent — kan kalles igjen uten å feile.
+        var reportsDeleted = await reportStore
+            .DeleteAllForPlantAsync(ownerOrgId, plantId, ct).ConfigureAwait(false);
+        var importsDeleted = await importRecorder
+            .DeleteAllForPlantAsync(plantId, ct).ConfigureAwait(false);
+        var eventsDeleted = await eventRepo
+            .DeleteAllForPlantAsync(plantId, ct).ConfigureAwait(false);
+        var samplesDeleted = await sampleRepo
+            .DeleteAllForPlantAsync(plantId, ct).ConfigureAwait(false);
+        var annotationsDeleted = await annotationRepo
+            .DeleteAllForPlantAsync(plantId, ct).ConfigureAwait(false);
+
+        logger.LogWarning(
+            "Plant data-reset for {PlantId}: {Reports} rapporter, {Imports} imports, " +
+            "{Events} events, {Samples} samples, {Annotations} annotations slettet.",
+            plantId, reportsDeleted, importsDeleted, eventsDeleted, samplesDeleted, annotationsDeleted);
+
+        return Results.Ok(new ResetResult(
+            PlantId: plantId,
+            ReportsDeleted: reportsDeleted,
+            ImportsDeleted: importsDeleted,
+            EventsDeleted: eventsDeleted,
+            SamplesDeleted: samplesDeleted,
+            AnnotationsDeleted: annotationsDeleted));
+    }
 }
+
+/// <summary>Marker for ILogger-kategori.</summary>
+public sealed class PlantsResetLogger { }
 
 /// <summary>Request-body for <c>PUT /api/v1/plants/{plantId}</c>.</summary>
 public sealed record UpdatePlantRequest(
@@ -181,3 +261,14 @@ public sealed record UpdatePlantRequest(
     string Type,
     double InstalledCapacityMw,
     string TimeZone);
+
+/// <summary>Bekreftelses-body for <c>DELETE /api/v1/plants/{plantId}/data</c>.</summary>
+public sealed record ResetPlantDataRequest(string ConfirmText);
+
+public sealed record ResetResult(
+    string PlantId,
+    int ReportsDeleted,
+    int ImportsDeleted,
+    int EventsDeleted,
+    int SamplesDeleted,
+    int AnnotationsDeleted);

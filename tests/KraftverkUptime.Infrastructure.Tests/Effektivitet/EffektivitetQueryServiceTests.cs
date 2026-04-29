@@ -218,5 +218,9 @@ public class EffektivitetQueryServiceTests
             => throw new NotImplementedException();
         public Task<int> DeleteOlderThanAsync(string plantId, DateTimeOffset cutoffUtc, CancellationToken ct)
             => throw new NotImplementedException();
+        public Task<int> DeleteAllForPlantAsync(string plantId, CancellationToken ct)
+            => throw new NotImplementedException();
+        public Task<int> DeleteAllAsync(CancellationToken ct)
+            => throw new NotImplementedException();
     }
 }
