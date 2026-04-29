@@ -44,7 +44,8 @@ public static class DowntimeEventAggregator
     public static IReadOnlyList<DowntimeEvent> Aggregate(
         string plantId,
         IReadOnlyList<ClassifiedHourlyRow> classifiedHours,
-        IReadOnlyList<ClassifiedEvent>? operlogEvents = null)
+        IReadOnlyList<ClassifiedEvent>? operlogEvents = null,
+        IRistAlarmDetector? ristDetector = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
         ArgumentNullException.ThrowIfNull(classifiedHours);
@@ -125,7 +126,50 @@ public static class DowntimeEventAggregator
             events = ApplyOperlogOverlay(events, operlogEvents).ToList();
         }
 
+        // Rist-deteksjon: trip-events innen ±60 min av rist-falltap-alarm blir
+        // omklassifisert til TettInntaksrist. Egen kategori for at drifts-leder
+        // skal kunne skille vedlikeholds-relaterte stopp fra mekaniske feil.
+        var detector = ristDetector ?? new RistAlarmDetector();
+        var ristAlarms = operlogEvents is null
+            ? Array.Empty<DateTimeOffset>()
+            : detector.ExtractRistAlarmTimes(operlogEvents);
+        if (ristAlarms.Count > 0)
+        {
+            events = ApplyRistDetection(events, ristAlarms, detector).ToList();
+        }
+
         return events;
+    }
+
+    private static IEnumerable<DowntimeEvent> ApplyRistDetection(
+        IList<DowntimeEvent> events,
+        IReadOnlyList<DateTimeOffset> ristAlarmTimes,
+        IRistAlarmDetector detector)
+    {
+        foreach (var e in events)
+        {
+            // Bare trip-relaterte states kan omklassifiseres som rist.
+            var trippable = e.State == UnitState.ForcedOutage
+                || e.State == UnitState.ForcedDerating;
+            if (!trippable)
+            {
+                yield return e;
+                continue;
+            }
+
+            if (detector.IsRistRelated(e.StartUtc, ristAlarmTimes))
+            {
+                yield return e with
+                {
+                    Category = DowntimeEventCategory.TettInntaksrist,
+                    CauseCode = "operlog:rist-falltap",
+                };
+            }
+            else
+            {
+                yield return e;
+            }
+        }
     }
 
     private static DowntimeEvent BuildEvent(

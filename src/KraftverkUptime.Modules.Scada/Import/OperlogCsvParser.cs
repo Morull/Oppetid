@@ -160,6 +160,13 @@ public sealed class OperlogCsvParser
         {
             return (UnitState.MaintenanceOutage, "operlog:stop");
         }
+        // Rist-falltap-alarm: tett inntaksrist. Egen cause-code slik at
+        // rist-detektor kan korrelere med trip-events (innen ±60 min).
+        // Markerer ikke nedetid alene — bare som markør for senere matching.
+        if (t.Contains("RIST_FALLTAP"))
+        {
+            return (UnitState.ForcedOutage, "operlog:rist-falltap");
+        }
         if (t.Contains("FEIL_AL") || t.Contains("HAVARI"))
         {
             return (UnitState.ForcedOutage, "operlog:fault");

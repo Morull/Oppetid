@@ -38,6 +38,7 @@ public sealed class VaktRoiCalculator
     private static readonly HashSet<DowntimeEventCategory> ReddbareKategorier = new()
     {
         DowntimeEventCategory.TripFeil,
+        DowntimeEventCategory.TettInntaksrist,    // vakten kan rense rist + restarte
         DowntimeEventCategory.EksternForstyrrelse,
         DowntimeEventCategory.UkjentNedetid, // konservativ default
     };

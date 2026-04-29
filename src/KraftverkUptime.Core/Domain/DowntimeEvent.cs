@@ -60,6 +60,15 @@ public enum DowntimeEventCategory
     /// <summary>Trip / feil-stopp som krever manuell intervensjon. Reddbar av vakt.</summary>
     TripFeil,
 
+    /// <summary>
+    /// Trip forårsaket av tett inntaksrist (løvfall, is, fremmedlegemer).
+    /// Skiller seg fra TripFeil ved at årsaken er vedlikeholds-relatert
+    /// istedenfor mekanisk/elektrisk turbin-feil. Reddbar av vakt (rens av rist).
+    /// Detekteres automatisk når en rist-falltap-alarm er aktiv ±60 min rundt
+    /// trip-tidspunktet.
+    /// </summary>
+    TettInntaksrist,
+
     /// <summary>Eksterne forstyrrelser (nett-fall, frekvens-avvik). Reddbar i v1 (konservativt).</summary>
     EksternForstyrrelse,
 

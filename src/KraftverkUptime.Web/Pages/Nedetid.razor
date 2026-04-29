@@ -341,6 +341,7 @@ else if (_response is not null)
     private static string DisplayKategori(string kategori) => kategori switch
     {
         "TripFeil" => "Trip / feil",
+        "TettInntaksrist" => "Tett inntaksrist",
         "EksternForstyrrelse" => "Ekstern forstyrrelse",
         "PlanlagtVedlikehold" => "Planlagt vedlikehold",
         "Markedstopp" => "Markedstopp",
@@ -353,6 +354,7 @@ else if (_response is not null)
     private static MudBlazor.Color KategoriColor(string kategori) => kategori switch
     {
         "TripFeil" => MudBlazor.Color.Error,
+        "TettInntaksrist" => MudBlazor.Color.Tertiary,
         "EksternForstyrrelse" => MudBlazor.Color.Warning,
         "PlanlagtVedlikehold" => MudBlazor.Color.Info,
         "Markedstopp" => MudBlazor.Color.Secondary,
@@ -364,6 +366,7 @@ else if (_response is not null)
     private static string KategoriHex(string kategori) => kategori switch
     {
         "TripFeil" => "#E76F51",
+        "TettInntaksrist" => "#A0522D", // saddle brown — markerer rist-relaterte stopp
         "EksternForstyrrelse" => "#F39C12",
         "PlanlagtVedlikehold" => "#1E5F8E",
         "Markedstopp" => "#7E57C2",
