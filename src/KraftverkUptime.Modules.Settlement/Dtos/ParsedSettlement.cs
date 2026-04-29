@@ -11,6 +11,14 @@ namespace KraftverkUptime.Modules.Settlement.Dtos;
 public sealed record ParsedSettlement
 {
     public required string PlantName { get; init; }
+
+    /// <summary>
+    /// Slug-id for anlegget (resultat av <see cref="Core.Domain.PlantSlug.ToSlug"/>).
+    /// Multi-anleggs-parseren setter denne; enkelt-anleggs-parseren lar den
+    /// være null og lar caller resolve plantId fra URL.
+    /// </summary>
+    public string? PlantId { get; init; }
+
     public required string SchemaVersion { get; init; }
     public required DateTimeOffset PeriodStartUtc { get; init; }
     public required DateTimeOffset PeriodEndUtc { get; init; }

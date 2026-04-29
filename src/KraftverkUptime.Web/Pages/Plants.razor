@@ -8,9 +8,48 @@
 <div class="d-flex justify-space-between align-center mb-4">
     <MudText Typo="Typo.h1">Anlegg</MudText>
     <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
-        Tips: dra Excel (avregning) eller CSV (SCADA / operlog) rett på anleggs-kortet.
+        Tips: dra Excel (avregning) eller CSV (SCADA / operlog) rett på anleggs-kortet,
+        eller bruk multi-anleggs-zonen under for porteføljen.
     </MudText>
 </div>
+
+@* ---- Multi-anleggs-opplasting (én Excel med 9+ plant-faner) ---- *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudFileUpload T="IBrowserFile"
+                   Accept=".xlsx"
+                   MaximumFileCount="1"
+                   FilesChanged="@OnMultiPlantDroppedAsync"
+                   Hidden="@false"
+                   InputClass="dk-multi-dropzoneInput"
+                   InputStyle="opacity:0"
+                   Class="@(_multiState.IsUploading ? "dk-multi-dropzone dk-multi-dropzone--busy" : "dk-multi-dropzone")">
+        <ActivatorContent>
+            <div class="d-flex align-center" style="gap:16px;">
+                <MudIcon Icon="@Icons.Material.Filled.LibraryBooks"
+                         Color="MudBlazor.Color.Primary" Size="MudBlazor.Size.Large" />
+                <div style="flex:1;">
+                    <MudText Typo="Typo.h4">Last opp multi-anleggs-eksport</MudText>
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                        Én .xlsx med ≥ 2 anleggs-faner blir til én import per anlegg.
+                        Nye anlegg auto-opprettes med InstalledCapacityMw = 0.
+                    </MudText>
+                </div>
+                @if (_multiState.IsUploading)
+                {
+                    <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Small" />
+                }
+            </div>
+            @if (_multiState.LastSuccessMessage is not null)
+            {
+                <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3">@_multiState.LastSuccessMessage</MudAlert>
+            }
+            else if (_multiState.Error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">@_multiState.Error</MudAlert>
+            }
+        </ActivatorContent>
+    </MudFileUpload>
+</MudPaper>
 
 @if (_error is not null)
 {
@@ -70,7 +109,18 @@ else
                                     </div>
                                     <div class="d-flex justify-space-between">
                                         <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">Installert effekt</MudText>
-                                        <MudText Typo="Typo.body1"><strong>@p.InstalledCapacityMw.ToString("F1") MW</strong></MudText>
+                                        @if (p.InstalledCapacityMw <= 0)
+                                        {
+                                            <MudChip T="string" Size="MudBlazor.Size.Small"
+                                                     Variant="Variant.Filled" Color="MudBlazor.Color.Error"
+                                                     Icon="@Icons.Material.Filled.PriorityHigh">
+                                                Krever oppsett
+                                            </MudChip>
+                                        }
+                                        else
+                                        {
+                                            <MudText Typo="Typo.body1"><strong>@p.InstalledCapacityMw.ToString("F1") MW</strong></MudText>
+                                        }
                                     </div>
                                     <div class="d-flex justify-space-between">
                                         <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">Tidssone</MudText>
@@ -135,6 +185,9 @@ else
 
     /// <summary>Per-anleggs opplasting-state. Hver kort kjører selvstendig.</summary>
     private readonly Dictionary<string, UploadState> _uploadState = new(StringComparer.Ordinal);
+
+    /// <summary>State for multi-anleggs-opplasting (egen drop-zone øverst).</summary>
+    private readonly MultiPlantUploadState _multiState = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -299,5 +352,62 @@ else
         public SettlementUploadResponse? LastUpload { get; set; }
         /// <summary>Vises i kortet etter siste vellykkede opplasting (uavhengig av type).</summary>
         public string? LastSuccessMessage { get; set; }
+    }
+
+    private sealed class MultiPlantUploadState
+    {
+        public bool IsUploading { get; set; }
+        public string? Error { get; set; }
+        public string? LastSuccessMessage { get; set; }
+    }
+
+    private async Task OnMultiPlantDroppedAsync(IBrowserFile? file)
+    {
+        if (file is null || _multiState.IsUploading) return;
+
+        if (!file.Name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+        {
+            _multiState.Error = $"Bare .xlsx er støttet. Fikk: {file.Name}";
+            return;
+        }
+        if (file.Size > MaxUploadBytes)
+        {
+            _multiState.Error = $"Filen er for stor ({file.Size / 1_048_576} MB). Maks 25 MB.";
+            return;
+        }
+
+        _multiState.IsUploading = true;
+        _multiState.Error = null;
+        _multiState.LastSuccessMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxUploadBytes);
+            var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? XlsxContentType : file.ContentType;
+            var result = await Api.UploadMultiPlantSettlementAsync(stream, file.Name, contentType);
+
+            _multiState.LastSuccessMessage =
+                $"{result.ImportCount} import-rad(er) opprettet, {result.Imports.Count(i => i.PlantCreated)} nytt anlegg.";
+            Snackbar.Add(_multiState.LastSuccessMessage, Severity.Success);
+
+            // Re-hent anleggs-listen slik at nye anlegg dukker opp i UI
+            _items = await Api.ListPlantsAsync();
+        }
+        catch (HttpRequestException ex)
+        {
+            _multiState.Error = $"Multi-plant-import feilet: {ex.Message}";
+            Snackbar.Add(_multiState.Error, Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            _multiState.Error = $"Uventet feil: {ex.Message}";
+            Snackbar.Add(_multiState.Error, Severity.Error);
+        }
+        finally
+        {
+            _multiState.IsUploading = false;
+            StateHasChanged();
+        }
     }
 }

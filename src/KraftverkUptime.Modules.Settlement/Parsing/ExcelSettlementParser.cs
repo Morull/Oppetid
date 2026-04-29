@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using KraftverkUptime.Core.Domain;
 using KraftverkUptime.Core.Time;
@@ -48,19 +49,42 @@ public sealed class ExcelSettlementParser : ISettlementParser
     public string Name => "settlement.portal";
     public string Version => "v1";
 
+    /// <summary>
+    /// Regex som matcher kanoniske anleggs-titler i R1: navn + " dd.MM.yyyy".
+    /// Brukes til å plukke ut KANONISK plant-navn (med norske tegn) fra R1
+    /// selv når fane-navnet er ASCII-stripet ("1 Lgjen", "7 greyfoss").
+    /// </summary>
+    private static readonly Regex PlantTitleRegex = new(
+        @"^(?<name>.+?)\s+\d{1,2}\.\d{1,2}\.\d{4}",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(50));
+
+    /// <summary>
+    /// Regex for fane-navn som "1 Lgjen", "7 greyfoss" — sifre, mellomrom, navn.
+    /// Brukes til å gjenkjenne anleggs-faner i multi-plant-filer.
+    /// </summary>
+    private static readonly Regex PlantSheetRegex = new(
+        @"^\d+\s+\S+",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(50));
+
     public Task<ParsedSettlement> ParseAsync(Stream content, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(content);
-
-        // ClosedXML er fullstendig synkron. Vi kjører på current thread og
-        // returnerer Task for å eksponere async kontrakt til caller.
-        var result = ParseCore(content);
-        return Task.FromResult(result);
+        var all = ParseAllCore(content);
+        return Task.FromResult(all[0]);
     }
 
-    private ParsedSettlement ParseCore(Stream content)
+    public Task<IReadOnlyList<ParsedSettlement>> ParseAllAsync(
+        Stream content, CancellationToken ct = default)
     {
-        var issues = new List<ValidationIssue>();
+        ArgumentNullException.ThrowIfNull(content);
+        var all = ParseAllCore(content);
+        return Task.FromResult<IReadOnlyList<ParsedSettlement>>(all);
+    }
+
+    private List<ParsedSettlement> ParseAllCore(Stream content)
+    {
         using var workbook = new XLWorkbook(content);
 
         if (workbook.Worksheets.Count < 2)
@@ -69,23 +93,89 @@ public sealed class ExcelSettlementParser : ISettlementParser
                 $"Forventet minst 2 faner (Summering + verk), fant {workbook.Worksheets.Count}.");
         }
 
+        // Multi-plant-deteksjon: hvis det finnes ≥2 ark som matcher "n Navn"-mønsteret
+        // OG en "Summering"-fane, så er fila multi-plant. Ellers: enkelt-plant.
+        var summarySheet = workbook.Worksheets.FirstOrDefault(s =>
+            s.Name.Equals("Summering", StringComparison.OrdinalIgnoreCase));
+        var plantSheets = workbook.Worksheets
+            .Where(s => PlantSheetRegex.IsMatch(s.Name))
+            .ToList();
+
+        if (summarySheet is not null && plantSheets.Count >= 2)
+        {
+            return ParseMultiPlantWorkbook(workbook, summarySheet, plantSheets);
+        }
+
+        // Enkelt-plant fallback (gammelt format): første ark = Summering,
+        // andre ark = verk-fane. PlantId settes ikke (caller bruker URL).
+        return new List<ParsedSettlement>(1) { ParseSinglePlantWorkbook(workbook) };
+    }
+
+    private ParsedSettlement ParseSinglePlantWorkbook(XLWorkbook workbook)
+    {
+        var issues = new List<ValidationIssue>();
         var summarySheet = workbook.Worksheets.First();
         var plantSheet = workbook.Worksheets.Skip(1).First();
 
-        var plantName = ExtractPlantName(plantSheet.Name);
+        var plantName = ExtractPlantNameFromSheet(plantSheet);
         var summary = ParseSummary(summarySheet, issues);
-
         var (schemaVersion, hourly) = ParsePlantSheet(plantSheet, issues);
 
         CrossValidate(summary, hourly, issues);
         ValidateElhubESettConsistency(hourly, issues);
 
+        return BuildParsedSettlement(plantName, plantId: null, schemaVersion, hourly, summary, issues);
+    }
+
+    private List<ParsedSettlement> ParseMultiPlantWorkbook(
+        XLWorkbook workbook, IXLWorksheet summarySheet, IReadOnlyList<IXLWorksheet> plantSheets)
+    {
+        var results = new List<ParsedSettlement>(plantSheets.Count);
+        foreach (var plantSheet in plantSheets)
+        {
+            var issues = new List<ValidationIssue>();
+            var plantName = ExtractCanonicalNameFromR1(plantSheet) ?? ExtractPlantNameFromSheet(plantSheet);
+            var slug = PlantSlug.ToSlug(plantName);
+            if (string.IsNullOrEmpty(slug))
+            {
+                _logger.LogWarning(
+                    "Hopper over fane {Sheet}: kunne ikke utlede gyldig plant-slug fra R1.",
+                    plantSheet.Name);
+                continue;
+            }
+
+            var (schemaVersion, hourly) = ParsePlantSheet(plantSheet, issues);
+            ValidateElhubESettConsistency(hourly, issues);
+            // Cross-validate er hopppet for multi-plant fordi Summering er
+            // én rad per anlegg (ikke én rad totalt). Egen valideringsregel
+            // kan legges til senere.
+
+            results.Add(BuildParsedSettlement(plantName, slug, schemaVersion, hourly, summary: null, issues));
+        }
+
+        if (results.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "Multi-plant-fil ble detektert, men ingen anleggs-faner kunne parses.");
+        }
+
+        return results;
+    }
+
+    private static ParsedSettlement BuildParsedSettlement(
+        string plantName, string? plantId,
+        SettlementSchemaVersion schemaVersion,
+        IReadOnlyList<SettlementHourlyRow> hourly,
+        SettlementSummaryRow? summary,
+        IReadOnlyList<ValidationIssue> issues)
+    {
         var periodStart = hourly.Count > 0 ? hourly.Min(r => r.TimeUtc) : DateTimeOffset.MinValue;
         var periodEnd = hourly.Count > 0 ? hourly.Max(r => r.TimeUtc) : DateTimeOffset.MinValue;
 
         return new ParsedSettlement
         {
             PlantName = plantName,
+            PlantId = plantId,
             SchemaVersion = schemaVersion switch
             {
                 SettlementSchemaVersion.V1PortalMonthly => "portal-v1",
@@ -99,11 +189,29 @@ public sealed class ExcelSettlementParser : ISettlementParser
         };
     }
 
-    /// <summary>"1 Drivdal" → "Drivdal". Ark uten mellomrom returneres uendret.</summary>
-    private static string ExtractPlantName(string sheetName)
+    /// <summary>
+    /// "1 Drivdal" → "Drivdal". Ark uten mellomrom returneres uendret. Brukes
+    /// kun som fallback når R1-tittelen ikke kan tolkes.
+    /// </summary>
+    private static string ExtractPlantNameFromSheet(IXLWorksheet sheet)
     {
-        var idx = sheetName.IndexOf(' ');
-        return idx < 0 ? sheetName.Trim() : sheetName[(idx + 1)..].Trim();
+        var idx = sheet.Name.IndexOf(' ');
+        return idx < 0 ? sheet.Name.Trim() : sheet.Name[(idx + 1)..].Trim();
+    }
+
+    /// <summary>
+    /// Henter kanonisk plant-navn fra R1 i en anleggsfane. R1 har formatet
+    /// "Løgjen 01.02.2026 - 28.02.2026" — vi plukker ut alt før første
+    /// dato-substring. Returnerer null hvis R1 ikke matcher mønsteret.
+    /// </summary>
+    private static string? ExtractCanonicalNameFromR1(IXLWorksheet sheet)
+    {
+        var titleCell = sheet.Cell(1, 1);
+        var title = titleCell.GetString();
+        if (string.IsNullOrWhiteSpace(title)) return null;
+
+        var match = PlantTitleRegex.Match(title.Trim());
+        return match.Success ? match.Groups["name"].Value.Trim() : null;
     }
 
     // ------------------------------------------------------------------

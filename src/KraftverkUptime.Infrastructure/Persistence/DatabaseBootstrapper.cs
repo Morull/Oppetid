@@ -60,6 +60,11 @@ public static class DatabaseBootstrapper
             // Seed default-nedetidskategorier (idempotent — hopper over hvis allerede tilstede).
             await DowntimeCategorySeeder.SeedAsync(services, ct).ConfigureAwait(false);
 
+            // Bootstrap hele Dalane Kraft-porteføljen (11 anlegg). Idempotent.
+            // Kjøres FØR DrivdalSignalMapSeeder slik at andre anlegg eksisterer
+            // når deres SCADA blir konfigurert senere.
+            await PlantPortfolioSeeder.SeedAsync(services, ct).ConfigureAwait(false);
+
             // Seed Drivdal-signal-map (22 tags). Idempotent. Andre anlegg legges
             // inn manuelt eller via egen seeder etter samme mønster.
             await DrivdalSignalMapSeeder.SeedAsync(services, ct).ConfigureAwait(false);

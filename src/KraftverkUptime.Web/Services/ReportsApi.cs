@@ -106,6 +106,29 @@ public sealed class ReportsApi
     }
 
     /// <summary>
+    /// Laster opp en multi-anleggs-eksport (én Excel med flere plant-faner).
+    /// Speiler <c>POST /api/v1/settlements/multi-plant</c>. Auto-oppretter
+    /// nye plants ved behov.
+    /// </summary>
+    public async Task<MultiPlantImportResponse> UploadMultiPlantSettlementAsync(
+        Stream fileStream, string fileName, string contentType, CancellationToken ct = default)
+    {
+        using var form = new MultipartFormDataContent();
+        using var fileContent = new StreamContent(fileStream);
+        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
+        form.Add(fileContent, "file", fileName);
+
+        var resp = await _http.PostAsync(
+            new Uri("api/v1/settlements/multi-plant", UriKind.Relative), form, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+
+        return await resp.Content
+            .ReadFromJsonAsync<MultiPlantImportResponse>(JsonOptions, ct)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Tom respons fra multi-plant upload.");
+    }
+
+    /// <summary>
     /// Laster opp SCADA master-CSV (tidsserier). Speiler API-endepunktet
     /// <c>POST /api/v1/plants/{plantId}/scada</c>.
     /// </summary>
@@ -200,6 +223,20 @@ public sealed record KpiDto(
     double Confidence,
     string Category,
     string Definition);
+
+public sealed record MultiPlantImportResultDto(
+    string PlantId,
+    string PlantName,
+    string IdempotencyKey,
+    int HourCount,
+    int IssueCount,
+    bool PlantCreated);
+
+public sealed record MultiPlantImportResponse(
+    string BlobPath,
+    int ImportCount,
+    int SkippedCount,
+    IReadOnlyList<MultiPlantImportResultDto> Imports);
 
 public sealed record ScadaImportResultDto(
     string PlantId,

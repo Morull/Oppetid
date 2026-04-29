@@ -91,7 +91,16 @@ public sealed class SettlementUptimePeriodProvider : IUptimePeriodProvider
             cacheKey, import.BlobPath);
 
         await using var stream = await _fileStorage.GetAsync(import.BlobPath, ct).ConfigureAwait(false);
-        var parsed = await _parser.ParseAsync(stream, ct).ConfigureAwait(false);
+
+        // Parser kan returnere flere ParsedSettlement i samme workbook (multi-
+        // plant-format). Vi finner riktig anlegg ved å matche PlantId mot
+        // import-raden — dekkes både gammelt enkelt-plant-format (PlantId=null
+        // i parsed → first-and-only) og nytt multi-plant-format.
+        var all = await _parser.ParseAllAsync(stream, ct).ConfigureAwait(false);
+        var parsed = all.FirstOrDefault(p => string.Equals(p.PlantId, import.PlantId, StringComparison.Ordinal))
+            ?? (all.Count == 1 ? all[0] : null)
+            ?? throw new InvalidOperationException(
+                $"Ingen ParsedSettlement i blob {import.BlobPath} matcher plantId '{import.PlantId}'.");
 
         _cache.Set(cacheKey, parsed, CacheTtl);
         return parsed;
