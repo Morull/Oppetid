@@ -84,6 +84,27 @@ public sealed class ReportsApi
             ?? throw new InvalidOperationException("Tom respons fra plant data-reset.");
     }
 
+    /// <summary>Henter alle dammer for et anlegg, sortert på cascade_position.</summary>
+    public async Task<IReadOnlyList<DamDto>> ListDamsAsync(
+        string plantId, CancellationToken ct = default)
+    {
+        var uri = $"api/v1/plants/{Uri.EscapeDataString(plantId)}/dams";
+        var resp = await _http.GetFromJsonAsync<List<DamDto>>(uri, JsonOptions, ct)
+            .ConfigureAwait(false);
+        return resp ?? new List<DamDto>();
+    }
+
+    /// <summary>Oppdaterer HRV/LRV/Volum/IsTurbineIntake for en eksisterende dam.</summary>
+    public async Task<DamDto> UpdateDamAsync(
+        string plantId, string damId, UpdateDamRequestDto body, CancellationToken ct = default)
+    {
+        var uri = $"api/v1/plants/{Uri.EscapeDataString(plantId)}/dams/{Uri.EscapeDataString(damId)}";
+        var resp = await _http.PutAsJsonAsync(uri, body, JsonOptions, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<DamDto>(JsonOptions, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Tom respons fra dam-update.");
+    }
+
     public async Task<IReadOnlyList<SettlementImportSummary>> ListSettlementsAsync(
         string plantId,
         DateTimeOffset? fromUtc = null,
@@ -271,6 +292,24 @@ public sealed record ResetResultDto(
     int EventsDeleted,
     int SamplesDeleted,
     int AnnotationsDeleted);
+
+public sealed record DamDto(
+    string PlantId,
+    string DamId,
+    string Name,
+    int CascadePosition,
+    bool IsTurbineIntake,
+    double? HrvMoh,
+    double? LrvMoh,
+    double? VolumeMm3);
+
+public sealed record UpdateDamRequestDto(
+    string? Name,
+    int? CascadePosition,
+    bool IsTurbineIntake,
+    double? HrvMoh,
+    double? LrvMoh,
+    double? VolumeMm3);
 
 public sealed record PagedEnvelope<T>(
     IReadOnlyList<T> Items, string? NextCursor, int PageSize);
