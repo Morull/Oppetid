@@ -1,0 +1,543 @@
+@page "/anlegg/{PlantId}"
+@inject ReportsApi ReportsApi
+@inject NedetidApi NedetidApi
+@inject NavigationManager Nav
+@inject FilterState Filter
+
+<PageTitle>@(_plant?.Name ?? PlantId)</PageTitle>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+@if (_plant is null)
+{
+    <MudProgressCircular Indeterminate="true" />
+    <MudText Class="ml-2 d-inline">Laster anlegg…</MudText>
+}
+else
+{
+    @* ---- Header ---- *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="6">
+            <MudText Typo="Typo.h1">@_plant.Name</MudText>
+            <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+                @_plant.Id · @_plant.Type ·
+                @if (_plant.InstalledCapacityMw <= 0)
+                {
+                    <MudChip T="string" Size="MudBlazor.Size.Small"
+                             Color="MudBlazor.Color.Error">Krever oppsett</MudChip>
+                }
+                else
+                {
+                    <span>@_plant.InstalledCapacityMw.ToString("F1") MW installert</span>
+                }
+            </MudText>
+        </MudItem>
+        <MudItem xs="12" md="6" Class="d-flex justify-end align-center" Style="gap:8px;">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Settings"
+                       Href="@($"plants/{PlantId}/admin")">Admin</MudButton>
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.CloudUpload"
+                       Href="@($"upload?plant={PlantId}")">Last opp</MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @* ---- Periode-velger med shortcuts ---- *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudGrid>
+            <MudItem xs="12" sm="4">
+                <MudDatePicker Date="_fromDate" DateChanged="@OnFromChanged"
+                               Label="Fra dato" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudDatePicker Date="_toDate" DateChanged="@OnToChanged"
+                               Label="Til dato (eks.)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="4" Class="d-flex align-center" Style="gap:4px; flex-wrap: wrap;">
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+                           OnClick="@(() => SetPreset(Preset.ForrigeUke))">Forrige uke</MudButton>
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+                           OnClick="@(() => SetPreset(Preset.ForrigeManed))">Forrige mnd</MudButton>
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+                           OnClick="@(() => SetPreset(Preset.DenneManed))">Denne mnd</MudButton>
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+                           OnClick="@(() => SetPreset(Preset.HittilIAr))">Hittil i år</MudButton>
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+                           OnClick="@(() => SetPreset(Preset.ForrigeAr))">Forrige år</MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @* ---- KPI-strip (henter aggregerte tall fra portefølje-API for valgt periode) ---- *@
+    @if (_plantKpis is not null)
+    {
+        <MudGrid Class="mb-4">
+            <MudItem xs="6" sm="4" md="2">
+                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Tilgjengelighet</MudText>
+                    <MudText Typo="Typo.h4">@FormatRatio(KpiOf("AvailabilityFactor_AF"))</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="2">
+                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #E76F51;">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">FO-rate</MudText>
+                    <MudText Typo="Typo.h4">@FormatRatio(KpiOf("ForcedOutageRate_FOR"))</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="2">
+                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Produksjon</MudText>
+                    <MudText Typo="Typo.h4">@FormatMwh(KpiOf("TotalProduction_MWh"))</MudText>
+                    <MudText Typo="Typo.caption">MWh</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="2">
+                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #6E59A5;">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Spotomsetning</MudText>
+                    <MudText Typo="Typo.h4">@FormatNok(KpiOf("Spotomsetning_NOK"))</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="2">
+                <MudPaper Class="pa-3" Elevation="2" Style="@CrCardStyle(KpiOf("CaptureRate_Times"))">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Capture rate</MudText>
+                    <MudText Typo="Typo.h4">@FormatCr(KpiOf("CaptureRate_Times"))</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="2">
+                <MudPaper Class="pa-3" Elevation="2" Style="@MerverdiCardStyle(KpiOf("Merverdi_NOK"))">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Merverdi vs spot</MudText>
+                    <MudText Typo="Typo.h4">@FormatNokSigned(KpiOf("Merverdi_NOK"))</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+    else if (_loadingKpis)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mb-4" />
+    }
+
+    @* ---- Faner med detalj-data ---- *@
+    <MudTabs Outlined="true" Position="Position.Top" Rounded="true" Border="true" Elevation="2"
+             ApplyEffectsToContainer="true">
+        @* Rapporter *@
+        <MudTabPanel Icon="@Icons.Material.Filled.Assessment" Text="Rapporter">
+            <MudPaper Class="pa-4" Elevation="0">
+                @if (_imports is null)
+                {
+                    <MudProgressLinear Indeterminate="true" />
+                }
+                else if (_imports.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info">Ingen settlement-imports for denne perioden.</MudAlert>
+                }
+                else
+                {
+                    <MudTable Items="_imports" Hover="true" Dense="true" Elevation="0">
+                        <HeaderContent>
+                            <MudTh>Periode</MudTh>
+                            <MudTh Style="text-align:right">Timer</MudTh>
+                            <MudTh Style="text-align:right">Avvik</MudTh>
+                            <MudTh>Importert</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh></MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@FormatPeriod(context.PeriodStartUtc, context.PeriodEndUtc)</MudTd>
+                            <MudTd Style="text-align:right">@context.HourCount</MudTd>
+                            <MudTd Style="text-align:right">
+                                @if (context.IssueCount > 0)
+                                {
+                                    <MudChip T="string" Size="MudBlazor.Size.Small"
+                                             Color="MudBlazor.Color.Warning" Variant="Variant.Text">@context.IssueCount</MudChip>
+                                }
+                                else { <span>0</span> }
+                            </MudTd>
+                            <MudTd>@context.ImportedAtUtc.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</MudTd>
+                            <MudTd>
+                                @if (context.ReportAvailable)
+                                {
+                                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="MudBlazor.Color.Success">Klar</MudChip>
+                                }
+                                else
+                                {
+                                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="MudBlazor.Color.Warning">Behandles</MudChip>
+                                }
+                            </MudTd>
+                            <MudTd>
+                                @if (context.ReportAvailable)
+                                {
+                                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                                               Href="@($"reports/{PlantId}/{context.IdempotencyKey}")">Åpne</MudButton>
+                                }
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudTabPanel>
+
+        @* Nedetid *@
+        <MudTabPanel Icon="@Icons.Material.Filled.ReportProblem" Text="Nedetid">
+            <MudPaper Class="pa-4" Elevation="0">
+                @if (_nedetid is null)
+                {
+                    <MudProgressLinear Indeterminate="true" />
+                }
+                else
+                {
+                    <div class="d-flex justify-space-between align-center mb-3">
+                        <MudText Typo="Typo.h4">
+                            @_nedetid.AntallEvents events ·
+                            @_nedetid.TotalNedetidTimer.ToString("F1") timer ·
+                            @FormatNok(_nedetid.TotalTapNok) NOK i tap
+                        </MudText>
+                        <MudButton Variant="Variant.Outlined" EndIcon="@Icons.Material.Filled.OpenInNew"
+                                   Href="@($"nedetid/{PlantId}")">Full visning</MudButton>
+                    </div>
+                    @if (_nedetid.AntallEvents == 0)
+                    {
+                        <MudAlert Severity="Severity.Success">Ingen nedetids-events i perioden.</MudAlert>
+                    }
+                    else
+                    {
+                        <MudTable Items="@(_nedetid.Events.Take(20))" Hover="true" Dense="true" Elevation="0">
+                            <HeaderContent>
+                                <MudTh>Start</MudTh>
+                                <MudTh Style="text-align:right">Varighet</MudTh>
+                                <MudTh>Kategori</MudTh>
+                                <MudTh Style="text-align:right">Tap MWh</MudTh>
+                                <MudTh Style="text-align:right">Tap NOK</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.StartUtc.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</MudTd>
+                                <MudTd Style="text-align:right">@context.VarighetTimer.ToString("F1") t</MudTd>
+                                <MudTd>@context.Kategori</MudTd>
+                                <MudTd Style="text-align:right">@context.TapMwh.ToString("F2")</MudTd>
+                                <MudTd Style="text-align:right">@FormatNok(context.TapNok)</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                        @if (_nedetid.Events.Count > 20)
+                        {
+                            <MudText Typo="Typo.caption" Class="mt-2">
+                                Viser de første 20 av @_nedetid.Events.Count events. Bruk "Full visning" for alle.
+                            </MudText>
+                        }
+                    }
+                }
+            </MudPaper>
+        </MudTabPanel>
+
+        @* Vakt-ROI *@
+        <MudTabPanel Icon="@Icons.Material.Filled.NotificationsActive" Text="Vakt-ROI">
+            <MudPaper Class="pa-4" Elevation="0">
+                @if (_vaktRoi is null)
+                {
+                    <MudProgressLinear Indeterminate="true" />
+                }
+                else
+                {
+                    <MudGrid Class="mb-3">
+                        <MudItem xs="12" sm="4">
+                            <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
+                                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Reddet (NOK)</MudText>
+                                <MudText Typo="Typo.h3">@FormatNok(_vaktRoi.TotalReddetNok)</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
+                                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Reddbare events</MudText>
+                                <MudText Typo="Typo.h3">@_vaktRoi.AntallReddbareInnenforVakt / @_vaktRoi.AntallEventsTotalt</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #F39C12;">
+                                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Reddet (MWh)</MudText>
+                                <MudText Typo="Typo.h3">@_vaktRoi.TotalReddetMwh.ToString("F2")</MudText>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+                    <div class="d-flex justify-end mb-2">
+                        <MudButton Variant="Variant.Outlined" EndIcon="@Icons.Material.Filled.OpenInNew"
+                                   Href="@($"vakt-roi/{PlantId}")">Full visning med events-tabell</MudButton>
+                    </div>
+                }
+            </MudPaper>
+        </MudTabPanel>
+
+        @* Effektivitet *@
+        <MudTabPanel Icon="@Icons.Material.Filled.Speed" Text="Effektivitet">
+            <MudPaper Class="pa-4" Elevation="0">
+                @if (_effektivitet is null)
+                {
+                    <MudProgressLinear Indeterminate="true" />
+                }
+                else if (_effektivitet.DataMissing)
+                {
+                    <MudAlert Severity="Severity.Warning">
+                        SCADA-data mangler for valgt periode. Konfigurer GeneratorActivePower,
+                        TurbineEfficiency og TurbineWaterFlow i signal_map.
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudGrid>
+                        <MudItem xs="6" sm="3">
+                            <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
+                                <MudText Typo="Typo.caption">Snitt η</MudText>
+                                <MudText Typo="Typo.h3">@_effektivitet.SnittEtaPct.ToString("F1") %</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
+                                <MudText Typo="Typo.caption">Sweet-spot</MudText>
+                                <MudText Typo="Typo.h3">@_effektivitet.SweetSpotEffektKw.ToString("F0") kW</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #F39C12;">
+                                <MudText Typo="Typo.caption">SVF (m³/kWh)</MudText>
+                                <MudText Typo="Typo.h3">@_effektivitet.SnittSpesifiktVannforbrukM3PerKwh.ToString("F2")</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #6E59A5;">
+                                <MudText Typo="Typo.caption">Produksjon</MudText>
+                                <MudText Typo="Typo.h3">@((_effektivitet.TotalProduksjonKwh / 1000).ToString("F1")) MWh</MudText>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+                    <div class="d-flex justify-end mt-3">
+                        <MudButton Variant="Variant.Outlined" EndIcon="@Icons.Material.Filled.OpenInNew"
+                                   Href="@($"effektivitet/{PlantId}")">Full visning med η-kurve</MudButton>
+                    </div>
+                }
+            </MudPaper>
+        </MudTabPanel>
+
+        @* Capture rate *@
+        <MudTabPanel Icon="@Icons.Material.Filled.PriceChange" Text="Capture rate">
+            <MudPaper Class="pa-4" Elevation="0">
+                @if (_captureRate is null)
+                {
+                    <MudProgressLinear Indeterminate="true" />
+                }
+                else if (_captureRate.AntallTimerProduksjon == 0)
+                {
+                    <MudAlert Severity="Severity.Info">Ingen produksjons-timer i perioden.</MudAlert>
+                }
+                else
+                {
+                    <MudGrid>
+                        <MudItem xs="6" sm="3">
+                            <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
+                                <MudText Typo="Typo.caption">Capture-pris</MudText>
+                                <MudText Typo="Typo.h3">@_captureRate.CapturePriceNokMwh.ToString("F0")</MudText>
+                                <MudText Typo="Typo.caption">NOK/MWh</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudPaper Class="pa-3" Elevation="2" Style="@CrCardStyle(_captureRate.TimesCr)">
+                                <MudText Typo="Typo.caption">CR (times)</MudText>
+                                <MudText Typo="Typo.h3">@_captureRate.TimesCr.ToString("F2")</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudPaper Class="pa-3" Elevation="2" Style="@CrCardStyle(_captureRate.DagCr)">
+                                <MudText Typo="Typo.caption">CR (dag)</MudText>
+                                <MudText Typo="Typo.h3">@_captureRate.DagCr.ToString("F2")</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudPaper Class="pa-3" Elevation="2" Style="@MerverdiCardStyle(_captureRate.MerverdiNok)">
+                                <MudText Typo="Typo.caption">Merverdi vs spot</MudText>
+                                <MudText Typo="Typo.h3">@FormatNokSigned(_captureRate.MerverdiNok)</MudText>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+                    <div class="d-flex justify-end mt-3">
+                        <MudButton Variant="Variant.Outlined" EndIcon="@Icons.Material.Filled.OpenInNew"
+                                   Href="@($"capture-rate/{PlantId}")">Full visning med grafer</MudButton>
+                    </div>
+                }
+            </MudPaper>
+        </MudTabPanel>
+    </MudTabs>
+}
+
+@code {
+    [Parameter] public string PlantId { get; set; } = string.Empty;
+
+    private PlantDto? _plant;
+    private string? _error;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+
+    // Per-fane data
+    private PortfolioPlantKpi? _plantKpis;
+    private bool _loadingKpis;
+    private List<SettlementImportSummary>? _imports;
+    private NedetidResponse? _nedetid;
+    private VaktRoiResponse? _vaktRoi;
+    private EffektivitetResponse? _effektivitet;
+    private CaptureRateResultDto? _captureRate;
+
+    private enum Preset { ForrigeUke, ForrigeManed, DenneManed, HittilIAr, ForrigeAr }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var plants = await ReportsApi.ListPlantsAsync();
+            _plant = plants.FirstOrDefault(p => p.Id == PlantId);
+            if (_plant is null)
+            {
+                _error = $"Anlegg '{PlantId}' finnes ikke.";
+                return;
+            }
+
+            // Default-periode: forrige måned (samme som de andre rapport-sidene)
+            SetPreset(Preset.ForrigeManed);
+            await ReloadAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke laste anlegg: {ex.Message}";
+        }
+    }
+
+    private async Task OnFromChanged(DateTime? d) { _fromDate = d; await ReloadAllAsync(); }
+    private async Task OnToChanged(DateTime? d) { _toDate = d; await ReloadAllAsync(); }
+
+    private void SetPreset(Preset preset)
+    {
+        var today = DateTime.Today;
+        switch (preset)
+        {
+            case Preset.ForrigeUke:
+                // Mandag forrige uke til mandag denne uken (eks.)
+                var dayOfWeek = (int)today.DayOfWeek;
+                var thisMonday = today.AddDays(dayOfWeek == 0 ? -6 : -(dayOfWeek - 1));
+                _fromDate = thisMonday.AddDays(-7);
+                _toDate = thisMonday;
+                break;
+            case Preset.ForrigeManed:
+                var firstThis = new DateTime(today.Year, today.Month, 1);
+                _fromDate = firstThis.AddMonths(-1);
+                _toDate = firstThis;
+                break;
+            case Preset.DenneManed:
+                _fromDate = new DateTime(today.Year, today.Month, 1);
+                _toDate = today.AddDays(1);
+                break;
+            case Preset.HittilIAr:
+                _fromDate = new DateTime(today.Year, 1, 1);
+                _toDate = today.AddDays(1);
+                break;
+            case Preset.ForrigeAr:
+                _fromDate = new DateTime(today.Year - 1, 1, 1);
+                _toDate = new DateTime(today.Year, 1, 1);
+                break;
+        }
+        _ = ReloadAllAsync();
+    }
+
+    /// <summary>
+    /// Henter alle data parallelt for valgt periode. Hver feiler stille for seg
+    /// — om f.eks. SCADA-data mangler skal det ikke knekke rapport-fanen.
+    /// </summary>
+    private async Task ReloadAllAsync()
+    {
+        if (_plant is null || !_fromDate.HasValue || !_toDate.HasValue) return;
+
+        var fromUtc = new DateTimeOffset(_fromDate.Value.Date, TimeSpan.Zero);
+        var toUtc = new DateTimeOffset(_toDate.Value.Date, TimeSpan.Zero);
+
+        _imports = null; _nedetid = null; _vaktRoi = null;
+        _effektivitet = null; _captureRate = null; _plantKpis = null;
+        _loadingKpis = true;
+        StateHasChanged();
+
+        // Synkroniser FilterState slik at "Full visning"-lenkene
+        // åpner med samme periode.
+        Filter.PlantId = PlantId;
+        Filter.FromDate = DateTime.SpecifyKind(_fromDate.Value, DateTimeKind.Unspecified);
+        Filter.ToDate = DateTime.SpecifyKind(_toDate.Value, DateTimeKind.Unspecified);
+
+        // Kjør parallelt; hver feiler isolert
+        var importsTask = SafeTask(() => ReportsApi.ListSettlementsAsync(PlantId,
+            new DateTimeOffset(fromUtc.UtcDateTime.AddDays(-31), TimeSpan.Zero), // litt buffer for periode-overlapp
+            new DateTimeOffset(toUtc.UtcDateTime.AddDays(31), TimeSpan.Zero)));
+        var nedetidTask = SafeTask(() => NedetidApi.GetNedetidAsync(PlantId, fromUtc, toUtc));
+        var vaktTask = SafeTask(() => NedetidApi.GetVaktRoiAsync(PlantId, fromUtc, toUtc));
+        var effTask = SafeTask(() => NedetidApi.GetEffektivitetAsync(PlantId, fromUtc, toUtc));
+        var crTask = SafeTask(() => NedetidApi.GetCaptureRateAsync(PlantId, fromUtc, toUtc));
+        var kpiTask = SafeTask(() => NedetidApi.GetPortfolioKpisAsync(fromUtc, toUtc));
+
+        var imports = await importsTask;
+        if (imports is not null)
+        {
+            // Kun rader som faktisk overlapper med valgt periode
+            _imports = imports.Where(i => i.PeriodEndUtc > fromUtc && i.PeriodStartUtc < toUtc)
+                              .OrderByDescending(i => i.PeriodStartUtc)
+                              .ToList();
+        }
+        _nedetid = await nedetidTask;
+        _vaktRoi = await vaktTask;
+        _effektivitet = await effTask;
+        _captureRate = await crTask;
+        var portfolio = await kpiTask;
+        _plantKpis = portfolio?.Plants.FirstOrDefault(p => p.PlantId == PlantId);
+        _loadingKpis = false;
+
+        StateHasChanged();
+    }
+
+    private static async Task<T?> SafeTask<T>(Func<Task<T>> task) where T : class
+    {
+        try { return await task(); }
+        catch { return null; }
+    }
+
+    // -- Helpers --
+    private double KpiOf(string name)
+        => _plantKpis is not null && _plantKpis.Kpis.TryGetValue(name, out var v) && v.HasValue ? v.Value : 0;
+
+    private static string FormatRatio(double v) => v == 0 ? "–" : (v * 100).ToString("F1") + " %";
+    private static string FormatMwh(double v) => v == 0 ? "–" : v.ToString("F0");
+    private static string FormatCr(double v) => v == 0 ? "–" : v.ToString("F2");
+
+    private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
+    {
+        NumberGroupSeparator = " ",
+        NumberDecimalSeparator = ",",
+        NumberGroupSizes = new[] { 3 },
+    };
+    private static string FormatNok(double v) => v == 0 ? "–" : v.ToString("N0", NorskTall);
+    private static string FormatNokSigned(double v)
+    {
+        if (v == 0) return "–";
+        var sign = v > 0 ? "+" : "";
+        return sign + v.ToString("N0", NorskTall);
+    }
+
+    private static string CrCardStyle(double cr)
+    {
+        if (cr <= 0) return "border-left: 4px solid #999;";
+        return cr >= 1.0 ? "border-left: 4px solid #2A9D8F;" : "border-left: 4px solid #E76F51;";
+    }
+    private static string MerverdiCardStyle(double nok)
+    {
+        if (nok == 0) return "border-left: 4px solid #999;";
+        return nok > 0 ? "border-left: 4px solid #2A9D8F;" : "border-left: 4px solid #E76F51;";
+    }
+
+    private static string FormatPeriod(DateTimeOffset start, DateTimeOffset end)
+    {
+        var s = start.ToLocalTime();
+        var e = end.ToLocalTime();
+        var days = (e - s).TotalDays;
+        if (days is >= 27 and <= 32 && s.Day == 1) return s.ToString("MMM yyyy");
+        return $"{s:yyyy-MM-dd} – {e:yyyy-MM-dd}";
+    }
+}

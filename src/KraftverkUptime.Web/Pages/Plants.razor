@@ -131,7 +131,9 @@ else
                             </MudAvatar>
                         </CardHeaderAvatar>
                         <CardHeaderContent>
-                            <MudText Typo="Typo.h4">@p.Name</MudText>
+                            <MudLink Href="@($"anlegg/{plantId}")" Underline="Underline.Hover">
+                                <MudText Typo="Typo.h4">@p.Name</MudText>
+                            </MudLink>
                             <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">@p.Id</MudText>
                         </CardHeaderContent>
                     </MudCardHeader>

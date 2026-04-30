@@ -76,7 +76,7 @@ else if (_response is not null)
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>
-                        <MudLink Href="@($"/effektivitet/{context.PlantId}")">@context.PlantName</MudLink>
+                        <MudLink Href="@($"/anlegg/{context.PlantId}")">@context.PlantName</MudLink>
                     </MudTd>
                     <MudTd Style="text-align:right">
                         @if (context.InstalledCapacityMw <= 0)
