@@ -76,6 +76,11 @@ public static class DatabaseBootstrapper
             // Seed Drivdal-signal-map (22 tags). Idempotent. Andre anlegg legges
             // inn manuelt eller via egen seeder etter samme mønster.
             await DrivdalSignalMapSeeder.SeedAsync(services, ct).ConfigureAwait(false);
+
+            // Seed Haukland-signal-map (195 tags) + 4-dam-kaskade. Idempotent.
+            // Erstatter den default 'haukland_main'-dammen som backfill opprettet
+            // med Stølsvatn/Gjelevatn/Skårstemmevatn/Stemmevatn (terminal).
+            await HauklandSignalMapSeeder.SeedAsync(services, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
