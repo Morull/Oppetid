@@ -83,4 +83,19 @@ public enum SignalRole
 
     /// <summary>Ikke kategorisert / generelt målepunkt.</summary>
     Other,
+
+    // ----- Kaskade-modell (Spec KASKADE-DAMMER) ---------------------------
+    // Disse rollene er per-dam; SignalMap.DamId må settes når de er aktive.
+
+    /// <summary>Vannføring gjennom dam-luke (m³/s).</summary>
+    GateFlow,
+
+    /// <summary>Lukens åpningsposisjon (cm eller %).</summary>
+    GatePosition,
+
+    /// <summary>Total vannføring ut av dam (m³/s) — sum av luke + overløp + turbin.</summary>
+    TotalDamFlow,
+
+    /// <summary>Magasinvolum (Mill.m³).</summary>
+    ReservoirVolume,
 }

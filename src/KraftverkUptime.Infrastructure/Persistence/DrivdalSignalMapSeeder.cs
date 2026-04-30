@@ -153,6 +153,11 @@ public static class DrivdalSignalMapSeeder
         SignalRole.DownstreamLevel => true,
         SignalRole.ReservoirFillFactor => true,
         SignalRole.LowestRegulatedLevel => true,
+        // Nye kaskade-roller (Spec KASKADE-DAMMER):
+        SignalRole.GateFlow => true,
+        SignalRole.GatePosition => true,
+        SignalRole.TotalDamFlow => true,
+        SignalRole.ReservoirVolume => true,
         _ => false,
     };
 }
