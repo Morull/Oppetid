@@ -8,7 +8,7 @@
 <div class="d-flex justify-space-between align-center mb-4">
     <MudText Typo="Typo.h1">Anlegg</MudText>
     <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
-        Tips: dra Excel (avregning) eller CSV (SCADA / operlog) rett på anleggs-kortet,
+        Tips: dra Excel (avregning) eller CSV (SCADA / operlog) på "Slipp fil her"-stripen i kortet,
         eller bruk multi-anleggs-zonen under for porteføljen.
     </MudText>
 </div>
@@ -123,105 +123,108 @@ else
             var plantId = p.Id;
             var state = GetState(plantId);
             <MudItem xs="12" sm="6" md="4">
-                <MudFileUpload T="IBrowserFile"
-                               Accept=".xlsx,.xls,.csv"
-                               MaximumFileCount="1"
-                               FilesChanged="@(file => OnFileDroppedAsync(plantId, file))"
-                               Hidden="@false"
-                               InputClass="dk-plant-dropzoneInput"
-                               InputStyle="opacity:0"
-                               Class="@(state.IsUploading ? "dk-plant-dropzone dk-plant-dropzoneBusy" : "dk-plant-dropzone")">
-                    <ActivatorContent>
-                        <MudCard Elevation="2" Class="h-100 dk-plant-card" Style="position:relative;">
-                            <MudCardHeader>
-                                <CardHeaderAvatar>
-                                    <MudAvatar Color="MudBlazor.Color.Primary" Variant="Variant.Filled">
-                                        <MudIcon Icon="@Icons.Material.Filled.Factory" />
-                                    </MudAvatar>
-                                </CardHeaderAvatar>
-                                <CardHeaderContent>
-                                    <MudText Typo="Typo.h4">@p.Name</MudText>
-                                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">@p.Id</MudText>
-                                </CardHeaderContent>
-                            </MudCardHeader>
-                            <MudCardContent>
-                                <MudStack Spacing="1">
-                                    <div class="d-flex justify-space-between">
-                                        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">Type</MudText>
-                                        <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Filled"
-                                                 Color="@TypeColor(p.Type)">@p.Type</MudChip>
-                                    </div>
-                                    <div class="d-flex justify-space-between">
-                                        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">Installert effekt</MudText>
-                                        @if (p.InstalledCapacityMw <= 0)
-                                        {
-                                            <MudChip T="string" Size="MudBlazor.Size.Small"
-                                                     Variant="Variant.Filled" Color="MudBlazor.Color.Error"
-                                                     Icon="@Icons.Material.Filled.PriorityHigh">
-                                                Krever oppsett
-                                            </MudChip>
-                                        }
-                                        else
-                                        {
-                                            <MudText Typo="Typo.body1"><strong>@p.InstalledCapacityMw.ToString("F1") MW</strong></MudText>
-                                        }
-                                    </div>
-                                    <div class="d-flex justify-space-between">
-                                        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">Tidssone</MudText>
-                                        <MudText Typo="Typo.body1">@p.TimeZone</MudText>
-                                    </div>
-                                </MudStack>
+                <MudCard Elevation="2" Class="@(state.IsUploading ? "h-100 dk-plant-card dk-plant-card--busy" : "h-100 dk-plant-card")" Style="position:relative;">
+                    <MudCardHeader>
+                        <CardHeaderAvatar>
+                            <MudAvatar Color="MudBlazor.Color.Primary" Variant="Variant.Filled">
+                                <MudIcon Icon="@Icons.Material.Filled.Factory" />
+                            </MudAvatar>
+                        </CardHeaderAvatar>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h4">@p.Name</MudText>
+                            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">@p.Id</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudStack Spacing="1">
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">Type</MudText>
+                                <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Filled"
+                                         Color="@TypeColor(p.Type)">@p.Type</MudChip>
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">Installert effekt</MudText>
+                                @if (p.InstalledCapacityMw <= 0)
+                                {
+                                    <MudChip T="string" Size="MudBlazor.Size.Small"
+                                             Variant="Variant.Filled" Color="MudBlazor.Color.Error"
+                                             Icon="@Icons.Material.Filled.PriorityHigh">
+                                        Krever oppsett
+                                    </MudChip>
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.body1"><strong>@p.InstalledCapacityMw.ToString("F1") MW</strong></MudText>
+                                }
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">Tidssone</MudText>
+                                <MudText Typo="Typo.body1">@p.TimeZone</MudText>
+                            </div>
+                        </MudStack>
 
-                                @if (state.IsUploading)
-                                {
-                                    <MudProgressLinear Color="MudBlazor.Color.Primary" Indeterminate="true" Class="mt-3" />
-                                    <MudText Typo="Typo.caption" Class="mt-1">Laster opp @state.FileName…</MudText>
-                                }
-                                else if (state.LastSuccessMessage is not null)
-                                {
-                                    <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3">
-                                        @state.LastSuccessMessage
-                                    </MudAlert>
-                                }
-                                else if (state.Error is not null)
-                                {
-                                    <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">@state.Error</MudAlert>
-                                }
-                            </MudCardContent>
-                            <MudCardActions>
-                                <MudButton Variant="Variant.Text" Color="MudBlazor.Color.Primary"
-                                           StartIcon="@Icons.Material.Filled.CloudUpload"
-                                           Href="@($"upload?plant={plantId}")"
-                                           @onclick:stopPropagation="true">
-                                    Last opp
-                                </MudButton>
-                                <MudButton Variant="Variant.Text" Color="MudBlazor.Color.Primary"
-                                           StartIcon="@Icons.Material.Filled.Assessment"
-                                           Href="@($"reports?plant={plantId}")"
-                                           @onclick:stopPropagation="true">
-                                    Rapporter
-                                </MudButton>
-                                <MudButton Variant="Variant.Text"
-                                           Color="@(p.InstalledCapacityMw <= 0 ? MudBlazor.Color.Error : MudBlazor.Color.Default)"
-                                           StartIcon="@Icons.Material.Filled.Settings"
-                                           Href="@($"plants/{plantId}/admin")"
-                                           @onclick:stopPropagation="true">
-                                    Admin
-                                </MudButton>
-                                @if (state.LastUpload is not null)
-                                {
-                                    <MudSpacer />
-                                    <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
-                                               Size="MudBlazor.Size.Small"
-                                               Href="@($"reports/{plantId}/{state.LastUpload.IdempotencyKey}")"
-                                               @onclick:stopPropagation="true">
-                                        Åpne rapport
-                                    </MudButton>
-                                }
-                            </MudCardActions>
-                        </MudCard>
-                    </ActivatorContent>
-                </MudFileUpload>
+                        @* Eksplisitt drop-strip — kun her åpner click filvelger / aksepterer drag-drop *@
+                        <MudFileUpload T="IBrowserFile"
+                                       Accept=".xlsx,.xls,.csv"
+                                       MaximumFileCount="1"
+                                       FilesChanged="@(file => OnFileDroppedAsync(plantId, file))"
+                                       Hidden="@false"
+                                       InputClass="dk-plant-dropstripInput"
+                                       InputStyle="opacity:0"
+                                       Class="dk-plant-dropstrip-wrapper">
+                            <ActivatorContent>
+                                <div class="dk-plant-dropstrip">
+                                    <MudIcon Icon="@Icons.Material.Filled.UploadFile"
+                                             Size="MudBlazor.Size.Small" Class="mr-2" />
+                                    <MudText Typo="Typo.caption">Slipp fil her (Excel / CSV)</MudText>
+                                </div>
+                            </ActivatorContent>
+                        </MudFileUpload>
+
+                        @if (state.IsUploading)
+                        {
+                            <MudProgressLinear Color="MudBlazor.Color.Primary" Indeterminate="true" Class="mt-3" />
+                            <MudText Typo="Typo.caption" Class="mt-1">Laster opp @state.FileName…</MudText>
+                        }
+                        else if (state.LastSuccessMessage is not null)
+                        {
+                            <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3">
+                                @state.LastSuccessMessage
+                            </MudAlert>
+                        }
+                        else if (state.Error is not null)
+                        {
+                            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">@state.Error</MudAlert>
+                        }
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Text" Color="MudBlazor.Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.CloudUpload"
+                                   Href="@($"upload?plant={plantId}")">
+                            Last opp
+                        </MudButton>
+                        <MudButton Variant="Variant.Text" Color="MudBlazor.Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Assessment"
+                                   Href="@($"reports?plant={plantId}")">
+                            Rapporter
+                        </MudButton>
+                        <MudButton Variant="Variant.Text"
+                                   Color="@(p.InstalledCapacityMw <= 0 ? MudBlazor.Color.Error : MudBlazor.Color.Default)"
+                                   StartIcon="@Icons.Material.Filled.Settings"
+                                   Href="@($"plants/{plantId}/admin")">
+                            Admin
+                        </MudButton>
+                        @if (state.LastUpload is not null)
+                        {
+                            <MudSpacer />
+                            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                                       Size="MudBlazor.Size.Small"
+                                       Href="@($"reports/{plantId}/{state.LastUpload.IdempotencyKey}")">
+                                Åpne rapport
+                            </MudButton>
+                        }
+                    </MudCardActions>
+                </MudCard>
             </MudItem>
         }
     </MudGrid>

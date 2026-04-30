@@ -247,54 +247,61 @@ html, body {
     z-index: 2;
 }
 
-/* --- Anleggs-kort med drag-til-opplastning --------------------------------- */
-.dk-plant-dropzone {
-    position: relative;
-    cursor: pointer;
-    height: 100%;
-}
-.dk-plant-dropzone .mud-card {
-    height: 100%;
+/* --- Anleggs-kort med eksplisitt drop-strip ------------------------------ */
+/* Tidligere var hele kortet drop-zone, slik at klikk på navnet utløste
+   filvelgeren. Nå er drop-zonen redusert til en tydelig stripe nederst
+   i kort-innholdet. Resten av kortet (header, data-felt, knapper) er
+   helt vanlige UI-elementer uten click-handler. */
+.dk-plant-card {
     transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
 }
-.dk-plant-dropzone:hover .mud-card {
+.dk-plant-card:hover {
     box-shadow: 0 6px 18px rgba(15, 30, 60, 0.10);
     transform: translateY(-1px);
 }
+.dk-plant-card--busy {
+    pointer-events: none;
+    opacity: 0.85;
+}
 
-/* Native fil-input legges som usynlig overlay over kort-innholdet — fanger
-   både klikk og drag-drop. Stopper med 64px margin fra bunn slik at knappene
-   i .mud-card-actions ligger fritt og kan klikkes som vanlig. */
-.dk-plant-dropzoneInput {
+.dk-plant-dropstrip-wrapper {
+    position: relative;
+    display: block;
+    margin-top: 12px;
+    cursor: pointer;
+}
+.dk-plant-dropstrip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed var(--mud-palette-lines-default, #cfd8e3);
+    border-radius: 6px;
+    padding: 8px 12px;
+    background: rgba(30, 95, 142, 0.03);
+    color: var(--mud-palette-text-secondary, #6b7280);
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+.dk-plant-dropstrip-wrapper:hover .dk-plant-dropstrip {
+    border-color: var(--mud-palette-primary, #1E5F8E);
+    background: rgba(30, 95, 142, 0.08);
+}
+.dk-plant-dropstripInput {
     position: absolute !important;
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
-    bottom: 64px !important;
-    width: auto !important;
-    height: auto !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
     opacity: 0 !important;
-    z-index: 10;
+    z-index: 5;
     cursor: pointer;
 }
-
-/* Action-baren ligger under inputtets dekningsområde — ingen
-   z-index-trickery nødvendig. Bevarer normal klikk-flyt. */
-.dk-plant-dropzone .mud-card-actions {
-    position: relative;
-    background: var(--mud-palette-surface, #fff);
-}
-
-/* Highlight når en fil dras over kortet (Mud-klasse + browser-fallback) */
-.dk-plant-dropzone:has(input[type=file]:focus) .mud-card,
-.dk-plant-dropzone .mud-fileupload-dragging .mud-card {
+/* Highlight når en fil dras over drop-strippen */
+.dk-plant-dropstrip-wrapper:has(input[type=file]:focus) .dk-plant-dropstrip,
+.dk-plant-dropstrip-wrapper .mud-fileupload-dragging .dk-plant-dropstrip {
     border: 2px dashed var(--mud-palette-primary, #1E5F8E);
-    background: rgba(30, 95, 142, 0.04);
-}
-
-.dk-plant-dropzoneBusy .mud-card {
-    pointer-events: none;
-    opacity: 0.85;
+    background: rgba(30, 95, 142, 0.10);
 }
 .dk-timeline-cellEmpty {
     height: 18px;
