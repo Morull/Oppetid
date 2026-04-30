@@ -144,6 +144,7 @@ app.MapNedetidV1(apiV1);
 app.MapEffektivitetV1(apiV1);
 app.MapPortfolioV1(apiV1);
 app.MapMultiPlantOperlogV1(apiV1);
+app.MapCaptureRateV1(apiV1);
 
 app.MapGet("/", () => Results.Redirect("/openapi/v1.json"));
 

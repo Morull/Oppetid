@@ -112,6 +112,10 @@ public static class InfrastructureServiceCollectionExtensions
         // --- Portefølje-aggregator (Steg 6) ---
         services.AddScoped<IPortfolioQueryService, KraftverkUptime.Infrastructure.Reporting.PortfolioQueryService>();
 
+        // --- Capture rate (Spec CAPTURE-RATE) ---
+        services.AddScoped<KraftverkUptime.Modules.Reporting.CaptureRate.ICaptureRateQueryService,
+                          KraftverkUptime.Infrastructure.Reporting.CaptureRateQueryService>();
+
         // --- Events ---
         services.AddSingleton<IEventPublisher, InProcEventPublisher>();
         services.AddScoped<IEventHandler<SettlementImportedEvent>, ClassifyOnImportedHandler>();
