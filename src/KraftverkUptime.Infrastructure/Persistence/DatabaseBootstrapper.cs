@@ -57,6 +57,10 @@ public static class DatabaseBootstrapper
             // hvis postgres-imaget ikke har den (vanilla Postgres = OK).
             await EnsureScadaSchemaAsync(db, logger, ct).ConfigureAwait(false);
 
+            // Market prices + plant.price_area for capture rate (Spec CAPTURE-RATE).
+            // Idempotent; kan fjernes når EF-migrasjoner tar over skjema-styringen.
+            await EnsureMarketPricesSchemaAsync(db, logger, ct).ConfigureAwait(false);
+
             // Seed default-nedetidskategorier (idempotent — hopper over hvis allerede tilstede).
             await DowntimeCategorySeeder.SeedAsync(services, ct).ConfigureAwait(false);
 
@@ -263,6 +267,42 @@ public static class DatabaseBootstrapper
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Kunne ikke konvertere til hypertables — fortsetter med vanlige tabeller.");
+        }
+    }
+
+    /// <summary>
+    /// Idempotent skjema-bro for capture rate (Spec CAPTURE-RATE):
+    ///  - <c>core.market_prices</c> for spotpris-baseline per (prisområde, time)
+    ///  - <c>core.plants.price_area</c> kolonne (default NO2) for å koble plant til prisområde
+    /// </summary>
+    private static async Task EnsureMarketPricesSchemaAsync(
+        KraftverkDbContext db, ILogger logger, CancellationToken ct)
+    {
+        const string sql = """
+            CREATE TABLE IF NOT EXISTS core.market_prices (
+                price_area varchar(8) NOT NULL,
+                time_utc timestamptz NOT NULL,
+                price_nok_mwh double precision NOT NULL,
+                source varchar(16) NOT NULL,
+                recorded_at_utc timestamptz NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (price_area, time_utc)
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_market_prices_time
+                ON core.market_prices (time_utc);
+
+            ALTER TABLE core.plants
+                ADD COLUMN IF NOT EXISTS price_area varchar(8) NOT NULL DEFAULT 'NO2';
+            """;
+
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(sql, ct).ConfigureAwait(false);
+            logger.LogDebug("MarketPrices-skjema sikret (market_prices + plants.price_area).");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Kunne ikke sikre market_prices-skjemaet — fortsetter uten det.");
         }
     }
 }

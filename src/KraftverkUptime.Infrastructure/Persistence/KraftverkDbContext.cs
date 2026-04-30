@@ -27,6 +27,7 @@ public sealed class KraftverkDbContext : DbContext
     public DbSet<SignalMapEntry> SignalMaps => Set<SignalMapEntry>();
     public DbSet<SampleFactEntry> SampleFacts => Set<SampleFactEntry>();
     public DbSet<ClassifiedEventEntry> ClassifiedEvents => Set<ClassifiedEventEntry>();
+    public DbSet<MarketPriceEntry> MarketPrices => Set<MarketPriceEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -162,6 +163,15 @@ public sealed class KraftverkDbContext : DbContext
             b.Property(x => x.SourcesJson).HasColumnType("jsonb");
             b.Property(x => x.Rationale).HasMaxLength(2000);
             b.HasIndex(x => new { x.PlantId, x.StartUtc });
+        });
+
+        modelBuilder.Entity<MarketPriceEntry>(b =>
+        {
+            b.ToTable("market_prices");
+            b.HasKey(x => new { x.PriceArea, x.TimeUtc });
+            b.Property(x => x.PriceArea).HasMaxLength(8).IsRequired();
+            b.Property(x => x.Source).HasMaxLength(16).IsRequired();
+            b.HasIndex(x => x.TimeUtc);
         });
 
         modelBuilder.ApplyOwnedEntityFilters(_queryContext);

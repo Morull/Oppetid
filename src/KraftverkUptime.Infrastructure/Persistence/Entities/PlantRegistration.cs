@@ -15,6 +15,13 @@ public sealed class PlantRegistration : IOwnedEntity, ISoftDeletable
     public double InstalledCapacityMw { get; set; }
     public string TimeZone { get; set; } = "Europe/Oslo";
 
+    /// <summary>
+    /// Day-ahead prisområde (NO1–NO5). Brukes til å plukke ut riktig spotpris-
+    /// baseline for capture rate og ubalanse-beregninger. Default NO2 dekker
+    /// hele Dalane Kraft-porteføljen (Sokndal/Egersund-området).
+    /// </summary>
+    public string PriceArea { get; set; } = "NO2";
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? DeletedAt { get; set; }
     public string? DeletedBy { get; set; }
