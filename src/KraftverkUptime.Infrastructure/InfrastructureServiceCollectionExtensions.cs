@@ -115,6 +115,8 @@ public static class InfrastructureServiceCollectionExtensions
         // --- Events ---
         services.AddSingleton<IEventPublisher, InProcEventPublisher>();
         services.AddScoped<IEventHandler<SettlementImportedEvent>, ClassifyOnImportedHandler>();
+        services.AddScoped<IEventHandler<SettlementImportedEvent>, MarketPriceUpsertHandler>();
+        services.AddSingleton(TimeProvider.System);
 
         // --- Varsling ---
         services.AddSingleton<INotificationService, LogNotificationService>();
