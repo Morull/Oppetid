@@ -392,6 +392,8 @@ else
         {
             Stroke = new Stroke { Curve = Curve.Smooth, Width = 2 },
             Xaxis = new XAxis { Type = XAxisType.Datetime },
+            // MWh per time ligger typisk 0–10; 1 desimal er passende.
+            Yaxis = new List<YAxis> { new YAxis { DecimalsInFloat = 1 } },
             Legend = new Legend { Position = LegendPosition.Top },
             Tooltip = new Tooltip { X = new TooltipX { Format = "dd MMM HH:mm" } },
             Colors = new List<string> { "#1E5F8E", "#F39C12", "#00A99D" },

@@ -248,8 +248,19 @@ else if (_response is not null)
             _chartVersion++;
             _scatterOptions = new ApexChartOptions<EffektivitetPunkt>
             {
-                Xaxis = new XAxis { Title = new AxisTitle { Text = "Effekt (kW)" } },
-                Yaxis = new List<YAxis> { new() { Title = new AxisTitle { Text = "Virkningsgrad (%)" } } },
+                Xaxis = new XAxis
+                {
+                    Title = new AxisTitle { Text = "Effekt (kW)" },
+                    DecimalsInFloat = 0,
+                },
+                Yaxis = new List<YAxis>
+                {
+                    new()
+                    {
+                        Title = new AxisTitle { Text = "Virkningsgrad (%)" },
+                        DecimalsInFloat = 1,
+                    }
+                },
                 Markers = new Markers { Size = 4 },
                 Stroke = new Stroke { Width = new ApexCharts.Size(2) },
                 Tooltip = new Tooltip { X = new TooltipX { Show = true } },

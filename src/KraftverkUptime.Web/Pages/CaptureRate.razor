@@ -311,22 +311,24 @@ else if (_aggregate is not null)
         _monthlyOptions = new ApexChartOptions<MonthlyPoint>
         {
             Xaxis = new XAxis { Title = new AxisTitle { Text = "Måned" } },
-            Yaxis = new List<YAxis> { new() { Title = new AxisTitle { Text = "CR" } } },
+            // CR ligger typisk 0.8–1.2; 2 desimaler er passende.
+            Yaxis = new List<YAxis> { new() { Title = new AxisTitle { Text = "CR" }, DecimalsInFloat = 2 } },
             Stroke = new Stroke { Curve = Curve.Smooth, Width = new ApexCharts.Size(2) },
             Markers = new Markers { Size = 4 },
             Colors = new List<string> { "#1E5F8E", "#2A9D8F" },
         };
         _scatterOptions = new ApexChartOptions<DailyCaptureRateDto>
         {
-            Xaxis = new XAxis { Title = new AxisTitle { Text = "Spotpris snitt (NOK/MWh)" } },
-            Yaxis = new List<YAxis> { new() { Title = new AxisTitle { Text = "rå CR" } } },
+            Xaxis = new XAxis { Title = new AxisTitle { Text = "Spotpris snitt (NOK/MWh)" }, DecimalsInFloat = 0 },
+            Yaxis = new List<YAxis> { new() { Title = new AxisTitle { Text = "rå CR" }, DecimalsInFloat = 2 } },
             Markers = new Markers { Size = 3 },
             Colors = new List<string> { "#1E5F8E", "#E76F51" },
         };
         _histOptions = new ApexChartOptions<HistogramBin>
         {
             Xaxis = new XAxis { Title = new AxisTitle { Text = "rå-CR-bin" } },
-            Yaxis = new List<YAxis> { new() { Title = new AxisTitle { Text = "Antall dager" } } },
+            // Antall dager er heltall.
+            Yaxis = new List<YAxis> { new() { Title = new AxisTitle { Text = "Antall dager" }, DecimalsInFloat = 0 } },
             Colors = new List<string> { "#6E59A5" },
         };
     }
