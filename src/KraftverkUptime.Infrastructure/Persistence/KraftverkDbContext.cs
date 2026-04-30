@@ -28,6 +28,7 @@ public sealed class KraftverkDbContext : DbContext
     public DbSet<SampleFactEntry> SampleFacts => Set<SampleFactEntry>();
     public DbSet<ClassifiedEventEntry> ClassifiedEvents => Set<ClassifiedEventEntry>();
     public DbSet<MarketPriceEntry> MarketPrices => Set<MarketPriceEntry>();
+    public DbSet<DamEntry> Dams => Set<DamEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -172,6 +173,19 @@ public sealed class KraftverkDbContext : DbContext
             b.Property(x => x.PriceArea).HasMaxLength(8).IsRequired();
             b.Property(x => x.Source).HasMaxLength(16).IsRequired();
             b.HasIndex(x => x.TimeUtc);
+        });
+
+        modelBuilder.Entity<DamEntry>(b =>
+        {
+            b.ToTable("dams");
+            b.HasKey(x => new { x.PlantId, x.DamId });
+            b.Property(x => x.PlantId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.DamId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.Name).HasMaxLength(128).IsRequired();
+            b.Property(x => x.OwnerOrgId).HasMaxLength(64).IsRequired();
+            b.HasIndex(x => x.PlantId);
+            // Hovedoppslag for OverflowQueryService — finn terminal-dam per plant.
+            b.HasIndex(x => new { x.PlantId, x.IsTurbineIntake });
         });
 
         modelBuilder.ApplyOwnedEntityFilters(_queryContext);

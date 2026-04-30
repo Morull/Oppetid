@@ -89,6 +89,10 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IPlantConfiguration, DbPlantConfiguration>();
         services.AddScoped<PlantClassificationConfigProvider>();
 
+        // --- Kaskade-modell (dammer per anlegg) ---
+        services.AddScoped<KraftverkUptime.Core.Domain.IDamRepository,
+                          KraftverkUptime.Infrastructure.Persistence.DbDamRepository>();
+
         // --- Settlement-import persistens + period provider ---
         // Infrastructure eier KraftverkDbContext og er derfor riktig sted for
         // disse implementasjonene. Selve modulene (Settlement, Reporting) tar

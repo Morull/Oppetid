@@ -61,6 +61,10 @@ public static class DatabaseBootstrapper
             // Idempotent; kan fjernes når EF-migrasjoner tar over skjema-styringen.
             await EnsureMarketPricesSchemaAsync(db, logger, ct).ConfigureAwait(false);
 
+            // Dams + signal_map.dam_id for kaskade-modellen (Spec KASKADE-DAMMER).
+            // Idempotent; backfill sikrer at alle eksisterende anlegg får én default-dam.
+            await EnsureDamsSchemaAsync(db, logger, ct).ConfigureAwait(false);
+
             // Seed default-nedetidskategorier (idempotent — hopper over hvis allerede tilstede).
             await DowntimeCategorySeeder.SeedAsync(services, ct).ConfigureAwait(false);
 
@@ -267,6 +271,120 @@ public static class DatabaseBootstrapper
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Kunne ikke konvertere til hypertables — fortsetter med vanlige tabeller.");
+        }
+    }
+
+    /// <summary>
+    /// Idempotent skjema-bro for kaskade-modellen (Spec KASKADE-DAMMER):
+    ///   - <c>core.dams</c> per-anlegg dam-katalog med <c>is_turbine_intake</c>-markør
+    ///   - <c>core.signal_map.dam_id</c> kolonne (nullable)
+    ///
+    /// Backfill: alle eksisterende anlegg uten dam får én default-dam med
+    /// dam_id = '{plant}_main' og is_turbine_intake = true. Dam-relaterte
+    /// signal_map-rader oppdateres med samme DamId. Generator-relaterte rader
+    /// (GeneratorActivePower, TurbineWaterFlow osv.) beholder dam_id = NULL.
+    ///
+    /// Idempotent: kjører på nytt uten å duplisere dammer eller endre eksisterende
+    /// IsTurbineIntake-tilordning.
+    /// </summary>
+    private static async Task EnsureDamsSchemaAsync(
+        KraftverkDbContext db, ILogger logger, CancellationToken ct)
+    {
+        // Tabellen + deferrable unique-constraint (én terminal-dam per plant).
+        // Constraint er deferrable for å la PlantAdmin-UI flytte intake-markøren
+        // mellom dammer i én transaksjon.
+        const string ddlSql = """
+            CREATE TABLE IF NOT EXISTS core.dams (
+                plant_id varchar(64) NOT NULL,
+                dam_id varchar(64) NOT NULL,
+                name varchar(128) NOT NULL,
+                cascade_position integer NOT NULL DEFAULT 1,
+                is_turbine_intake boolean NOT NULL DEFAULT FALSE,
+                hrv_moh double precision NULL,
+                lrv_moh double precision NULL,
+                volume_mm3 double precision NULL,
+                created_at_utc timestamptz NOT NULL DEFAULT NOW(),
+                owner_org_id varchar(64) NOT NULL,
+                PRIMARY KEY (plant_id, dam_id)
+            );
+
+            -- Partiell unique-index: kun én terminal-dam per plant (rader med
+            -- is_turbine_intake = false får ikke noen begrensning).
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_dams_one_intake_per_plant
+                ON core.dams (plant_id) WHERE is_turbine_intake = TRUE;
+
+            CREATE INDEX IF NOT EXISTS ix_dams_plant
+                ON core.dams (plant_id);
+
+            CREATE INDEX IF NOT EXISTS ix_dams_plant_intake
+                ON core.dams (plant_id, is_turbine_intake);
+
+            ALTER TABLE core.signal_map
+                ADD COLUMN IF NOT EXISTS dam_id varchar(64) NULL;
+
+            CREATE INDEX IF NOT EXISTS ix_signal_map_dam
+                ON core.signal_map (plant_id, dam_id, role);
+            """;
+
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(ddlSql, ct).ConfigureAwait(false);
+            logger.LogDebug("Dams-skjema sikret (core.dams + signal_map.dam_id).");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Kunne ikke sikre dams-skjemaet — fortsetter uten det.");
+            return;
+        }
+
+        // Backfill: alle anlegg uten dam får én default-dam markert som terminal.
+        // SQL er idempotent — INSERT ... WHERE NOT EXISTS hopper over allerede-seedete plants.
+        // Bruker plants.id (ikke plants.plant_id — kolonnen heter 'id' i schemaet).
+        const string backfillDamsSql = """
+            INSERT INTO core.dams
+                (plant_id, dam_id, name, cascade_position, is_turbine_intake, owner_org_id)
+            SELECT
+                p.id AS plant_id,
+                p.id || '_main' AS dam_id,
+                p.name AS name,
+                1 AS cascade_position,
+                TRUE AS is_turbine_intake,
+                p.owner_org_id
+            FROM core.plants p
+            WHERE NOT EXISTS (
+                SELECT 1 FROM core.dams d WHERE d.plant_id = p.id
+            );
+            """;
+
+        // Dam-relaterte roller får dam_id = '<plant>_main' for eksisterende rader.
+        // Generator-relaterte roller forblir NULL.
+        const string backfillSignalMapSql = """
+            UPDATE core.signal_map sm
+            SET dam_id = sm.plant_id || '_main'
+            WHERE sm.dam_id IS NULL
+              AND sm.role IN (
+                  'OverflowFlow',
+                  'UpstreamLevel',
+                  'DownstreamLevel',
+                  'ReservoirFillFactor',
+                  'LowestRegulatedLevel'
+              );
+            """;
+
+        try
+        {
+            var damsAdded = await db.Database.ExecuteSqlRawAsync(backfillDamsSql, ct).ConfigureAwait(false);
+            var sigsUpdated = await db.Database.ExecuteSqlRawAsync(backfillSignalMapSql, ct).ConfigureAwait(false);
+            if (damsAdded > 0 || sigsUpdated > 0)
+            {
+                logger.LogInformation(
+                    "Dams-backfill: {Dams} default-dammer opprettet, {Signals} signal_map-rader fikk DamId.",
+                    damsAdded, sigsUpdated);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Kunne ikke kjøre dam-backfill — eksisterende plants kan mangle terminal-dam.");
         }
     }
 

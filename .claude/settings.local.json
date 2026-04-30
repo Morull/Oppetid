@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git log *)",
+      "Bash(git fetch *)",
+      "Bash(git rebase *)",
+      "Bash(dotnet build *)",
+      "Bash(git stash *)",
+      "Bash(dotnet test *)"
+    ]
+  }
+}
