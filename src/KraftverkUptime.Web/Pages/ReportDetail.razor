@@ -5,6 +5,7 @@
 @inject AnnotationsApi AnnotationsApi
 @inject IDialogService DialogService
 @inject FilterState Filter
+@inject NavigationManager Nav
 
 <PageTitle>Rapport – @PlantId</PageTitle>
 
@@ -29,20 +30,45 @@ else if (_report is null)
 else
 {
     <MudGrid Class="mb-4">
-        <MudItem xs="12" md="8">
+        <MudItem xs="12" md="6">
             <MudText Typo="Typo.h1">Rapport – @_report.PlantId</MudText>
             <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
                 @FormatPeriod(_report.PeriodStartUtc, _report.PeriodEndUtc)
                 · @_report.PeriodHours timer
             </MudText>
         </MudItem>
-        <MudItem xs="12" md="4" Class="d-flex justify-end align-center">
+        <MudItem xs="12" md="6" Class="d-flex justify-end align-center" Style="gap:8px;">
+            @* Forrige/neste-navigasjon mellom imports for samme anlegg, sortert
+               kronologisk på periode-start. Knappene er disabled når man er på
+               ytterpunktene. *@
+            <MudTooltip Text="@(_prevReport is null ? "Ingen tidligere rapport" : $"Forrige: {_prevReport.PeriodLabel}")">
+                <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Default"
+                           StartIcon="@Icons.Material.Filled.NavigateBefore"
+                           Disabled="@(_prevReport is null)"
+                           OnClick="@(() => GoToReport(_prevReport!.IdempotencyKey))">
+                    Forrige
+                </MudButton>
+            </MudTooltip>
+            <MudTooltip Text="@(_nextReport is null ? "Ingen senere rapport" : $"Neste: {_nextReport.PeriodLabel}")">
+                <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Default"
+                           EndIcon="@Icons.Material.Filled.NavigateNext"
+                           Disabled="@(_nextReport is null)"
+                           OnClick="@(() => GoToReport(_nextReport!.IdempotencyKey))">
+                    Neste
+                </MudButton>
+            </MudTooltip>
             <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
                        StartIcon="@Icons.Material.Filled.Download"
                        Href="@Api.BuildXlsxDownloadUri(PlantId, IdempotencyKey).ToString()"
                        Target="_blank">
                 Last ned Excel
             </MudButton>
+            <MudTooltip Text="Slett denne rapporten + tilhørende blob (kan ikke angres)">
+                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                               Color="MudBlazor.Color.Error"
+                               OnClick="DeleteReportAsync"
+                               Disabled="@_deleting" />
+            </MudTooltip>
         </MudItem>
     </MudGrid>
 
@@ -260,6 +286,13 @@ else
     private IReadOnlyList<AnnotationDto> _annotations = Array.Empty<AnnotationDto>();
     private IReadOnlyList<AnnotationCategoryDto> _categories = Array.Empty<AnnotationCategoryDto>();
 
+    // Naboer for forrige/neste-navigasjon
+    private NeighborReport? _prevReport;
+    private NeighborReport? _nextReport;
+    private bool _deleting;
+
+    private sealed record NeighborReport(string IdempotencyKey, string PeriodLabel);
+
     private ApexChartOptions<StateSlice> _donutOptions = new();
     private ApexChartOptions<ClassifiedHourDto> _lineOptions = new();
     private ApexChartOptions<ClassifiedHourDto> _avvikOptions = new();
@@ -288,11 +321,84 @@ else
                 BuildCharts(_report);
                 SyncFilterState(_report);
                 await LoadAnnotationsAsync();
+                await LoadNeighborsAsync();
             }
         }
         catch (Exception ex)
         {
             _error = $"Kunne ikke hente rapport: {ex.Message}";
+        }
+    }
+
+async Task GoToReport(string idempotencyKey)
+    {
+        Nav.NavigateTo($"reports/{PlantId}/{idempotencyKey}");
+    }
+
+    /// <summary>
+    /// Sletter rapport + import-rad + blob etter bruker-bekreftelse. Navigerer
+    /// tilbake til /reports?plant={plantId} ved suksess slik at brukeren
+    /// ser den oppdaterte listen uten å sitte igjen på en 404-side.
+    /// </summary>
+    private async Task DeleteReportAsync()
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Slett rapport?",
+            $"Du er i ferd med å slette rapporten for {PlantId} ({(_report is null ? "" : FormatPeriod(_report.PeriodStartUtc, _report.PeriodEndUtc))}). " +
+            "Settlement-import-raden + KPI-rapport-blobben blir borte. Operasjonen kan ikke angres.",
+            yesText: "Slett",
+            cancelText: "Avbryt");
+        if (confirmed != true) return;
+
+        _deleting = true;
+        StateHasChanged();
+        try
+        {
+            await Api.DeleteSettlementAsync(PlantId, IdempotencyKey);
+            // Naviger tilbake til lista — rapporten finnes ikke lenger.
+            Nav.NavigateTo($"reports?plant={PlantId}");
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke slette rapport: {ex.Message}";
+            _deleting = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Henter alle imports for samme anlegg sortert etter periode-start, så
+    /// finner naboer (forrige/neste) basert på posisjonen til den nåværende
+    /// rapporten. Bruker bare imports der ReportAvailable=true (klassifisering
+    /// ferdig) — pending imports skal ikke kunne navigeres til, lenken ville
+    /// vist 404.
+    /// </summary>
+    private async Task LoadNeighborsAsync()
+    {
+        try
+        {
+            var imports = await Api.ListSettlementsAsync(PlantId);
+            var ready = imports
+                .Where(i => i.ReportAvailable)
+                .OrderBy(i => i.PeriodStartUtc)
+                .ToList();
+            var idx = ready.FindIndex(i => i.IdempotencyKey == IdempotencyKey);
+            if (idx < 0) return;
+
+            _prevReport = idx > 0
+                ? new NeighborReport(ready[idx - 1].IdempotencyKey,
+                    FormatPeriod(ready[idx - 1].PeriodStartUtc, ready[idx - 1].PeriodEndUtc))
+                : null;
+            _nextReport = idx < ready.Count - 1
+                ? new NeighborReport(ready[idx + 1].IdempotencyKey,
+                    FormatPeriod(ready[idx + 1].PeriodStartUtc, ready[idx + 1].PeriodEndUtc))
+                : null;
+        }
+        catch
+        {
+            // Naboer er sekundærdata; rapporten vises uansett.
+            _prevReport = null;
+            _nextReport = null;
         }
     }
 

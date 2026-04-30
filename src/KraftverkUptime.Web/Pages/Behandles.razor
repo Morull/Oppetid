@@ -1,0 +1,152 @@
+@page "/behandles"
+@inject ReportsApi Api
+@inject NavigationManager Nav
+
+<PageTitle>Behandles</PageTitle>
+
+<MudGrid Class="mb-4">
+    <MudItem xs="12">
+        <MudText Typo="Typo.h1">Behandles</MudText>
+        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+            Imports på tvers av alle anlegg som ikke har en ferdig-klassifisert rapport
+            ennå. Klassifisering kjøres i bakgrunnen — kommer det ikke en rapport innen
+            ett minutt, sjekk worker-loggen.
+        </MudText>
+    </MudItem>
+</MudGrid>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+    <MudText Class="ml-2 d-inline">Henter pending imports…</MudText>
+}
+else if (_pendingItems is null || _pendingItems.Count == 0)
+{
+    <MudAlert Severity="Severity.Success">
+        <MudText Typo="Typo.h4">Ingen pending imports.</MudText>
+        <MudText>Alle imports har en ferdig-klassifisert rapport.</MudText>
+    </MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.h4" Class="mb-2">
+            @_pendingItems.Count import(er) venter klassifisering
+        </MudText>
+        <MudTable Items="_pendingItems" Hover="true" Dense="true" Elevation="0"
+                  SortLabel="Sortér">
+            <HeaderContent>
+                <MudTh><MudTableSortLabel SortBy="@SortByPlant">Anlegg</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByPeriod">Periode</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right">Timer</MudTh>
+                <MudTh Style="text-align:right">Avvik</MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByImported"
+                       InitialDirection="SortDirection.Descending">Importert</MudTableSortLabel></MudTh>
+                <MudTh>Status</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudLink Href="@($"reports?plant={context.PlantId}")">@context.PlantName</MudLink>
+                </MudTd>
+                <MudTd>@FormatPeriod(context.PeriodStartUtc, context.PeriodEndUtc)</MudTd>
+                <MudTd Style="text-align:right">@context.HourCount</MudTd>
+                <MudTd Style="text-align:right">
+                    @if (context.IssueCount > 0)
+                    {
+                        <MudChip T="string" Size="MudBlazor.Size.Small" Color="MudBlazor.Color.Warning"
+                                 Variant="Variant.Text">@context.IssueCount</MudChip>
+                    }
+                    else
+                    {
+                        <span>0</span>
+                    }
+                </MudTd>
+                <MudTd>@context.ImportedAtUtc.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="MudBlazor.Color.Warning"
+                             Icon="@Icons.Material.Filled.HourglassTop">Behandles</MudChip>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private List<PendingImportRow>? _pendingItems;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var plants = await Api.ListPlantsAsync();
+            var rows = new List<PendingImportRow>();
+            foreach (var p in plants)
+            {
+                try
+                {
+                    var imports = await Api.ListSettlementsAsync(p.Id);
+                    foreach (var i in imports.Where(x => !x.ReportAvailable))
+                    {
+                        rows.Add(new PendingImportRow(
+                            PlantId: p.Id,
+                            PlantName: p.Name,
+                            IdempotencyKey: i.IdempotencyKey,
+                            PeriodStartUtc: i.PeriodStartUtc,
+                            PeriodEndUtc: i.PeriodEndUtc,
+                            HourCount: i.HourCount,
+                            IssueCount: i.IssueCount,
+                            ImportedAtUtc: i.ImportedAtUtc));
+                    }
+                }
+                catch
+                {
+                    // Per-plant feil skal ikke blokkere hele lista — anlegg uten
+                    // settlement-imports vil få en stille feil her.
+                }
+            }
+            _pendingItems = rows;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente pending-listen: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string FormatPeriod(DateTimeOffset start, DateTimeOffset end)
+    {
+        var startLocal = start.ToLocalTime();
+        var endLocal = end.ToLocalTime();
+        var daysSpan = (endLocal - startLocal).TotalDays;
+        if (daysSpan is >= 27 and <= 32 && startLocal.Day == 1)
+        {
+            return startLocal.ToString("MMM yyyy");
+        }
+        return $"{startLocal:yyyy-MM-dd} – {endLocal:yyyy-MM-dd}";
+    }
+
+    // Sort-funksjoner som felt for å unngå Razor-attributt-escaping
+    private static readonly Func<PendingImportRow, object> SortByPlant    = r => r.PlantName;
+    private static readonly Func<PendingImportRow, object> SortByPeriod   = r => r.PeriodStartUtc;
+    private static readonly Func<PendingImportRow, object> SortByImported = r => r.ImportedAtUtc;
+
+    private sealed record PendingImportRow(
+        string PlantId,
+        string PlantName,
+        string IdempotencyKey,
+        DateTimeOffset PeriodStartUtc,
+        DateTimeOffset PeriodEndUtc,
+        int HourCount,
+        int IssueCount,
+        DateTimeOffset ImportedAtUtc);
+}
