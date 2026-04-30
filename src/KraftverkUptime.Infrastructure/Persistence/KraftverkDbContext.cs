@@ -128,7 +128,7 @@ public sealed class KraftverkDbContext : DbContext
             b.HasIndex(x => x.SortOrder);
         });
 
-        // SCADA foundation — ref ANALYSE-NEDETID-SCADA.md
+        // SCADA foundation — ref ANALYSE-NEDETID-SCADA.md + Spec KASKADE-DAMMER
         modelBuilder.Entity<SignalMapEntry>(b =>
         {
             b.ToTable("signal_map");
@@ -139,8 +139,11 @@ public sealed class KraftverkDbContext : DbContext
             b.Property(x => x.Unit).HasMaxLength(32).IsRequired();
             b.Property(x => x.Role).HasConversion<string>().HasMaxLength(64).IsRequired();
             b.Property(x => x.OwnerOrgId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.DamId).HasMaxLength(64); // nullable
             b.HasIndex(x => x.PlantId);
             b.HasIndex(x => new { x.PlantId, x.Role });
+            b.HasIndex(x => new { x.PlantId, x.DamId, x.Role })
+                .HasDatabaseName("ix_signal_map_dam");
         });
 
         modelBuilder.Entity<SampleFactEntry>(b =>

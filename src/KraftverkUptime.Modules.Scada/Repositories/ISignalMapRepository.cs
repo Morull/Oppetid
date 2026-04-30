@@ -17,6 +17,14 @@ public interface ISignalMapRepository
     /// <summary>Returnerer signal-id for en gitt rolle ved et anlegg, eller null hvis ikke konfigurert.</summary>
     Task<string?> GetSignalIdForRoleAsync(string plantId, SignalRole role, CancellationToken ct);
 
+    /// <summary>
+    /// Returnerer alle aktive signaler for (plant, dam, rolle) — brukes av
+    /// OverflowQueryService for å plukke ut overflow-tags som hører til
+    /// terminal-dam (kaskade-modell). Returnerer tom liste hvis ingen finnes.
+    /// </summary>
+    Task<IReadOnlyList<SignalMap>> GetByPlantDamAndRoleAsync(
+        string plantId, string? damId, SignalRole role, CancellationToken ct);
+
     /// <summary>Upsert ved import — overskriver alle felter unntatt opprettet-tidspunkt.</summary>
     Task UpsertAsync(SignalMap signalMap, CancellationToken ct);
 }

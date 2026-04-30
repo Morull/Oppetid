@@ -17,6 +17,14 @@ public sealed class SignalMapEntry : IOwnedEntity
     public bool StoreSamples { get; set; } = true;
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// Kaskade-modell (Spec KASKADE-DAMMER): hvilken dam dette signalet hører
+    /// til. Settes for dam-relaterte roller (OverflowFlow, UpstreamLevel,
+    /// ReservoirFillFactor osv.). NULL for generator-/turbin-tags som er
+    /// per-anlegg.
+    /// </summary>
+    public string? DamId { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 

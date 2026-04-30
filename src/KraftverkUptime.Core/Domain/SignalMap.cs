@@ -16,7 +16,9 @@ public sealed record SignalMap(
     string Unit,
     SignalRole Role,
     bool StoreSamples,
-    bool IsActive);
+    bool IsActive,
+    string? DamId = null);  // Kaskade-modell: knytter dam-relaterte tags til en spesifikk dam.
+                            // NULL for generator-tags og andre per-anleggs-signaler.
 
 /// <summary>
 /// Roller signaler kan ha i analyse-pipeline. Mapping fra rolle til

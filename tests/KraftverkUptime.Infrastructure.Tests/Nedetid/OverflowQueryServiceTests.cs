@@ -172,6 +172,20 @@ public class OverflowQueryServiceTests
             throw new NotImplementedException();
         public Task UpsertAsync(SignalMap signalMap, CancellationToken ct) =>
             throw new NotImplementedException();
+        public Task<IReadOnlyList<SignalMap>> GetByPlantDamAndRoleAsync(
+            string plantId, string? damId, SignalRole role, CancellationToken ct)
+        {
+            // Test-stub: terminal-dam-filtering ignoreres her — testene konfigurerer
+            // bare via _roleMap. Returner et enkelt SignalMap-objekt hvis rollen
+            // er konfigurert for dette plantet.
+            if (!string.Equals(plantId, _plantId, StringComparison.Ordinal)
+                || !_roleMap.TryGetValue(role, out var id) || id is null)
+            {
+                return Task.FromResult<IReadOnlyList<SignalMap>>(Array.Empty<SignalMap>());
+            }
+            var sm = new SignalMap(plantId, id, id, "m3/s", role, true, true, damId);
+            return Task.FromResult<IReadOnlyList<SignalMap>>(new[] { sm });
+        }
     }
 
     private sealed class StubScadaSampleRepository : IScadaSampleRepository
