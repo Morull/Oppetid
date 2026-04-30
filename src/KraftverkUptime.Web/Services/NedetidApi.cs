@@ -60,6 +60,30 @@ public sealed class NedetidApi
         return resp ?? throw new InvalidOperationException("Tom respons fra /portfolio/kpis.");
     }
 
+    public async Task<CaptureRateResultDto> GetCaptureRateAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var url = BuildUrl(plantId, "capture-rate", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        var resp = await _http.GetFromJsonAsync<CaptureRateResultDto>(url, JsonOptions, ct).ConfigureAwait(false);
+        return resp ?? throw new InvalidOperationException("Tom respons fra /capture-rate.");
+    }
+
+    public async Task<IReadOnlyList<MonthlyCaptureRateDto>> GetCaptureRateMonthlyAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var url = BuildUrl(plantId, "capture-rate/monthly", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        var resp = await _http.GetFromJsonAsync<List<MonthlyCaptureRateDto>>(url, JsonOptions, ct).ConfigureAwait(false);
+        return resp ?? new List<MonthlyCaptureRateDto>();
+    }
+
+    public async Task<IReadOnlyList<DailyCaptureRateDto>> GetCaptureRateDailyAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var url = BuildUrl(plantId, "capture-rate/daily", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        var resp = await _http.GetFromJsonAsync<List<DailyCaptureRateDto>>(url, JsonOptions, ct).ConfigureAwait(false);
+        return resp ?? new List<DailyCaptureRateDto>();
+    }
+
     /// <summary>Bygger nedlastings-URL for CSV-eksport (åpnes direkte i ny fane).</summary>
     public Uri BuildCsvUri(string plantId, string endpoint, DateTimeOffset fromUtc, DateTimeOffset toUtc)
     {
@@ -171,6 +195,31 @@ public sealed record EffektivitetBin(
     double EffektKwMid,
     int Antall,
     double SnittEtaPct);
+
+public sealed record CaptureRateResultDto(
+    double CapturePriceNokMwh,
+    double TimesCr,
+    double TimesBaselineNokMwh,
+    double DagCr,
+    double DagBaselineNokMwh,
+    double MerverdiNok,
+    int AntallTimer,
+    int AntallTimerProduksjon,
+    int AntallDager,
+    int AntallDagerEtterFilter);
+
+public sealed record MonthlyCaptureRateDto(
+    int Year,
+    int Month,
+    CaptureRateResultDto Result);
+
+public sealed record DailyCaptureRateDto(
+    DateOnly Date,
+    double MwhDay,
+    double SpotDayAvgNokMwh,
+    double OppnaaddNokMwh,
+    double RaCr,
+    bool ErFiltrert);
 
 public sealed record VaktRoiResponse(
     string PlantId,
