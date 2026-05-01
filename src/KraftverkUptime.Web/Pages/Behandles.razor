@@ -39,7 +39,13 @@ else
             @_pendingItems.Count import(er) venter klassifisering
         </MudText>
         <MudTable Items="_pendingItems" Hover="true" Dense="true" Elevation="0"
-                  SortLabel="Sortér">
+                  SortLabel="Sortér"
+                  Filter="MatchesPendingSearch">
+            <ToolBarContent>
+                <MudTextField @bind-Value="_search" Placeholder="Søk anlegg…"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Margin="Margin.Dense" Immediate="true" />
+            </ToolBarContent>
             <HeaderContent>
                 <MudTh><MudTableSortLabel SortBy="@SortByPlant">Anlegg</MudTableSortLabel></MudTh>
                 <MudTh><MudTableSortLabel SortBy="@SortByPeriod">Periode</MudTableSortLabel></MudTh>
@@ -95,6 +101,15 @@ else
     private bool _loading = true;
     private string? _error;
     private List<PendingImportRow>? _pendingItems;
+    private string _search = string.Empty;
+
+    private bool MatchesPendingSearch(PendingImportRow r)
+    {
+        if (string.IsNullOrWhiteSpace(_search)) return true;
+        var s = _search.Trim();
+        return r.PlantName.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || r.PlantId.Contains(s, StringComparison.OrdinalIgnoreCase);
+    }
 
     protected override async Task OnInitializedAsync()
     {

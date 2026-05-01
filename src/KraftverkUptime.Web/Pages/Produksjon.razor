@@ -146,15 +146,15 @@ else if (_data is not null)
                 </MudText>
                 <MudTable Items="_data.Monthly" Hover="true" Dense="true" Elevation="0">
                     <HeaderContent>
-                        <MudTh>Måned</MudTh>
-                        <MudTh Style="text-align:right">Timer prod.</MudTh>
-                        <MudTh Style="text-align:right">Elhub (MWh)</MudTh>
-                        <MudTh Style="text-align:right">Plan (MWh)</MudTh>
-                        <MudTh Style="text-align:right">Plan-treff</MudTh>
-                        <MudTh Style="text-align:right">Topp-pris-andel</MudTh>
-                        <MudTh Style="text-align:right">Hydrogrid-merverdi</MudTh>
-                        <MudTh Style="text-align:right">Faktisk merverdi</MudTh>
-                        <MudTh Style="text-align:right">Snitt-spot</MudTh>
+                        <MudTh><MudTableSortLabel SortBy="@_sortMonth">Måned</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortTimer">Timer prod.</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortElhub">Elhub (MWh)</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortPlan">Plan (MWh)</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortPlanTreff">Plan-treff</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortToppPris">Topp-pris-andel</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortHgMerverdi">Hydrogrid-merverdi</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortFaktiskMerverdi">Faktisk merverdi</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortSnittSpot">Snitt-spot</MudTableSortLabel></MudTh>
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd>@($"{context.Year}-{context.Month:D2}")</MudTd>
@@ -217,6 +217,17 @@ else if (_data is not null)
     /// snitt-spotpris per døgn. Holder grafen lesbar uten å miste signal.
     /// </summary>
     private sealed record DailyPoint(DateTime Date, double PlanMwh, double ElhubMwh, double SnittSpot);
+
+    // Sort-funksjoner for månedstabellen
+    private readonly Func<ProduksjonMonthlyDto, object> _sortMonth = m => m.Year * 100 + m.Month;
+    private readonly Func<ProduksjonMonthlyDto, object> _sortTimer = m => m.AntallTimerProduksjon;
+    private readonly Func<ProduksjonMonthlyDto, object> _sortElhub = m => m.ElhubMwh;
+    private readonly Func<ProduksjonMonthlyDto, object> _sortPlan = m => m.PlanMwh;
+    private readonly Func<ProduksjonMonthlyDto, object> _sortPlanTreff = m => m.PlanTreffProsent;
+    private readonly Func<ProduksjonMonthlyDto, object> _sortToppPris = m => m.AndelProdIToppKvartil;
+    private readonly Func<ProduksjonMonthlyDto, object> _sortHgMerverdi = m => m.HydrogridMerverdiNok;
+    private readonly Func<ProduksjonMonthlyDto, object> _sortFaktiskMerverdi = m => m.FaktiskMerverdiNok;
+    private readonly Func<ProduksjonMonthlyDto, object> _sortSnittSpot = m => m.SnittSpotprisNokMwh;
 
     protected override async Task OnInitializedAsync()
     {

@@ -137,15 +137,22 @@ else if (_response is not null)
             </MudButton>
         </div>
         <MudTable Items="_response.Events" Hover="true" Dense="true" Elevation="0"
-                  FixedHeader="true" Height="500px" Virtualize="true">
+                  FixedHeader="true" Height="500px" Virtualize="true"
+                  Filter="MatchesEventSearch">
+            <ToolBarContent>
+                <MudTextField @bind-Value="_eventSearch" Placeholder="Søk kategori, cause-code…"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Margin="Margin.Dense" Immediate="true" />
+            </ToolBarContent>
             <HeaderContent>
-                <MudTh>Start</MudTh>
-                <MudTh>Slutt</MudTh>
-                <MudTh Style="text-align:right">Varighet (t)</MudTh>
-                <MudTh>Kategori</MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByEventStart"
+                       InitialDirection="SortDirection.Descending">Start</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByEventEnd">Slutt</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEventDuration">Varighet (t)</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByEventCategory">Kategori</MudTableSortLabel></MudTh>
                 <MudTh>Cause</MudTh>
-                <MudTh Style="text-align:right">Tap (MWh)</MudTh>
-                <MudTh Style="text-align:right">Tap (NOK)</MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEventTapMwh">Tap (MWh)</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEventTapNok">Tap (NOK)</MudTableSortLabel></MudTh>
                 <MudTh>Operlog</MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -191,6 +198,24 @@ else if (_response is not null)
     private string? _error;
     private NedetidResponse? _response;
     private string? _csvUrl;
+    private string _eventSearch = string.Empty;
+
+    // Sort-funksjoner for events-tabell (default sortering = Start synkende)
+    private static readonly Func<NedetidEventDto, object> SortByEventStart    = e => e.StartUtc;
+    private static readonly Func<NedetidEventDto, object> SortByEventEnd      = e => e.EndUtc;
+    private static readonly Func<NedetidEventDto, object> SortByEventDuration = e => e.VarighetTimer;
+    private static readonly Func<NedetidEventDto, object> SortByEventCategory = e => e.Kategori;
+    private static readonly Func<NedetidEventDto, object> SortByEventTapMwh   = e => e.TapMwh;
+    private static readonly Func<NedetidEventDto, object> SortByEventTapNok   = e => e.TapNok;
+
+    private bool MatchesEventSearch(NedetidEventDto e)
+    {
+        if (string.IsNullOrWhiteSpace(_eventSearch)) return true;
+        var s = _eventSearch.Trim();
+        return e.Kategori.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || (e.CauseCode?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+            || e.State.Contains(s, StringComparison.OrdinalIgnoreCase);
+    }
     private List<WeeklyPoint> _weeklyTrend = new();
     private int _chartVersion;
 

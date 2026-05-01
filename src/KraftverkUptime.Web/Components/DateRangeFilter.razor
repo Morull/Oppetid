@@ -6,19 +6,15 @@
      "Hent"-knapp kreves
 *@
 
-<MudGrid>
-    <MudItem xs="12" md="6">
-        <MudDateRangePicker @bind-DateRange="_range"
-                            Label="@Label"
-                            Variant="Variant.Outlined"
-                            Margin="Margin.Dense"
-                            PlaceholderStart="Fra dato"
-                            PlaceholderEnd="Til dato (eks.)" />
-    </MudItem>
-    <MudItem xs="12" md="6" Class="d-flex align-center" Style="gap:4px; flex-wrap:wrap;">
-        <PeriodPresets ShowLabel="true" OnSelected="@OnPresetPickedAsync" />
-    </MudItem>
-</MudGrid>
+<div class="d-flex flex-column" style="gap:8px;">
+    <MudDateRangePicker @bind-DateRange="_range"
+                        Label="@Label"
+                        Variant="Variant.Outlined"
+                        Margin="Margin.Dense"
+                        PlaceholderStart="Fra dato"
+                        PlaceholderEnd="Til dato (eks.)" />
+    <PeriodPresets ShowLabel="true" OnSelected="@OnPresetPickedAsync" />
+</div>
 
 @code {
     /// <summary>Etikett vist over dato-velgeren. Default "Periode".</summary>

@@ -141,12 +141,12 @@ else if (_aggregate is not null)
                 <MudText Typo="Typo.h3" Class="mb-3">Månedlig oversikt</MudText>
                 <MudTable Items="_monthly" Hover="true" Dense="true" Elevation="0">
                     <HeaderContent>
-                        <MudTh>Måned</MudTh>
-                        <MudTh Style="text-align:right">Capture-pris</MudTh>
-                        <MudTh Style="text-align:right">Baseline</MudTh>
-                        <MudTh Style="text-align:right">CR</MudTh>
-                        <MudTh Style="text-align:right">Merverdi</MudTh>
-                        <MudTh Style="text-align:right">Timer prod.</MudTh>
+                        <MudTh><MudTableSortLabel SortBy="@_crSortMonth">Måned</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_crSortCapPrice">Capture-pris</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_crSortBaseline">Baseline</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_crSortCr">CR</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_crSortMerverdi">Merverdi</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_crSortTimer">Timer prod.</MudTableSortLabel></MudTh>
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd>@($"{context.Year}-{context.Month:D2}")</MudTd>
@@ -422,4 +422,12 @@ else if (_aggregate is not null)
 
     private sealed record MonthlyPoint(string Label, double TimesCr, double DagCr);
     private sealed record HistogramBin(string Label, int Count);
+
+    // Sort-funksjoner for månedstabellen
+    private readonly Func<MonthlyCaptureRateDto, object> _crSortMonth = m => m.Year * 100 + m.Month;
+    private readonly Func<MonthlyCaptureRateDto, object> _crSortCapPrice = m => m.Result.CapturePriceNokMwh;
+    private readonly Func<MonthlyCaptureRateDto, object> _crSortBaseline = m => m.Result.TimesBaselineNokMwh;
+    private readonly Func<MonthlyCaptureRateDto, object> _crSortCr = m => m.Result.TimesCr;
+    private readonly Func<MonthlyCaptureRateDto, object> _crSortMerverdi = m => m.Result.MerverdiNok;
+    private readonly Func<MonthlyCaptureRateDto, object> _crSortTimer = m => m.Result.AntallTimerProduksjon;
 }

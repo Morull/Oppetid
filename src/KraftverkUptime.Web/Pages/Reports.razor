@@ -52,13 +52,21 @@ else
 {
     <MudTable T="SettlementImportSummary" Items="@_items" Loading="@(_items is null)"
               Hover="true" Striped="true" Elevation="0" Class="dk-card"
-              OnRowClick="OnRowClick" RowStyle="cursor: pointer;">
+              OnRowClick="OnRowClick" RowStyle="cursor: pointer;"
+              Filter="MatchesSearch">
+        <ToolBarContent>
+            <MudTextField @bind-Value="_searchText" Placeholder="Søk anlegg, periode, status…"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                          IconSize="Size.Medium" Class="mt-0" Margin="Margin.Dense"
+                          Immediate="true" />
+        </ToolBarContent>
         <HeaderContent>
-            <MudTh>Anlegg</MudTh>
-            <MudTh>Periode</MudTh>
-            <MudTh Style="text-align:right">Timer</MudTh>
-            <MudTh Style="text-align:right">Avvik</MudTh>
-            <MudTh>Importert</MudTh>
+            <MudTh><MudTableSortLabel SortBy="@SortByPlant">Anlegg</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="@SortByPeriod">Periode</MudTableSortLabel></MudTh>
+            <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByHours">Timer</MudTableSortLabel></MudTh>
+            <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByIssues">Avvik</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="@SortByImported"
+                   InitialDirection="SortDirection.Descending">Importert</MudTableSortLabel></MudTh>
             <MudTh>Status</MudTh>
         </HeaderContent>
         <RowTemplate>
@@ -100,6 +108,27 @@ else
     private DateTime? _from;
     private DateTime? _to;
     private string? _error;
+    private string _searchText = string.Empty;
+
+    // Sort-funksjoner som felt for å unngå Razor-attributt-escape-problemer
+    private static readonly Func<SettlementImportSummary, object> SortByPlant    = i => i.PlantName;
+    private static readonly Func<SettlementImportSummary, object> SortByPeriod   = i => i.PeriodStartUtc;
+    private static readonly Func<SettlementImportSummary, object> SortByHours    = i => i.HourCount;
+    private static readonly Func<SettlementImportSummary, object> SortByIssues   = i => i.IssueCount;
+    private static readonly Func<SettlementImportSummary, object> SortByImported = i => i.ImportedAtUtc;
+
+    /// <summary>
+    /// Søker etter substring i alle relevante felter. Periode formateres
+    /// til lokal-streng først for at "februar 2026" treffer.
+    /// </summary>
+    private bool MatchesSearch(SettlementImportSummary i)
+    {
+        if (string.IsNullOrWhiteSpace(_searchText)) return true;
+        var s = _searchText.Trim();
+        return i.PlantName.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || FormatPeriod(i.PeriodStartUtc, i.PeriodEndUtc).Contains(s, StringComparison.OrdinalIgnoreCase)
+            || (i.ReportAvailable ? "klar" : "behandles").Contains(s, StringComparison.OrdinalIgnoreCase);
+    }
 
     protected override async Task OnInitializedAsync()
     {

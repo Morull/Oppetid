@@ -163,17 +163,24 @@ else if (_response is not null)
             </MudButton>
         </div>
         <MudTable Items="_response.Events" Hover="true" Dense="true" Elevation="0"
-                  FixedHeader="true" Height="500px" Virtualize="true">
+                  FixedHeader="true" Height="500px" Virtualize="true"
+                  Filter="MatchesVaktSearch">
+            <ToolBarContent>
+                <MudTextField @bind-Value="_vaktSearch" Placeholder="Søk kategori, status…"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Margin="Margin.Dense" Immediate="true" />
+            </ToolBarContent>
             <HeaderContent>
-                <MudTh>Start</MudTh>
-                <MudTh>Slutt</MudTh>
-                <MudTh Style="text-align:right">Faktisk (t)</MudTh>
-                <MudTh>Kategori</MudTh>
-                <MudTh>Vakt-vindu</MudTh>
-                <MudTh>Reddbar</MudTh>
-                <MudTh Style="text-align:right">Ekstra (t)</MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByVaktStart"
+                       InitialDirection="SortDirection.Descending">Start</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByVaktEnd">Slutt</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVaktDuration">Faktisk (t)</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByVaktCategory">Kategori</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByVaktInWindow">Vakt-vindu</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByVaktReddbar">Reddbar</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVaktExtra">Ekstra (t)</MudTableSortLabel></MudTh>
                 <MudTh Style="text-align:right">Overløp</MudTh>
-                <MudTh Style="text-align:right">Reddet (NOK)</MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVaktReddetNok">Reddet (NOK)</MudTableSortLabel></MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="Start">@FormatLocal(context.Event.StartUtc)</MudTd>
@@ -202,8 +209,28 @@ else if (_response is not null)
     private string? _csvUrl;
     private List<MonthlyPoint> _monthlyTrend = new();
     private int _chartVersion;
+    private string _vaktSearch = string.Empty;
 
     private ApexChartOptions<MonthlyPoint> _trendOptions = new();
+
+    // Sort-funksjoner for vakt-roi events
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktStart    = e => e.Event.StartUtc;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktEnd      = e => e.Event.EndUtc;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktDuration = e => e.Event.VarighetTimer;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktCategory = e => e.Event.Kategori;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktInWindow = e => e.ErInnenforVakt;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktReddbar  = e => e.ErReddbar;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktExtra    = e => e.EkstraTimerSpart;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktReddetNok = e => e.ReddetNok;
+
+    private bool MatchesVaktSearch(VaktRoiEventDto e)
+    {
+        if (string.IsNullOrWhiteSpace(_vaktSearch)) return true;
+        var s = _vaktSearch.Trim();
+        return e.Event.Kategori.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || (e.Event.CauseCode?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+            || e.Forklaring.Contains(s, StringComparison.OrdinalIgnoreCase);
+    }
 
     protected override async Task OnInitializedAsync()
     {

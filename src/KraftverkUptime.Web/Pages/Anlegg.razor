@@ -114,10 +114,11 @@ else
                 {
                     <MudTable Items="_imports" Hover="true" Dense="true" Elevation="0">
                         <HeaderContent>
-                            <MudTh>Periode</MudTh>
-                            <MudTh Style="text-align:right">Timer</MudTh>
-                            <MudTh Style="text-align:right">Avvik</MudTh>
-                            <MudTh>Importert</MudTh>
+                            <MudTh><MudTableSortLabel SortBy="@_anlSortPeriod"
+                                   InitialDirection="SortDirection.Descending">Periode</MudTableSortLabel></MudTh>
+                            <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_anlSortHours">Timer</MudTableSortLabel></MudTh>
+                            <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_anlSortIssues">Avvik</MudTableSortLabel></MudTh>
+                            <MudTh><MudTableSortLabel SortBy="@_anlSortImported">Importert</MudTableSortLabel></MudTh>
                             <MudTh>Status</MudTh>
                             <MudTh></MudTh>
                         </HeaderContent>
@@ -392,6 +393,12 @@ else
         _toDate = range.To;
         await ReloadAllAsync();
     }
+
+    // Sort-funksjoner for rapport-fanens settlement-tabell
+    private readonly Func<SettlementImportSummary, object> _anlSortPeriod = i => i.PeriodStartUtc;
+    private readonly Func<SettlementImportSummary, object> _anlSortHours = i => i.HourCount;
+    private readonly Func<SettlementImportSummary, object> _anlSortIssues = i => i.IssueCount;
+    private readonly Func<SettlementImportSummary, object> _anlSortImported = i => i.ImportedAtUtc;
 
     /// <summary>
     /// Henter alle data parallelt for valgt periode. Hver feiler stille for seg

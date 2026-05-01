@@ -36,13 +36,19 @@
 else
 {
     <MudPaper Class="pa-4" Elevation="1">
-        <MudTable Items="_categories" Hover="true" Dense="true" Elevation="0">
+        <MudTable Items="_categories" Hover="true" Dense="true" Elevation="0"
+                  Filter="MatchesCatSearch">
+            <ToolBarContent>
+                <MudTextField @bind-Value="_catSearch" Placeholder="Søk navn, id, beskrivelse…"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Margin="Margin.Dense" Immediate="true" />
+            </ToolBarContent>
             <HeaderContent>
-                <MudTh>Navn / Beskrivelse</MudTh>
+                <MudTh><MudTableSortLabel SortBy="@_catSortName">Navn / Beskrivelse</MudTableSortLabel></MudTh>
                 <MudTh Style="text-align:center">Farge</MudTh>
-                <MudTh>Mapping</MudTh>
-                <MudTh Style="text-align:center">#</MudTh>
-                <MudTh Style="text-align:center">Aktiv</MudTh>
+                <MudTh><MudTableSortLabel SortBy="@_catSortMapping">Mapping</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:center"><MudTableSortLabel SortBy="@_catSortOrder">#</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:center"><MudTableSortLabel SortBy="@_catSortActive">Aktiv</MudTableSortLabel></MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -165,6 +171,21 @@ else
 @code {
     private List<AnnotationCategoryDto>? _categories;
     private string? _error;
+    private string _catSearch = string.Empty;
+
+    private readonly Func<AnnotationCategoryDto, object> _catSortName = c => c.DisplayName;
+    private readonly Func<AnnotationCategoryDto, object> _catSortMapping = c => c.UnitStateOverride;
+    private readonly Func<AnnotationCategoryDto, object> _catSortOrder = c => c.SortOrder;
+    private readonly Func<AnnotationCategoryDto, object> _catSortActive = c => c.IsActive;
+
+    private bool MatchesCatSearch(AnnotationCategoryDto c)
+    {
+        if (string.IsNullOrWhiteSpace(_catSearch)) return true;
+        var s = _catSearch.Trim();
+        return c.DisplayName.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || c.Id.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || (c.Description?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
 
     private AnnotationCategoryDto? _editing;
     private bool _editingOpen;
