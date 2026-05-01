@@ -211,15 +211,21 @@
             return;
         }
 
-        var startUtc = new DateTimeOffset(_startDate.Value.AddHours(_startHour), TimeSpan.Zero);
+        // SpecifyKind(Unspecified) før konstruksjon — MudDatePicker kan
+        // levere DateTime med Kind=Local som ville kastet
+        // Argument_OffsetLocalMismatch ved offset=Zero.
+        var startBase = DateTime.SpecifyKind(_startDate.Value.Date, DateTimeKind.Unspecified);
+        var endBase = DateTime.SpecifyKind(_endDate.Value.Date, DateTimeKind.Unspecified);
+
+        var startUtc = new DateTimeOffset(startBase.AddHours(_startHour), TimeSpan.Zero);
         DateTimeOffset endUtc;
         if (_endHour == 24)
         {
-            endUtc = new DateTimeOffset(_endDate.Value.AddDays(1), TimeSpan.Zero);
+            endUtc = new DateTimeOffset(endBase.AddDays(1), TimeSpan.Zero);
         }
         else
         {
-            endUtc = new DateTimeOffset(_endDate.Value.AddHours(_endHour), TimeSpan.Zero);
+            endUtc = new DateTimeOffset(endBase.AddHours(_endHour), TimeSpan.Zero);
         }
 
         if (startUtc >= endUtc)
