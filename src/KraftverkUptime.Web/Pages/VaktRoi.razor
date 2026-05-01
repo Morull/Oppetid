@@ -302,6 +302,12 @@ else if (_response is not null)
         _trendOptions = new ApexChartOptions<MonthlyPoint>
         {
             Xaxis = new XAxis { Type = XAxisType.Datetime },
+            // NOK-tall: ingen desimaler. Default ApexCharts viser hele
+            // floating-point-presisjonen ("40000.00000000000") som er stygg.
+            Yaxis = new List<YAxis>
+            {
+                new() { Title = new AxisTitle { Text = "NOK" }, DecimalsInFloat = 0 }
+            },
             Tooltip = new Tooltip { X = new TooltipX { Format = "MMM yyyy" } },
             Colors = new List<string> { "#2A9D8F" },
         };

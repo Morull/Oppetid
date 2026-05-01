@@ -308,6 +308,11 @@ else if (_response is not null)
         _trendOptions = new ApexChartOptions<WeeklyPoint>
         {
             Xaxis = new XAxis { Type = XAxisType.Datetime },
+            // Timer-tall: 1 desimal er nok for ukentlig snitt-varighet
+            Yaxis = new List<YAxis>
+            {
+                new() { Title = new AxisTitle { Text = "Timer" }, DecimalsInFloat = 1 }
+            },
             Tooltip = new Tooltip { X = new TooltipX { Format = "dd MMM yyyy" } },
             Colors = new List<string> { "#E76F51" },
         };
