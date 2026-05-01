@@ -1,0 +1,388 @@
+@page "/produksjon"
+@page "/produksjon/{PlantId}"
+@using ApexCharts
+@inject ReportsApi ReportsApi
+@inject NedetidApi NedetidApi
+
+<PageTitle>Produksjon</PageTitle>
+
+<MudGrid Class="mb-4">
+    <MudItem xs="12" md="9">
+        <MudText Typo="Typo.h1">Produksjon</MudText>
+        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+            Hvor godt brukes vannet? Her vurderer vi om Hydrogrid traff på de
+            beste prisperiodene, om vi fulgte planen, og om vi blir bedre over
+            tid. Datakilde: <strong>ProduksjonplanMwh</strong> i KAIA-eksporten
+            er Hydrogrids plan, sammenlignet mot <strong>MwhElhub</strong>
+            (faktisk levert) og spotpris per time.
+        </MudText>
+    </MudItem>
+</MudGrid>
+
+@* ---- Filter ---- *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="string" Value="_plantId" ValueChanged="OnPlantChanged"
+                       Label="Anlegg" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var p in _plants)
+                {
+                    <MudSelectItem Value="@p.Id">@p.Name (@p.Id)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Date="_fromDate" DateChanged="@(d => _fromDate = d)"
+                           Label="Fra dato" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Date="_toDate" DateChanged="@(d => _toDate = d)"
+                           Label="Til dato (eks.)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex justify-end">
+            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Search"
+                       OnClick="LoadAsync"
+                       Disabled="@(_loading || string.IsNullOrEmpty(_plantId) || !_fromDate.HasValue || !_toDate.HasValue)">
+                Hent
+            </MudButton>
+        </MudItem>
+        <MudItem xs="12" Class="mt-1">
+            <PeriodPresets OnSelected="@OnPresetSelected" />
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+    <MudText Class="ml-2 d-inline">Henter produksjons-analyse…</MudText>
+}
+else if (_data is not null)
+{
+    @if (_data.AntallTimerMedPlan == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            Ingen plan-data (ProduksjonplanMwh) for valgt periode. Sjekk at
+            settlement-eksporten inkluderer plan-kolonnen, eller velg en periode
+            der Hydrogrid har levert plan.
+        </MudAlert>
+    }
+    else
+    {
+        @* ---- KPI-rad med trend mot forrige periode ---- *@
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="6" md="3">
+                <KpiTrendCard Label="Plan-treff"
+                              Value="@(_data.PlanTreffProsent * 100)"
+                              PreviousValue="@(_previous?.PlanTreffProsent * 100)"
+                              Format="F1" Unit="%"
+                              SubText="@($"Σ avvik / Σ plan over {_data.AntallTimerMedPlan} timer")"
+                              HigherIsBetter="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiTrendCard Label="Topp-prisperiode-utnyttelse"
+                              Value="@(_data.AndelProdIToppKvartil * 100)"
+                              PreviousValue="@(_previous?.AndelProdIToppKvartil * 100)"
+                              Format="F1" Unit="%"
+                              SubText="@TimingTolkning(_data.AndelProdIToppKvartil)"
+                              HigherIsBetter="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiTrendCard Label="Hydrogrid timing-merverdi"
+                              Value="_data.HydrogridMerverdiNok"
+                              PreviousValue="_previous?.HydrogridMerverdiNok"
+                              Format="N0" Unit="NOK"
+                              SignedValue="true"
+                              SubText="vs. flat baseline"
+                              HigherIsBetter="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiTrendCard Label="Faktisk timing-merverdi"
+                              Value="_data.FaktiskMerverdiNok"
+                              PreviousValue="_previous?.FaktiskMerverdiNok"
+                              Format="N0" Unit="NOK"
+                              SignedValue="true"
+                              SubText="@FaktiskVsHydrogrid()"
+                              HigherIsBetter="true" />
+            </MudItem>
+        </MudGrid>
+
+        @* ---- Tolkning-banner ---- *@
+        <MudAlert Severity="@TolkningSeverity()" Class="mb-4" Dense="true" Icon="@Icons.Material.Filled.Insights">
+            <MudText Typo="Typo.body2">@HelhetligTolkning()</MudText>
+        </MudAlert>
+
+        @* ---- Plan vs faktisk-graf med spot-overlegg ---- *@
+        @if (_data.Hourly.Count > 0)
+        {
+            <MudPaper Class="pa-4 mb-4" Elevation="1">
+                <MudText Typo="Typo.h3" Class="mb-2">Plan vs. faktisk (med spotpris)</MudText>
+                <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-2">
+                    Når plan- og faktisk-linjene følger hverandre tett er Hydrogrid riktig
+                    og operasjonen følger planen. Når spotprisen (høyre akse) topper, ønsker
+                    vi at både plan og faktisk er høye.
+                </MudText>
+                <ApexChart @key="@($"hg-{_chartVersion}")" TItem="ProduksjonHourlyDto"
+                           Options="_chartOptions" Height="380">
+                    <ApexPointSeries TItem="ProduksjonHourlyDto"
+                                     Items="_data.Hourly"
+                                     Name="Plan (MWh)"
+                                     SeriesType="SeriesType.Line"
+                                     XValue="h => h.TimeUtc.UtcDateTime"
+                                     YValue="h => (decimal)(h.PlanMwh ?? 0)" />
+                    <ApexPointSeries TItem="ProduksjonHourlyDto"
+                                     Items="_data.Hourly"
+                                     Name="Faktisk (MWh)"
+                                     SeriesType="SeriesType.Line"
+                                     XValue="h => h.TimeUtc.UtcDateTime"
+                                     YValue="h => (decimal)(h.ElhubMwh ?? 0)" />
+                    <ApexPointSeries TItem="ProduksjonHourlyDto"
+                                     Items="_data.Hourly"
+                                     Name="Spotpris (NOK/MWh)"
+                                     SeriesType="SeriesType.Line"
+                                     XValue="h => h.TimeUtc.UtcDateTime"
+                                     YValue="h => (decimal)(h.SpotprisNokMwh ?? 0)" />
+                </ApexChart>
+            </MudPaper>
+        }
+
+        @* ---- Måneds-tabell for å se trend ---- *@
+        @if (_data.Monthly.Count > 0)
+        {
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h3" Class="mb-3">Måneds-trend</MudText>
+                <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-3">
+                    Hydrogrid-merverdi måned-for-måned. Ser man en stigende trend i timing-
+                    merverdi, blir Hydrogrid bedre. Plan-treff bør holde seg stabilt høy.
+                </MudText>
+                <MudTable Items="_data.Monthly" Hover="true" Dense="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Måned</MudTh>
+                        <MudTh Style="text-align:right">Elhub (MWh)</MudTh>
+                        <MudTh Style="text-align:right">Plan (MWh)</MudTh>
+                        <MudTh Style="text-align:right">Plan-treff</MudTh>
+                        <MudTh Style="text-align:right">Topp-pris-andel</MudTh>
+                        <MudTh Style="text-align:right">Hydrogrid-merverdi</MudTh>
+                        <MudTh Style="text-align:right">Faktisk merverdi</MudTh>
+                        <MudTh Style="text-align:right">Snitt-spot</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@($"{context.Year}-{context.Month:D2}")</MudTd>
+                        <MudTd Style="text-align:right">@context.ElhubMwh.ToString("F0")</MudTd>
+                        <MudTd Style="text-align:right">@context.PlanMwh.ToString("F0")</MudTd>
+                        <MudTd Style="text-align:right">
+                            <span style="@($"color: {(context.PlanTreffProsent >= 0.85 ? "#2A9D8F" : context.PlanTreffProsent >= 0.65 ? "#F39C12" : "#E76F51")}; font-weight: 600;")">
+                                @((context.PlanTreffProsent * 100).ToString("F0")) %
+                            </span>
+                        </MudTd>
+                        <MudTd Style="text-align:right">
+                            <span style="@($"color: {(context.AndelProdIToppKvartil >= 0.30 ? "#2A9D8F" : context.AndelProdIToppKvartil >= 0.20 ? "inherit" : "#E76F51")};")">
+                                @((context.AndelProdIToppKvartil * 100).ToString("F0")) %
+                            </span>
+                        </MudTd>
+                        <MudTd Style="text-align:right">@FormatNokSigned(context.HydrogridMerverdiNok)</MudTd>
+                        <MudTd Style="text-align:right">@FormatNokSigned(context.FaktiskMerverdiNok)</MudTd>
+                        <MudTd Style="text-align:right">@context.SnittSpotprisNokMwh.ToString("F0")</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        }
+    }
+}
+
+@code {
+    [Parameter] public string? PlantId { get; set; }
+
+    private IReadOnlyList<PlantDto> _plants = Array.Empty<PlantDto>();
+    private string _plantId = string.Empty;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+
+    private bool _loading;
+    private string? _error;
+    private ProduksjonAnalyseDto? _data;
+    private ProduksjonAnalyseDto? _previous;
+
+    private ApexChartOptions<ProduksjonHourlyDto> _chartOptions = new();
+    private int _chartVersion;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _plants = await ReportsApi.ListPlantsAsync();
+            _plantId = !string.IsNullOrEmpty(PlantId)
+                ? PlantId
+                : (_plants.Count > 0 ? _plants[0].Id : string.Empty);
+
+            // Default: forrige måned (kortest periode med Hydrogrid-plan-data)
+            var today = DateTime.Today;
+            var firstThis = new DateTime(today.Year, today.Month, 1);
+            _fromDate = firstThis.AddMonths(-1);
+            _toDate = firstThis;
+
+            if (!string.IsNullOrEmpty(_plantId))
+            {
+                await LoadAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Klarte ikke laste anleggsliste: {ex.Message}";
+        }
+    }
+
+    private Task OnPlantChanged(string newPlantId)
+    {
+        _plantId = newPlantId;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnPresetSelected((DateTime From, DateTime To) range)
+    {
+        _fromDate = range.From;
+        _toDate = range.To;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrEmpty(_plantId) || !_fromDate.HasValue || !_toDate.HasValue) return;
+        _loading = true;
+        _error = null;
+        _data = null;
+        _previous = null;
+        try
+        {
+            var fromUtc = _fromDate.ToUtcOffsetSafe();
+            var toUtc = _toDate.ToUtcOffsetSafe();
+
+            // Forrige periode med samme lengde for trend-pilene
+            var lengde = toUtc - fromUtc;
+            var prevTo = fromUtc;
+            var prevFrom = fromUtc - lengde;
+
+            var dataTask = NedetidApi.GetProduksjonAnalyseAsync(_plantId, fromUtc, toUtc);
+            var prevTask = SafeTask(() => NedetidApi.GetProduksjonAnalyseAsync(_plantId, prevFrom, prevTo));
+
+            _data = await dataTask;
+            _previous = await prevTask;
+
+            _chartVersion++;
+            BuildChart();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente produksjons-analyse: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static async Task<T?> SafeTask<T>(Func<Task<T>> task) where T : class
+    {
+        try { return await task(); }
+        catch { return null; }
+    }
+
+    private void BuildChart()
+    {
+        _chartOptions = new ApexChartOptions<ProduksjonHourlyDto>
+        {
+            Stroke = new Stroke { Curve = Curve.Smooth, Width = 2 },
+            Xaxis = new XAxis { Type = XAxisType.Datetime },
+            Yaxis = new List<YAxis>
+            {
+                new() { Title = new AxisTitle { Text = "MWh" }, DecimalsInFloat = 1 },
+                new() { Title = new AxisTitle { Text = "NOK/MWh" }, DecimalsInFloat = 0,
+                        Opposite = true, SeriesName = "Spotpris (NOK/MWh)" }
+            },
+            Legend = new Legend { Position = LegendPosition.Top },
+            Colors = new List<string> { "#1E5F8E", "#2A9D8F", "#F39C12" },
+        };
+    }
+
+    // -- Tolknings-helpere --
+
+    private string TimingTolkning(double andel)
+    {
+        var pct = andel * 100;
+        if (andel >= 0.30) return $"god timing — {pct:F0} % er klart over 25 % baseline";
+        if (andel >= 0.27) return $"litt over baseline";
+        if (andel >= 0.23) return "ingen tydelig timing-effekt";
+        return $"svak timing — produserer mest når prisen er lav";
+    }
+
+    private string FaktiskVsHydrogrid()
+    {
+        if (_data is null) return string.Empty;
+        var diff = _data.FaktiskMerverdiNok - _data.HydrogridMerverdiNok;
+        if (Math.Abs(diff) < 1000) return "fulgte planen — like merverdi";
+        if (diff > 0) return $"+{diff:N0} NOK bedre enn planen";
+        return $"{diff:N0} NOK svakere enn planen";
+    }
+
+    private Severity TolkningSeverity()
+    {
+        if (_data is null) return Severity.Info;
+        if (_data.PlanTreffProsent >= 0.85 && _data.AndelProdIToppKvartil >= 0.27) return Severity.Success;
+        if (_data.PlanTreffProsent < 0.65 || _data.AndelProdIToppKvartil < 0.20) return Severity.Warning;
+        return Severity.Info;
+    }
+
+    private string HelhetligTolkning()
+    {
+        if (_data is null || _data.AntallTimerMedPlan == 0) return string.Empty;
+
+        var planTreff = _data.PlanTreffProsent;
+        var topp = _data.AndelProdIToppKvartil;
+        var hg = _data.HydrogridMerverdiNok;
+        var faktisk = _data.FaktiskMerverdiNok;
+
+        var del1 = planTreff switch
+        {
+            >= 0.90 => "Operasjonen følger Hydrogrids plan svært tett.",
+            >= 0.75 => "Operasjonen følger planen rimelig bra.",
+            >= 0.60 => "Det er moderate avvik fra planen.",
+            _       => "Store avvik fra planen — sjekk om dette skyldes nedetid eller manuelle overstyringer."
+        };
+
+        var del2 = topp switch
+        {
+            >= 0.30 => "Hydrogrid treffer godt på de beste prisperiodene.",
+            >= 0.27 => "Hydrogrids timing er litt bedre enn naiv spreding.",
+            >= 0.23 => "Hydrogrids timing-effekt er marginal.",
+            _       => "Hydrogrids timing er svak — produserer mest når prisen er lav."
+        };
+
+        var del3 = (hg, faktisk) switch
+        {
+            ( > 0, _) when faktisk > hg => $"Vi tjente {faktisk - hg:N0} NOK mer enn Hydrogrids plan tilsa.",
+            ( > 0, _) when faktisk < hg => $"Vi mistet {hg - faktisk:N0} NOK ved å avvike fra planen.",
+            ( > 0, _) => "Plan og faktisk var i praksis like.",
+            _ => "Hydrogrid-merverdien er ikke positiv i perioden."
+        };
+
+        return $"{del1} {del2} {del3}";
+    }
+
+    private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
+    {
+        NumberGroupSeparator = " ",
+        NumberDecimalSeparator = ",",
+        NumberGroupSizes = new[] { 3 },
+    };
+    private static string FormatNokSigned(double v)
+    {
+        if (Math.Abs(v) < 0.5) return "–";
+        var sign = v > 0 ? "+" : "";
+        return sign + v.ToString("N0", NorskTall);
+    }
+}

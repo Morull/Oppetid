@@ -84,6 +84,15 @@ public sealed class NedetidApi
         return resp ?? new List<DailyCaptureRateDto>();
     }
 
+    /// <summary>Henter produksjons-analyse (Hydrogrid-evaluering) for en periode.</summary>
+    public async Task<ProduksjonAnalyseDto> GetProduksjonAnalyseAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var url = BuildUrl(plantId, "produksjon-analyse", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        var resp = await _http.GetFromJsonAsync<ProduksjonAnalyseDto>(url, JsonOptions, ct).ConfigureAwait(false);
+        return resp ?? throw new InvalidOperationException("Tom respons fra /produksjon-analyse.");
+    }
+
     /// <summary>Bygger nedlastings-URL for CSV-eksport (åpnes direkte i ny fane).</summary>
     public Uri BuildCsvUri(string plantId, string endpoint, DateTimeOffset fromUtc, DateTimeOffset toUtc)
     {
@@ -220,6 +229,40 @@ public sealed record DailyCaptureRateDto(
     double OppnaaddNokMwh,
     double RaCr,
     bool ErFiltrert);
+
+public sealed record ProduksjonAnalyseDto(
+    string PlantId,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    int AntallTimer,
+    int AntallTimerMedPlan,
+    double TotalElhubMwh,
+    double TotalPlanMwh,
+    double PlanTreffProsent,
+    double AndelProdIToppKvartil,
+    double AndelProdIBunnKvartil,
+    double HydrogridMerverdiNok,
+    double FaktiskMerverdiNok,
+    double SnittSpotprisNokMwh,
+    IReadOnlyList<ProduksjonHourlyDto> Hourly,
+    IReadOnlyList<ProduksjonMonthlyDto> Monthly);
+
+public sealed record ProduksjonHourlyDto(
+    DateTimeOffset TimeUtc,
+    double? PlanMwh,
+    double? ElhubMwh,
+    double? SpotprisNokMwh);
+
+public sealed record ProduksjonMonthlyDto(
+    int Year,
+    int Month,
+    double ElhubMwh,
+    double PlanMwh,
+    double PlanTreffProsent,
+    double AndelProdIToppKvartil,
+    double HydrogridMerverdiNok,
+    double FaktiskMerverdiNok,
+    double SnittSpotprisNokMwh);
 
 public sealed record VaktRoiResponse(
     string PlantId,

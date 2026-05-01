@@ -120,6 +120,10 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<KraftverkUptime.Modules.Reporting.CaptureRate.ICaptureRateQueryService,
                           KraftverkUptime.Infrastructure.Reporting.CaptureRateQueryService>();
 
+        // --- Produksjons-analyse (Hydrogrid plan vs. faktisk) ---
+        services.AddScoped<KraftverkUptime.Modules.Reporting.Produksjon.IProduksjonAnalyseService,
+                          KraftverkUptime.Infrastructure.Reporting.ProduksjonAnalyseQueryService>();
+
         // --- Events ---
         services.AddSingleton<IEventPublisher, InProcEventPublisher>();
         services.AddScoped<IEventHandler<SettlementImportedEvent>, ClassifyOnImportedHandler>();
