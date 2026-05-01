@@ -24,9 +24,12 @@ public sealed record PlantClassificationConfig
     public required double NominalPowerMw { get; init; }
 
     /// <summary>
-    /// Elhub &lt; Plan × denne → ForcedDerating. Default 0.90 (10 % under plan).
+    /// Elhub &lt; Plan × denne → ForcedDerating (avvik fra produksjonsplan teller
+    /// som feil). Default 0.80 (20 % under plan = feil). Drifts-leder kan
+    /// justere per anlegg via PlantAdmin-UI når et verk har høyere/lavere
+    /// toleranse for plan-avvik.
     /// </summary>
-    public double DeratingThreshold { get; init; } = 0.90;
+    public double DeratingThreshold { get; init; } = 0.80;
 
     /// <summary>
     /// Sammenhengende 0-produksjonstimer ≥ denne → PlannedOutage-kandidat.

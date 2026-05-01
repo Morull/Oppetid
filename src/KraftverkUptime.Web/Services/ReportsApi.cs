@@ -272,15 +272,26 @@ public sealed class ReportsApi
 
 // --------- DTO-er -----------------------------------------------------------
 
+/// <summary>
+/// Plant-grunndata. <see cref="DeratingThreshold"/> er per-anlegg terskel for
+/// plan-avvik som teller som ForcedDerating; default 0.80 (= 20 % toleranse).
+/// Null fra ListAsync (paginert liste viser kun grunn-felter); satt fra GET.
+/// </summary>
 public sealed record PlantDto(
-    string Id, string Name, string Type, double InstalledCapacityMw, string TimeZone);
+    string Id, string Name, string Type, double InstalledCapacityMw, string TimeZone,
+    double? DeratingThreshold = null);
 
 /// <summary>
 /// Body for <c>PUT /api/v1/plants/{plantId}</c>. <see cref="Type"/> er enum-string —
 /// "Regulated", "RunOfRiver", "Mixed" eller "Pumped".
+/// <see cref="DeratingThreshold"/> i (0, 1]; null beholder eksisterende verdi.
 /// </summary>
 public sealed record UpdatePlantRequest(
-    string Name, string Type, double InstalledCapacityMw, string TimeZone);
+    string Name,
+    string Type,
+    double InstalledCapacityMw,
+    string TimeZone,
+    double? DeratingThreshold = null);
 
 /// <summary>Bekreftelses-body for <c>DELETE /api/v1/plants/{plantId}/data</c>.</summary>
 public sealed record ResetPlantDataRequestDto(string ConfirmText);

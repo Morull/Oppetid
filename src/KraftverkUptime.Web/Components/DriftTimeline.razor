@@ -165,6 +165,10 @@
                 {
                     lines.Add($"Årsak: {hour.CauseCode}");
                 }
+                if (!string.IsNullOrWhiteSpace(hour.Rationale) && annotation is null)
+                {
+                    lines.Add($"Begrunnelse: {hour.Rationale}");
+                }
                 if (annotation is not null)
                 {
                     lines.Add("Manuelt annotert");

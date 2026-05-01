@@ -252,20 +252,28 @@ else
                         <HeaderContent>
                             <MudTh>Tid (UTC)</MudTh>
                             <MudTh>Tilstand</MudTh>
-                            <MudTh>CauseCode</MudTh>
                             <MudTh Style="text-align:right">MWh Elhub</MudTh>
                             <MudTh Style="text-align:right">Plan</MudTh>
+                            <MudTh Style="text-align:right">Spotbud</MudTh>
                             <MudTh Style="text-align:right">Spotpris</MudTh>
+                            <MudTh>Begrunnelse</MudTh>
                         </HeaderContent>
                         <RowTemplate>
                             <MudTd DataLabel="Tid">@context.TimeUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</MudTd>
                             <MudTd DataLabel="Tilstand">
-                                <MudChip T="string" Size="MudBlazor.Size.Small" Color="@StateColor(context.State)">@StateDisplayName(context.State)</MudChip>
+                                <MudTooltip Text="@($"CauseCode: {context.CauseCode} (confidence {context.Confidence:F2})")">
+                                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="@StateColor(context.State)">@StateDisplayName(context.State)</MudChip>
+                                </MudTooltip>
                             </MudTd>
-                            <MudTd DataLabel="CauseCode">@context.CauseCode</MudTd>
                             <MudTd DataLabel="MWh Elhub" Style="text-align:right">@FormatNullable(context.MwhElhub, "F3")</MudTd>
                             <MudTd DataLabel="Plan" Style="text-align:right">@FormatNullable(context.ProduksjonplanMwh, "F3")</MudTd>
+                            <MudTd DataLabel="Spotbud" Style="text-align:right">@FormatNullable(context.SpotbudMwh, "F3")</MudTd>
                             <MudTd DataLabel="Spotpris" Style="text-align:right">@FormatNullable(context.SpotprisNokMwh, "F2")</MudTd>
+                            <MudTd DataLabel="Begrunnelse">
+                                <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">
+                                    @context.Rationale
+                                </MudText>
+                            </MudTd>
                         </RowTemplate>
                     </MudTable>
                 </ChildContent>

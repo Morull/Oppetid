@@ -58,6 +58,12 @@ else
                           Required="true" Variant="Variant.Outlined"
                           HelperText="F.eks. Europe/Oslo. Påvirker DST-tolkning av settlement-data." />
 
+            <MudNumericField T="double" @bind-Value="_form.DeratingThreshold"
+                             Label="Plan-avviks-terskel"
+                             Min="0.10" Max="1.0" Step="0.05" Format="F2"
+                             Required="true" Variant="Variant.Outlined"
+                             HelperText="@($"Elhub < {(_form.DeratingThreshold * 100):F0} % av Plan klassifiseres som feil (ForcedDerating). Default 0.80 = avvik > 20 % gir feil.")" />
+
             <div class="d-flex justify-end" style="gap:8px;">
                 <MudButton Variant="Variant.Text" Href="/plants">Avbryt</MudButton>
                 <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
@@ -263,6 +269,7 @@ else
                     Type = plant.Type,
                     InstalledCapacityMw = plant.InstalledCapacityMw,
                     TimeZone = plant.TimeZone,
+                    DeratingThreshold = plant.DeratingThreshold ?? 0.80,
                 };
             }
             await ReloadDamsAsync();
@@ -347,7 +354,9 @@ else
         _saveError = null;
         try
         {
-            var body = new UpdatePlantRequest(_form.Name, _form.Type, _form.InstalledCapacityMw, _form.TimeZone);
+            var body = new UpdatePlantRequest(
+                _form.Name, _form.Type, _form.InstalledCapacityMw, _form.TimeZone,
+                DeratingThreshold: _form.DeratingThreshold);
             await Api.UpdatePlantAsync(PlantId, body);
             Snackbar.Add($"{_form.Name} oppdatert.", Severity.Success);
             Nav.NavigateTo("/plants");
@@ -402,5 +411,6 @@ else
         public string Type { get; set; } = "Regulated";
         public double InstalledCapacityMw { get; set; }
         public string TimeZone { get; set; } = "Europe/Oslo";
+        public double DeratingThreshold { get; set; } = 0.80;
     }
 }
