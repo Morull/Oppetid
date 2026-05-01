@@ -1,3 +1,5 @@
+@inject IJSRuntime JS
+
 <MudThemeProvider @ref="_themeProvider" Theme="DalaneTheme.Instance" IsDarkMode="_isDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
@@ -24,9 +26,20 @@
 
     public bool IsDarkMode => _isDarkMode;
 
-    public void ToggleDarkMode()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Speil dark-mode til en CSS-klasse på <body> slik at vi kan bruke
+        // CSS-targeting til å fikse ApexCharts og andre tredjepartskomponenter
+        // som ikke leser MudBlazor-paletten automatisk.
+        await JS.InvokeVoidAsync("eval",
+            $"document.body.classList.toggle('dk-dark', {(_isDarkMode ? "true" : "false")})");
+    }
+
+    public async Task ToggleDarkMode()
     {
         _isDarkMode = !_isDarkMode;
         StateHasChanged();
+        await JS.InvokeVoidAsync("eval",
+            $"document.body.classList.toggle('dk-dark', {(_isDarkMode ? "true" : "false")})");
     }
 }

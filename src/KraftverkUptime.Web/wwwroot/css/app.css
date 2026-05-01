@@ -348,3 +348,87 @@ html, body {
     border: 1px solid rgba(0, 0, 0, 0.08);
     flex-shrink: 0;
 }
+
+/* ==========================================================================
+   DARK MODE — kontrast-fikser
+   ApexCharts og enkelte MudBlazor-detaljer leser ikke MudBlazor-paletten
+   automatisk. Disse overstyringene aktiveres når <body class="dk-dark"> er
+   satt (App.razor speiler IsDarkMode-state hit via JS).
+   ========================================================================== */
+
+/* ApexCharts: aksetekst, grid og legend var nesten usynlige på #0A1628 */
+body.dk-dark .apexcharts-text,
+body.dk-dark .apexcharts-xaxis text,
+body.dk-dark .apexcharts-yaxis text,
+body.dk-dark .apexcharts-yaxis-title text,
+body.dk-dark .apexcharts-xaxis-title text,
+body.dk-dark .apexcharts-legend-text {
+    fill: #C5D0DC !important;
+    color: #C5D0DC !important;
+}
+
+body.dk-dark .apexcharts-gridline {
+    stroke: #2A3A52 !important;
+}
+
+body.dk-dark .apexcharts-tooltip {
+    background: #142235 !important;
+    color: #E8EEF4 !important;
+    border: 1px solid #2A3A52 !important;
+}
+body.dk-dark .apexcharts-tooltip-title {
+    background: #1B2A3E !important;
+    border-bottom: 1px solid #2A3A52 !important;
+    color: #E8EEF4 !important;
+}
+
+/* Histogram-bars og scatter er for mørke i dark mode — løft luminans */
+body.dk-dark .apexcharts-bar-area {
+    filter: brightness(1.4);
+}
+
+/* MudTable-tall: sørg for tabellverdier ikke blir pre-grå i dark */
+body.dk-dark .mud-table-cell,
+body.dk-dark .mud-table-cell strong {
+    color: var(--mud-palette-text-primary);
+}
+
+/* MudCaption (Color="Color.Secondary") brukes for under-tekst på KPI-kort.
+   Default --mud-palette-text-secondary er #A8B5C4 — OK, men noen steder ble
+   den enda mørkere via opacity. Forsterk: */
+body.dk-dark .mud-typography-caption {
+    color: #B8C4D2 !important;
+}
+
+/* Tabell-radiers fargekoding for tall (grønn/rød) — gjør grønn lysere
+   så den er lesbar på mørk bakgrunn */
+body.dk-dark .mud-table tr td span[style*="color: #2A9D8F"] {
+    color: #4ECDC4 !important;
+}
+body.dk-dark .mud-table tr td span[style*="color: #E76F51"] {
+    color: #FF8A6E !important;
+}
+
+/* "Mangler beskrivelse"-italic-tekst i kategori-tabellen var litt for blass */
+body.dk-dark .mud-typography-caption[style*="font-style"] {
+    color: #FFB74D !important; /* warning-aktig */
+}
+
+/* MudExpansionPanel-header på dark — sørg for at h4 ikke kollapser med bakgrunn */
+body.dk-dark .mud-expand-panel-header .mud-typography-h4 {
+    color: var(--mud-palette-text-primary);
+}
+
+/* Lyse aksenter i KPI-trend-kort med custom border-left forblir tydelige */
+body.dk-dark [style*="border-left: 4px solid #2A9D8F"] {
+    border-left-color: #4ECDC4 !important;
+}
+body.dk-dark [style*="border-left: 4px solid #E76F51"] {
+    border-left-color: #FF8A6E !important;
+}
+
+/* MudChip i scatter-legend (Beholdt/Filtrert) — synlig på mørk bakgrunn */
+body.dk-dark .apexcharts-legend-marker {
+    /* ingen endring nødvendig, men gjør synlig hvis liten */
+    transform: scale(1.1);
+}
