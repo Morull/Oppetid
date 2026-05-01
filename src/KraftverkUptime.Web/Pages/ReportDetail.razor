@@ -239,21 +239,76 @@ else
         </MudExpansionPanels>
     </MudPaper>
 
-    @* ---------- Timetabell (foldbar) -------------------------------------- *@
+    @* ---------- Timetabell (foldbar, med filter + sortering) -------------- *@
     <MudPaper Class="pa-4" Elevation="1">
         <MudExpansionPanels Elevation="0">
-            <MudExpansionPanel>
+            <MudExpansionPanel Expanded="true">
                 <TitleContent>
-                    <MudText Typo="Typo.h3">Klassifiserte timer (@_report.Classified.Count)</MudText>
+                    <MudText Typo="Typo.h3">
+                        Klassifiserte timer (@FilteredHours().Count() / @_report.Classified.Count)
+                    </MudText>
                 </TitleContent>
                 <ChildContent>
-                    <MudTable Items="_report.Classified" Hover="true" Dense="true" Elevation="0"
-                              Virtualize="true" FixedHeader="true" Height="480px">
+                    @* Filter-rad: hurtigvalg + per-tilstand-sjekkbokser *@
+                    <div class="mb-3">
+                        <div class="d-flex" style="gap:6px; flex-wrap:wrap; align-items:center;">
+                            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Vis:</MudText>
+                            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+                                       OnClick="@(() => ApplyPreset(HourFilterPreset.Bekymring))"
+                                       Color="@(_currentPreset == HourFilterPreset.Bekymring ? MudBlazor.Color.Primary : MudBlazor.Color.Default)">
+                                Sjekk: feil + mangler data
+                            </MudButton>
+                            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+                                       OnClick="@(() => ApplyPreset(HourFilterPreset.NedetidKun))"
+                                       Color="@(_currentPreset == HourFilterPreset.NedetidKun ? MudBlazor.Color.Primary : MudBlazor.Color.Default)">
+                                Kun nedetid
+                            </MudButton>
+                            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+                                       OnClick="@(() => ApplyPreset(HourFilterPreset.IkkeIDrift))"
+                                       Color="@(_currentPreset == HourFilterPreset.IkkeIDrift ? MudBlazor.Color.Primary : MudBlazor.Color.Default)">
+                                Ikke i drift
+                            </MudButton>
+                            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+                                       OnClick="@(() => ApplyPreset(HourFilterPreset.Alle))"
+                                       Color="@(_currentPreset == HourFilterPreset.Alle ? MudBlazor.Color.Primary : MudBlazor.Color.Default)">
+                                Alle
+                            </MudButton>
+                            <MudSpacer />
+                            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Sortér:</MudText>
+                            <MudSelect T="HourSort" Value="_sort" ValueChanged="OnSortChanged"
+                                       Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                       Style="max-width:240px;">
+                                <MudSelectItem Value="@HourSort.PrioritertViktighet">Viktighet (default)</MudSelectItem>
+                                <MudSelectItem Value="@HourSort.TidStigende">Tid (eldst først)</MudSelectItem>
+                                <MudSelectItem Value="@HourSort.TidSynkende">Tid (nyest først)</MudSelectItem>
+                                <MudSelectItem Value="@HourSort.AvvikSynkende">Plan-avvik (størst først)</MudSelectItem>
+                                <MudSelectItem Value="@HourSort.MwhSynkende">MWh Elhub (størst først)</MudSelectItem>
+                            </MudSelect>
+                        </div>
+                        <div class="d-flex mt-2" style="gap:4px; flex-wrap:wrap;">
+                            @foreach (var st in _allStatesInData)
+                            {
+                                var st2 = st;
+                                <MudChip T="string" Size="MudBlazor.Size.Small"
+                                         Color="@(_visibleStates.Contains(st2) ? StateColor(st2) : MudBlazor.Color.Default)"
+                                         Variant="@(_visibleStates.Contains(st2) ? Variant.Filled : Variant.Outlined)"
+                                         OnClick="@(() => ToggleState(st2))"
+                                         Style="cursor:pointer;">
+                                    @StateDisplayName(st2) (@_stateCounts[st2])
+                                </MudChip>
+                            }
+                        </div>
+                    </div>
+
+                    <MudTable T="ClassifiedHourDto" Items="FilteredHours()" Hover="true" Dense="true" Elevation="0"
+                              Virtualize="true" FixedHeader="true" Height="480px"
+                              SortLabel="Sortér">
                         <HeaderContent>
                             <MudTh>Tid (UTC)</MudTh>
                             <MudTh>Tilstand</MudTh>
                             <MudTh Style="text-align:right">MWh Elhub</MudTh>
                             <MudTh Style="text-align:right">Plan</MudTh>
+                            <MudTh Style="text-align:right">Avvik</MudTh>
                             <MudTh Style="text-align:right">Spotbud</MudTh>
                             <MudTh Style="text-align:right">Spotpris</MudTh>
                             <MudTh>Begrunnelse</MudTh>
@@ -267,6 +322,7 @@ else
                             </MudTd>
                             <MudTd DataLabel="MWh Elhub" Style="text-align:right">@FormatNullable(context.MwhElhub, "F3")</MudTd>
                             <MudTd DataLabel="Plan" Style="text-align:right">@FormatNullable(context.ProduksjonplanMwh, "F3")</MudTd>
+                            <MudTd DataLabel="Avvik" Style="text-align:right">@FormatAvvik(context)</MudTd>
                             <MudTd DataLabel="Spotbud" Style="text-align:right">@FormatNullable(context.SpotbudMwh, "F3")</MudTd>
                             <MudTd DataLabel="Spotpris" Style="text-align:right">@FormatNullable(context.SpotprisNokMwh, "F2")</MudTd>
                             <MudTd DataLabel="Begrunnelse">
@@ -301,6 +357,122 @@ else
 
     private sealed record NeighborReport(string IdempotencyKey, string PeriodLabel);
 
+    // Filter + sortering for klassifiserte timer-tabellen
+    private HourFilterPreset _currentPreset = HourFilterPreset.Bekymring;
+    private HashSet<string> _visibleStates = new(StringComparer.Ordinal);
+    private List<string> _allStatesInData = new();
+    private Dictionary<string, int> _stateCounts = new(StringComparer.Ordinal);
+    private HourSort _sort = HourSort.PrioritertViktighet;
+
+    private enum HourFilterPreset { Bekymring, NedetidKun, IkkeIDrift, Alle, Manuell }
+    private enum HourSort { PrioritertViktighet, TidStigende, TidSynkende, AvvikSynkende, MwhSynkende }
+
+    /// <summary>
+    /// Bygger state-fordelingen og initialiserer filter-bryterne. Kalles fra
+    /// BuildCharts slik at filteret er klart første gang tabellen rendres.
+    /// "Bekymring"-preset velges som default — det er hva drifts-leder
+    /// trenger å se først.
+    /// </summary>
+    private void InitHourFilter(UptimeReportSummary report)
+    {
+        _stateCounts = report.Classified
+            .GroupBy(h => h.State)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        // Default-rekkefølgen via Priority — viktigste øverst
+        _allStatesInData = _stateCounts.Keys
+            .OrderBy(StatePriority)
+            .ThenBy(s => s)
+            .ToList();
+        ApplyPreset(HourFilterPreset.Bekymring);
+    }
+
+    private void ApplyPreset(HourFilterPreset preset)
+    {
+        _currentPreset = preset;
+        _visibleStates = preset switch
+        {
+            // Sjekk-listen: alt som krever oppmerksomhet
+            HourFilterPreset.Bekymring => new(new[]
+            {
+                "ForcedOutage", "ForcedDerating",
+                "InformationUnavailable",
+            }, StringComparer.Ordinal),
+            HourFilterPreset.NedetidKun => new(new[]
+            {
+                "ForcedOutage",
+            }, StringComparer.Ordinal),
+            HourFilterPreset.IkkeIDrift => new(new[]
+            {
+                "ForcedOutage", "ForcedDerating", "PlannedOutage", "MaintenanceOutage",
+                "ResourceUnavailable", "ReserveShutdown",
+                "InformationUnavailable",
+            }, StringComparer.Ordinal),
+            HourFilterPreset.Alle => new(_allStatesInData, StringComparer.Ordinal),
+            _ => _visibleStates,
+        };
+    }
+
+    private void ToggleState(string state)
+    {
+        if (_visibleStates.Contains(state)) _visibleStates.Remove(state);
+        else _visibleStates.Add(state);
+        // Bryter ut av preset-modus så snart bruker overstyrer manuelt
+        _currentPreset = HourFilterPreset.Manuell;
+    }
+
+    private void OnSortChanged(HourSort newSort)
+    {
+        _sort = newSort;
+    }
+
+    /// <summary>Returnerer filtrerte + sorterte timer.</summary>
+    private IEnumerable<ClassifiedHourDto> FilteredHours()
+    {
+        if (_report is null) return Array.Empty<ClassifiedHourDto>();
+        var rows = _report.Classified.Where(h => _visibleStates.Contains(h.State));
+        return _sort switch
+        {
+            HourSort.PrioritertViktighet => rows
+                .OrderBy(h => StatePriority(h.State))
+                .ThenByDescending(h => AvvikMwh(h))
+                .ThenBy(h => h.TimeUtc),
+            HourSort.TidStigende => rows.OrderBy(h => h.TimeUtc),
+            HourSort.TidSynkende => rows.OrderByDescending(h => h.TimeUtc),
+            HourSort.AvvikSynkende => rows.OrderByDescending(h => AvvikMwh(h)).ThenBy(h => h.TimeUtc),
+            HourSort.MwhSynkende => rows.OrderByDescending(h => h.MwhElhub ?? 0).ThenBy(h => h.TimeUtc),
+            _ => rows,
+        };
+    }
+
+    /// <summary>Lavere tall = høyere viktighet. Drifts-leder ser feil + missing først.</summary>
+    private static int StatePriority(string state) => state switch
+    {
+        "ForcedOutage" => 1,                  // viktigst — uvarslet utfall
+        "InformationUnavailable" => 2,        // datafeil må sjekkes
+        "ForcedDerating" => 3,                // plan-avvik
+        "PlannedOutage" => 4,
+        "MaintenanceOutage" => 5,
+        "ResourceUnavailable" => 6,
+        "ReserveShutdown" => 7,
+        "InService" => 8,                     // minst presserende — alt OK
+        _ => 9,
+    };
+
+    /// <summary>Plan − Elhub i MWh. Positiv verdi = underlevering. 0 hvis plan/elhub mangler.</summary>
+    private static double AvvikMwh(ClassifiedHourDto h)
+    {
+        if (!h.ProduksjonplanMwh.HasValue || !h.MwhElhub.HasValue) return 0;
+        return h.ProduksjonplanMwh.Value - h.MwhElhub.Value;
+    }
+
+    private static string FormatAvvik(ClassifiedHourDto h)
+    {
+        if (!h.ProduksjonplanMwh.HasValue || !h.MwhElhub.HasValue || h.ProduksjonplanMwh.Value == 0) return "–";
+        var avvik = h.MwhElhub.Value - h.ProduksjonplanMwh.Value;
+        var pct = (avvik / h.ProduksjonplanMwh.Value) * 100;
+        return $"{(pct > 0 ? "+" : "")}{pct:F0} %";
+    }
+
     private ApexChartOptions<StateSlice> _donutOptions = new();
     private ApexChartOptions<ClassifiedHourDto> _lineOptions = new();
     private ApexChartOptions<ClassifiedHourDto> _avvikOptions = new();
@@ -327,6 +499,7 @@ else
             else
             {
                 BuildCharts(_report);
+                InitHourFilter(_report);
                 SyncFilterState(_report);
                 await LoadAnnotationsAsync();
                 await LoadNeighborsAsync();
