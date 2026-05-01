@@ -1,0 +1,433 @@
+@page "/capture-rate"
+@page "/capture-rate/{PlantId}"
+@using ApexCharts
+@inject ReportsApi ReportsApi
+@inject NedetidApi NedetidApi
+
+<PageTitle>Capture rate</PageTitle>
+
+<MudGrid Class="mb-4">
+    <MudItem xs="12" md="8">
+        <MudText Typo="Typo.h1">Capture rate</MudText>
+        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+            Hva produsenten oppnådde i kr/MWh sammenlignet med tidsvektet
+            spotpris-baseline. CR &gt; 1.00 = bedre enn å selge ren spot.
+            Tallene viser endring vs. forrige periode med samme lengde.
+        </MudText>
+    </MudItem>
+</MudGrid>
+
+@* ---- Filter ---- *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="string" Value="_plantId" ValueChanged="OnPlantChanged"
+                       Label="Anlegg" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var p in _plants)
+                {
+                    <MudSelectItem Value="@p.Id">@p.Name (@p.Id)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="8">
+            <DateRangeFilter From="_fromDate" To="_toDate" OnChanged="@OnRangeChanged" />
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+    <MudText Class="ml-2 d-inline">Henter capture rate-data…</MudText>
+}
+else if (_aggregate is not null)
+{
+    @if (_aggregate.AntallTimerProduksjon == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            Ingen produksjons-timer for valgt periode/anlegg. Capture rate krever både
+            settlement-import og produksjon &gt; 0 MWh.
+        </MudAlert>
+    }
+    else
+    {
+        @* ---- KPI-rad med trend-piler ---- *@
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="6" md="3">
+                <KpiTrendCard Label="Capture-pris"
+                              Value="_aggregate.CapturePriceNokMwh"
+                              PreviousValue="_previous?.CapturePriceNokMwh"
+                              Format="F0" Unit="NOK/MWh"
+                              HigherIsBetter="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiTrendCard Label="CR (times)"
+                              Value="_aggregate.TimesCr"
+                              PreviousValue="_previous?.TimesCr"
+                              Format="F2"
+                              SubText="@($"baseline {_aggregate.TimesBaselineNokMwh:F0} NOK/MWh")"
+                              HigherIsBetter="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiTrendCard Label="CR (dag, P5/P95-filtrert)"
+                              Value="_aggregate.DagCr"
+                              PreviousValue="_previous?.DagCr"
+                              Format="F2"
+                              SubText="@($"{_aggregate.AntallDagerEtterFilter} av {_aggregate.AntallDager} dager")"
+                              HigherIsBetter="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiTrendCard Label="Merverdi vs spot"
+                              Value="_aggregate.MerverdiNok"
+                              PreviousValue="_previous?.MerverdiNok"
+                              Format="N0" Unit="NOK"
+                              SignedValue="true"
+                              HigherIsBetter="true" />
+            </MudItem>
+        </MudGrid>
+
+        @* ---- Beste / verste måneder + tolkning ---- *@
+        @if (_monthly.Count > 1)
+        {
+            var beste = _monthlyPoints.OrderByDescending(m => m.TimesCr).First();
+            var verste = _monthlyPoints.OrderBy(m => m.TimesCr).First();
+            <MudGrid Class="mb-4">
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4 h-100" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Beste måned</MudText>
+                        <MudText Typo="Typo.h4">@beste.Label</MudText>
+                        <MudText Typo="Typo.body2">CR @beste.TimesCr.ToString("F2") · @InterpretCr(beste.TimesCr)</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4 h-100" Elevation="2" Style="border-left: 4px solid #E76F51;">
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Svakeste måned</MudText>
+                        <MudText Typo="Typo.h4">@verste.Label</MudText>
+                        <MudText Typo="Typo.body2">CR @verste.TimesCr.ToString("F2") · @InterpretCr(verste.TimesCr)</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        }
+
+        @* ---- Månedlig CR-graf med 1.0-baseline ---- *@
+        @if (_monthly.Count > 0)
+        {
+            <MudPaper Class="pa-4 mb-4" Elevation="1">
+                <MudText Typo="Typo.h3" Class="mb-2">Månedlig capture rate</MudText>
+                <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-2">
+                    Stiplet linje på 1.00 = "som ren spot-eksponering". Tider over linja
+                    betyr at producent traff prishopper bedre enn snittet.
+                </MudText>
+                <ApexChart @key="@($"monthly-{_chartVersion}")" TItem="MonthlyPoint"
+                           Options="_monthlyOptions" Height="320">
+                    <ApexPointSeries TItem="MonthlyPoint"
+                                     Items="_monthlyPoints"
+                                     Name="CR"
+                                     SeriesType="SeriesType.Line"
+                                     XValue="m => m.Label"
+                                     YValue="m => (decimal)m.TimesCr" />
+                </ApexChart>
+            </MudPaper>
+        }
+
+        @* ---- Månedlig tabell ---- *@
+        @if (_monthly.Count > 0)
+        {
+            <MudPaper Class="pa-4 mb-4" Elevation="1">
+                <MudText Typo="Typo.h3" Class="mb-3">Månedlig oversikt</MudText>
+                <MudTable Items="_monthly" Hover="true" Dense="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh><MudTableSortLabel SortBy="@_crSortMonth">Måned</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_crSortCapPrice">Capture-pris</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_crSortBaseline">Baseline</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_crSortCr">CR</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_crSortMerverdi">Merverdi</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_crSortTimer">Timer prod.</MudTableSortLabel></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@($"{context.Year}-{context.Month:D2}")</MudTd>
+                        <MudTd Style="text-align:right">@context.Result.CapturePriceNokMwh.ToString("F0") NOK</MudTd>
+                        <MudTd Style="text-align:right">@context.Result.TimesBaselineNokMwh.ToString("F0") NOK</MudTd>
+                        <MudTd Style="text-align:right">
+                            <span style="@($"color: {(context.Result.TimesCr >= 1.0 ? "#2A9D8F" : "#E76F51")}; font-weight: 600;")">
+                                @context.Result.TimesCr.ToString("F2")
+                            </span>
+                        </MudTd>
+                        <MudTd Style="text-align:right">@FormatNokSigned(context.Result.MerverdiNok)</MudTd>
+                        <MudTd Style="text-align:right">@context.Result.AntallTimerProduksjon</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        }
+
+        @* ---- Avansert: scatter + histogram (skjult bak knapp) ---- *@
+        @if (_daily.Count > 0)
+        {
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudExpansionPanels Elevation="0">
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudText Typo="Typo.h4">Avanserte grafer (rå-CR-fordeling, scatter)</MudText>
+                            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                                For analytisk dypdykk — ikke nødvendig for daglig oppfølging.
+                            </MudText>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudText Typo="Typo.h4" Class="mb-2 mt-3">Daglig rå-CR vs spotpris</MudText>
+                            <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-2">
+                                Hver prikk er én dag. Hvis det er positiv korrelasjon (punktene stiger mot
+                                høyre) tjener anlegget mer på høyprisdagene. Røde punkter er filtrert bort
+                                av P5/P95-grensen.
+                            </MudText>
+                            <ApexChart @key="@($"scatter-{_chartVersion}")" TItem="DailyCaptureRateDto"
+                                       Options="_scatterOptions" Height="320">
+                                <ApexPointSeries TItem="DailyCaptureRateDto"
+                                                 Items="_daily.Where(d => !d.ErFiltrert).ToList()"
+                                                 Name="Beholdt"
+                                                 SeriesType="SeriesType.Scatter"
+                                                 XValue="d => (decimal)d.SpotDayAvgNokMwh"
+                                                 YValue="d => (decimal)d.RaCr" />
+                                <ApexPointSeries TItem="DailyCaptureRateDto"
+                                                 Items="_daily.Where(d => d.ErFiltrert).ToList()"
+                                                 Name="Filtrert"
+                                                 SeriesType="SeriesType.Scatter"
+                                                 XValue="d => (decimal)d.SpotDayAvgNokMwh"
+                                                 YValue="d => (decimal)d.RaCr" />
+                            </ApexChart>
+
+                            <MudText Typo="Typo.h4" Class="mb-2 mt-4">Rå-CR-fordeling</MudText>
+                            <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-2">
+                                Antall dager i hvert CR-intervall. En klokkeform sentrert rundt 1.00 er
+                                normalt; hale mot venstre = mange "tap"-dager, hale mot høyre = mange "vinst"-dager.
+                            </MudText>
+                            <ApexChart @key="@($"hist-{_chartVersion}")" TItem="HistogramBin"
+                                       Options="_histOptions" Height="240">
+                                <ApexPointSeries TItem="HistogramBin"
+                                                 Items="_histogram"
+                                                 Name="Antall dager"
+                                                 SeriesType="SeriesType.Bar"
+                                                 XValue="b => b.Label"
+                                                 YValue="b => (decimal)b.Count" />
+                            </ApexChart>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            </MudPaper>
+        }
+    }
+}
+
+@code {
+    [Parameter] public string? PlantId { get; set; }
+
+    private IReadOnlyList<PlantDto> _plants = Array.Empty<PlantDto>();
+    private string _plantId = string.Empty;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+
+    private bool _loading;
+    private string? _error;
+    private CaptureRateResultDto? _aggregate;
+    private CaptureRateResultDto? _previous; // Forrige periode (samme lengde, før den valgte)
+    private IReadOnlyList<MonthlyCaptureRateDto> _monthly = Array.Empty<MonthlyCaptureRateDto>();
+    private IReadOnlyList<DailyCaptureRateDto> _daily = Array.Empty<DailyCaptureRateDto>();
+    private List<MonthlyPoint> _monthlyPoints = new();
+    private List<HistogramBin> _histogram = new();
+    private int _chartVersion;
+
+    private ApexChartOptions<MonthlyPoint> _monthlyOptions = new();
+    private ApexChartOptions<DailyCaptureRateDto> _scatterOptions = new();
+    private ApexChartOptions<HistogramBin> _histOptions = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _plants = await ReportsApi.ListPlantsAsync();
+            _plantId = !string.IsNullOrEmpty(PlantId)
+                ? PlantId
+                : (_plants.Count > 0 ? _plants[0].Id : string.Empty);
+
+            // Default-periode: hittil-i-år
+            var now = DateTime.UtcNow;
+            _fromDate = new DateTime(now.Year, 1, 1);
+            _toDate = new DateTime(now.Year, now.Month, 1);
+
+            if (!string.IsNullOrEmpty(_plantId))
+            {
+                await LoadAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Klarte ikke laste anleggsliste: {ex.Message}";
+        }
+    }
+
+    private Task OnPlantChanged(string newPlantId)
+    {
+        _plantId = newPlantId;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnRangeChanged((DateTime From, DateTime To) range)
+    {
+        _fromDate = range.From;
+        _toDate = range.To;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrEmpty(_plantId) || !_fromDate.HasValue || !_toDate.HasValue) return;
+        _loading = true;
+        _error = null;
+        _aggregate = null;
+        _previous = null;
+        _monthly = Array.Empty<MonthlyCaptureRateDto>();
+        _daily = Array.Empty<DailyCaptureRateDto>();
+        try
+        {
+            var fromUtc = _fromDate.ToUtcOffsetSafe();
+            var toUtc = _toDate.ToUtcOffsetSafe();
+
+            // Forrige-periode-vindu med samme lengde som valgt periode
+            var lengde = toUtc - fromUtc;
+            var prevTo = fromUtc;
+            var prevFrom = fromUtc - lengde;
+
+            var aggregateTask = NedetidApi.GetCaptureRateAsync(_plantId, fromUtc, toUtc);
+            var monthlyTask = NedetidApi.GetCaptureRateMonthlyAsync(_plantId, fromUtc, toUtc);
+            var dailyTask = NedetidApi.GetCaptureRateDailyAsync(_plantId, fromUtc, toUtc);
+            // Forrige periode: bare aggregat-tall, ikke månedsfordeling
+            var prevTask = SafeTask(() => NedetidApi.GetCaptureRateAsync(_plantId, prevFrom, prevTo));
+
+            _aggregate = await aggregateTask;
+            _monthly = await monthlyTask;
+            _daily = await dailyTask;
+            _previous = await prevTask;
+
+            _monthlyPoints = _monthly
+                .Select(m => new MonthlyPoint(
+                    Label: $"{m.Year}-{m.Month:D2}",
+                    TimesCr: m.Result.TimesCr,
+                    DagCr: m.Result.DagCr))
+                .ToList();
+
+            _histogram = BuildHistogram(_daily);
+
+            _chartVersion++;
+            BuildChartOptions();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente capture rate-data: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static async Task<T?> SafeTask<T>(Func<Task<T>> task) where T : class
+    {
+        try { return await task(); }
+        catch { return null; }
+    }
+
+    /// <summary>Histogram med fastsatte bin-grenser rundt 1.0 — typisk område for CR.</summary>
+    private static List<HistogramBin> BuildHistogram(IReadOnlyList<DailyCaptureRateDto> daily)
+    {
+        if (daily.Count == 0) return new();
+        var edges = new[] { 0.0, 0.5, 0.7, 0.8, 0.9, 0.95, 1.0, 1.05, 1.1, 1.2, 1.5, double.PositiveInfinity };
+        var bins = new List<HistogramBin>(edges.Length - 1);
+        for (var i = 0; i < edges.Length - 1; i++)
+        {
+            var lo = edges[i];
+            var hi = edges[i + 1];
+            var count = daily.Count(d => d.RaCr >= lo && d.RaCr < hi);
+            var label = double.IsPositiveInfinity(hi) ? $">{lo:F2}" : $"{lo:F2}–{hi:F2}";
+            bins.Add(new HistogramBin(label, count));
+        }
+        return bins;
+    }
+
+    private void BuildChartOptions()
+    {
+        _monthlyOptions = new ApexChartOptions<MonthlyPoint>
+        {
+            Xaxis = new XAxis { Title = new AxisTitle { Text = "Måned" } },
+            Yaxis = new List<YAxis> { new() { Title = new AxisTitle { Text = "CR" }, DecimalsInFloat = 2 } },
+            Stroke = new Stroke { Curve = Curve.Smooth, Width = new ApexCharts.Size(3) },
+            Markers = new Markers { Size = 5 },
+            Colors = new List<string> { "#1E5F8E" },
+            // 1.00-baseline-linje slik at brukeren ser umiddelbart om CR er over/under spot
+            Annotations = new Annotations
+            {
+                Yaxis = new List<AnnotationsYAxis>
+                {
+                    new()
+                    {
+                        Y = 1.0,
+                        BorderColor = "#9AA5B0",
+                        StrokeDashArray = 5,
+                    }
+                }
+            },
+        };
+        _scatterOptions = new ApexChartOptions<DailyCaptureRateDto>
+        {
+            Xaxis = new XAxis { Title = new AxisTitle { Text = "Spotpris snitt (NOK/MWh)" }, DecimalsInFloat = 0 },
+            Yaxis = new List<YAxis> { new() { Title = new AxisTitle { Text = "rå CR" }, DecimalsInFloat = 2 } },
+            Markers = new Markers { Size = 3 },
+            Colors = new List<string> { "#1E5F8E", "#E76F51" },
+        };
+        _histOptions = new ApexChartOptions<HistogramBin>
+        {
+            Xaxis = new XAxis { Title = new AxisTitle { Text = "rå-CR-bin" } },
+            Yaxis = new List<YAxis> { new() { Title = new AxisTitle { Text = "Antall dager" }, DecimalsInFloat = 0 } },
+            Colors = new List<string> { "#6E59A5" },
+        };
+    }
+
+    /// <summary>
+    /// Tolker CR-tallet til en kort norsk beskrivelse — drifts-leder skal
+    /// raskt forstå hva tallet betyr uten å lære definisjonen.
+    /// </summary>
+    private static string InterpretCr(double cr) => cr switch
+    {
+        >= 1.10 => "tjente klart bedre enn ren spot-eksponering",
+        >= 1.02 => "noe bedre enn ren spot",
+        >= 0.98 => "som ren spot-eksponering",
+        >= 0.90 => "noe svakere enn ren spot",
+        _       => "betydelig svakere enn ren spot",
+    };
+
+    private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
+    {
+        NumberGroupSeparator = " ",
+        NumberDecimalSeparator = ",",
+        NumberGroupSizes = new[] { 3 },
+    };
+    private static string FormatNokSigned(double v)
+    {
+        if (v == 0) return "0";
+        var sign = v > 0 ? "+" : "";
+        return sign + v.ToString("N0", NorskTall);
+    }
+
+    private sealed record MonthlyPoint(string Label, double TimesCr, double DagCr);
+    private sealed record HistogramBin(string Label, int Count);
+
+    // Sort-funksjoner for månedstabellen
+    private readonly Func<MonthlyCaptureRateDto, object> _crSortMonth = m => m.Year * 100 + m.Month;
+    private readonly Func<MonthlyCaptureRateDto, object> _crSortCapPrice = m => m.Result.CapturePriceNokMwh;
+    private readonly Func<MonthlyCaptureRateDto, object> _crSortBaseline = m => m.Result.TimesBaselineNokMwh;
+    private readonly Func<MonthlyCaptureRateDto, object> _crSortCr = m => m.Result.TimesCr;
+    private readonly Func<MonthlyCaptureRateDto, object> _crSortMerverdi = m => m.Result.MerverdiNok;
+    private readonly Func<MonthlyCaptureRateDto, object> _crSortTimer = m => m.Result.AntallTimerProduksjon;
+}

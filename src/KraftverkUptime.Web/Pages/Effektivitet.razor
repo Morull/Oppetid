@@ -30,21 +30,8 @@
                 }
             </MudSelect>
         </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudDatePicker Date="_fromDate" DateChanged="@(d => _fromDate = d)"
-                           Label="Fra dato" Variant="Variant.Outlined" Margin="Margin.Dense" />
-        </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudDatePicker Date="_toDate" DateChanged="@(d => _toDate = d)"
-                           Label="Til dato (eks.)" Variant="Variant.Outlined" Margin="Margin.Dense" />
-        </MudItem>
-        <MudItem xs="12" sm="2" Class="d-flex justify-end">
-            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Search"
-                       OnClick="LoadAsync"
-                       Disabled="@(_loading || string.IsNullOrEmpty(_plantId) || !_fromDate.HasValue || !_toDate.HasValue)">
-                Hent
-            </MudButton>
+        <MudItem xs="12" sm="8">
+            <DateRangeFilter From="_fromDate" To="_toDate" OnChanged="@OnRangeChanged" />
         </MudItem>
     </MudGrid>
 </MudPaper>
@@ -79,34 +66,53 @@ else if (_response is not null)
     {
         @* ---- KPI-kort ---- *@
         <MudGrid Class="mb-4">
-            <MudItem xs="12" sm="6" md="3">
+            <MudItem xs="12" sm="6" md="3" lg="2">
                 <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
                     <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Snitt η</MudText>
                     <MudText Typo="Typo.h3">@_response.SnittEtaPct.ToString("F1") %</MudText>
                     <MudText Typo="Typo.caption">over @_response.ProduksjonsTimer produksjons-timer</MudText>
                 </MudPaper>
             </MudItem>
-            <MudItem xs="12" sm="6" md="3">
+            <MudItem xs="12" sm="6" md="3" lg="2">
                 <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
                     <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Sweet-spot effekt</MudText>
                     <MudText Typo="Typo.h3">@_response.SweetSpotEffektKw.ToString("F0") kW</MudText>
                     <MudText Typo="Typo.caption">@_response.SweetSpotEtaPct.ToString("F1") % η i bin'en</MudText>
                 </MudPaper>
             </MudItem>
-            <MudItem xs="12" sm="6" md="3">
+            <MudItem xs="12" sm="6" md="3" lg="2">
                 <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #F39C12;">
                     <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Spesifikt vannforbruk</MudText>
                     <MudText Typo="Typo.h3">@_response.SnittSpesifiktVannforbrukM3PerKwh.ToString("F2")</MudText>
                     <MudText Typo="Typo.caption">m³ per kWh</MudText>
                 </MudPaper>
             </MudItem>
-            <MudItem xs="12" sm="6" md="3">
+            <MudItem xs="12" sm="6" md="3" lg="2">
                 <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #6E59A5;">
                     <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Total produksjon</MudText>
                     <MudText Typo="Typo.h3">@((_response.TotalProduksjonKwh / 1000).ToString("F1")) MWh</MudText>
                     <MudText Typo="Typo.caption">i perioden</MudText>
                 </MudPaper>
             </MudItem>
+            @if (_captureRate is not null)
+            {
+                <MudItem xs="12" sm="6" md="3" lg="2">
+                    <MudPaper Class="pa-4" Elevation="2" Style="@CrCardStyle(_captureRate.TimesCr)">
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Capture rate (times)</MudText>
+                        <MudText Typo="Typo.h3">@_captureRate.TimesCr.ToString("F2")</MudText>
+                        <MudText Typo="Typo.caption">capt.pris @_captureRate.CapturePriceNokMwh.ToString("F0") NOK/MWh</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3" lg="2">
+                    <MudPaper Class="pa-4" Elevation="2" Style="@MerverdiCardStyle(_captureRate.MerverdiNok)">
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Merverdi vs spot</MudText>
+                        <MudText Typo="Typo.h3">@FormatNok(_captureRate.MerverdiNok)</MudText>
+                        <MudText Typo="Typo.caption">
+                            <MudLink Href="@($"/capture-rate/{_plantId}")">Se detaljer →</MudLink>
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+            }
         </MudGrid>
 
         @* ---- η(P)-scatter ---- *@
@@ -166,6 +172,7 @@ else if (_response is not null)
     private bool _loading;
     private string? _error;
     private EffektivitetResponse? _response;
+    private CaptureRateResultDto? _captureRate;
     private int _chartVersion;
     private ApexChartOptions<EffektivitetPunkt> _scatterOptions = new();
 
@@ -202,23 +209,52 @@ else if (_response is not null)
         return Task.CompletedTask;
     }
 
+    private async Task OnRangeChanged((DateTime From, DateTime To) range)
+    {
+        _fromDate = range.From;
+        _toDate = range.To;
+        await LoadAsync();
+    }
+
     private async Task LoadAsync()
     {
         if (string.IsNullOrEmpty(_plantId) || !_fromDate.HasValue || !_toDate.HasValue) return;
         _loading = true;
         _error = null;
         _response = null;
+        _captureRate = null;
         try
         {
-            var fromUtc = new DateTimeOffset(_fromDate.Value.Date, TimeSpan.Zero);
-            var toUtc = new DateTimeOffset(_toDate.Value.Date, TimeSpan.Zero);
+            var fromUtc = _fromDate.ToUtcOffsetSafe();
+            var toUtc = _toDate.ToUtcOffsetSafe();
             _response = await NedetidApi.GetEffektivitetAsync(_plantId, fromUtc, toUtc);
+
+            // Capture rate er sekundær — feiler den, viser vi bare effektivitets-data.
+            try
+            {
+                _captureRate = await NedetidApi.GetCaptureRateAsync(_plantId, fromUtc, toUtc);
+            }
+            catch
+            {
+                _captureRate = null;
+            }
 
             _chartVersion++;
             _scatterOptions = new ApexChartOptions<EffektivitetPunkt>
             {
-                Xaxis = new XAxis { Title = new AxisTitle { Text = "Effekt (kW)" } },
-                Yaxis = new List<YAxis> { new() { Title = new AxisTitle { Text = "Virkningsgrad (%)" } } },
+                Xaxis = new XAxis
+                {
+                    Title = new AxisTitle { Text = "Effekt (kW)" },
+                    DecimalsInFloat = 0,
+                },
+                Yaxis = new List<YAxis>
+                {
+                    new()
+                    {
+                        Title = new AxisTitle { Text = "Virkningsgrad (%)" },
+                        DecimalsInFloat = 1,
+                    }
+                },
                 Markers = new Markers { Size = 4 },
                 Stroke = new Stroke { Width = new ApexCharts.Size(2) },
                 Tooltip = new Tooltip { X = new TooltipX { Show = true } },
@@ -233,5 +269,35 @@ else if (_response is not null)
         {
             _loading = false;
         }
+    }
+
+    /// <summary>CR over 1.0 = grønn (bedre enn baseline), under 1.0 = rød.</summary>
+    private static string CrCardStyle(double cr)
+    {
+        if (cr <= 0) return "border-left: 4px solid #999;";
+        return cr >= 1.0
+            ? "border-left: 4px solid #2A9D8F;"  // grønn
+            : "border-left: 4px solid #E76F51;"; // rød
+    }
+
+    private static string MerverdiCardStyle(double nok)
+    {
+        if (nok == 0) return "border-left: 4px solid #999;";
+        return nok > 0
+            ? "border-left: 4px solid #2A9D8F;"
+            : "border-left: 4px solid #E76F51;";
+    }
+
+    private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
+    {
+        NumberGroupSeparator = " ",
+        NumberDecimalSeparator = ",",
+        NumberGroupSizes = new[] { 3 },
+    };
+    private static string FormatNok(double v)
+    {
+        if (v == 0) return "0 NOK";
+        var sign = v > 0 ? "+" : "";
+        return sign + v.ToString("N0", NorskTall) + " NOK";
     }
 }

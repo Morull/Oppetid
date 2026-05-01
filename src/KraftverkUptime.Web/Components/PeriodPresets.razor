@@ -1,0 +1,69 @@
+@*
+   Felles periode-preset-knapper for alle rapport-sider. Eksponerer
+   en OnSelected-callback som gir tilbake (fra, til) basert på en av
+   5 standard-perioder. Konsistent UX: drifts-leder ser samme valg
+   uansett hvilken side hen er på.
+*@
+
+<div class="d-flex" style="gap:4px; flex-wrap:wrap;">
+    @if (ShowLabel)
+    {
+        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary"
+                 Class="d-flex align-center">Hurtigvalg:</MudText>
+    }
+    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+               OnClick="@(() => Pick(Preset.ForrigeUke))">Forrige uke</MudButton>
+    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+               OnClick="@(() => Pick(Preset.ForrigeManed))">Forrige mnd</MudButton>
+    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+               OnClick="@(() => Pick(Preset.DenneManed))">Denne mnd</MudButton>
+    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+               OnClick="@(() => Pick(Preset.HittilIAr))">Hittil i år</MudButton>
+    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+               OnClick="@(() => Pick(Preset.ForrigeAr))">Forrige år</MudButton>
+</div>
+
+@code {
+    public enum Preset { ForrigeUke, ForrigeManed, DenneManed, HittilIAr, ForrigeAr }
+
+    /// <summary>Callback med (fraDato, tilDatoEksklusiv) når en preset velges.</summary>
+    [Parameter] public EventCallback<(DateTime From, DateTime To)> OnSelected { get; set; }
+
+    /// <summary>Vis "Hurtigvalg:"-prefix før knappene. Default true.</summary>
+    [Parameter] public bool ShowLabel { get; set; } = true;
+
+    private async Task Pick(Preset preset)
+    {
+        var today = DateTime.Today;
+        DateTime from, to;
+        switch (preset)
+        {
+            case Preset.ForrigeUke:
+                var dow = (int)today.DayOfWeek;
+                var thisMonday = today.AddDays(dow == 0 ? -6 : -(dow - 1));
+                from = thisMonday.AddDays(-7);
+                to = thisMonday;
+                break;
+            case Preset.ForrigeManed:
+                var firstThis = new DateTime(today.Year, today.Month, 1);
+                from = firstThis.AddMonths(-1);
+                to = firstThis;
+                break;
+            case Preset.DenneManed:
+                from = new DateTime(today.Year, today.Month, 1);
+                to = today.AddDays(1);
+                break;
+            case Preset.HittilIAr:
+                from = new DateTime(today.Year, 1, 1);
+                to = today.AddDays(1);
+                break;
+            case Preset.ForrigeAr:
+                from = new DateTime(today.Year - 1, 1, 1);
+                to = new DateTime(today.Year, 1, 1);
+                break;
+            default:
+                return;
+        }
+        await OnSelected.InvokeAsync((from, to));
+    }
+}

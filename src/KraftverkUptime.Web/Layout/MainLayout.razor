@@ -53,5 +53,8 @@
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
 
-    private void ToggleTheme() => App?.ToggleDarkMode();
+    private async Task ToggleTheme()
+    {
+        if (App is not null) await App.ToggleDarkMode();
+    }
 }

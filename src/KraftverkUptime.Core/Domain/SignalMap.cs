@@ -16,7 +16,9 @@ public sealed record SignalMap(
     string Unit,
     SignalRole Role,
     bool StoreSamples,
-    bool IsActive);
+    bool IsActive,
+    string? DamId = null);  // Kaskade-modell: knytter dam-relaterte tags til en spesifikk dam.
+                            // NULL for generator-tags og andre per-anleggs-signaler.
 
 /// <summary>
 /// Roller signaler kan ha i analyse-pipeline. Mapping fra rolle til
@@ -81,4 +83,19 @@ public enum SignalRole
 
     /// <summary>Ikke kategorisert / generelt målepunkt.</summary>
     Other,
+
+    // ----- Kaskade-modell (Spec KASKADE-DAMMER) ---------------------------
+    // Disse rollene er per-dam; SignalMap.DamId må settes når de er aktive.
+
+    /// <summary>Vannføring gjennom dam-luke (m³/s).</summary>
+    GateFlow,
+
+    /// <summary>Lukens åpningsposisjon (cm eller %).</summary>
+    GatePosition,
+
+    /// <summary>Total vannføring ut av dam (m³/s) — sum av luke + overløp + turbin.</summary>
+    TotalDamFlow,
+
+    /// <summary>Magasinvolum (Mill.m³).</summary>
+    ReservoirVolume,
 }

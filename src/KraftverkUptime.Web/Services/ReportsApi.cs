@@ -84,6 +84,27 @@ public sealed class ReportsApi
             ?? throw new InvalidOperationException("Tom respons fra plant data-reset.");
     }
 
+    /// <summary>Henter alle dammer for et anlegg, sortert på cascade_position.</summary>
+    public async Task<IReadOnlyList<DamDto>> ListDamsAsync(
+        string plantId, CancellationToken ct = default)
+    {
+        var uri = $"api/v1/plants/{Uri.EscapeDataString(plantId)}/dams";
+        var resp = await _http.GetFromJsonAsync<List<DamDto>>(uri, JsonOptions, ct)
+            .ConfigureAwait(false);
+        return resp ?? new List<DamDto>();
+    }
+
+    /// <summary>Oppdaterer HRV/LRV/Volum/IsTurbineIntake for en eksisterende dam.</summary>
+    public async Task<DamDto> UpdateDamAsync(
+        string plantId, string damId, UpdateDamRequestDto body, CancellationToken ct = default)
+    {
+        var uri = $"api/v1/plants/{Uri.EscapeDataString(plantId)}/dams/{Uri.EscapeDataString(damId)}";
+        var resp = await _http.PutAsJsonAsync(uri, body, JsonOptions, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<DamDto>(JsonOptions, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Tom respons fra dam-update.");
+    }
+
     public async Task<IReadOnlyList<SettlementImportSummary>> ListSettlementsAsync(
         string plantId,
         DateTimeOffset? fromUtc = null,
@@ -251,15 +272,26 @@ public sealed class ReportsApi
 
 // --------- DTO-er -----------------------------------------------------------
 
+/// <summary>
+/// Plant-grunndata. <see cref="DeratingThreshold"/> er per-anlegg terskel for
+/// plan-avvik som teller som ForcedDerating; default 0.80 (= 20 % toleranse).
+/// Null fra ListAsync (paginert liste viser kun grunn-felter); satt fra GET.
+/// </summary>
 public sealed record PlantDto(
-    string Id, string Name, string Type, double InstalledCapacityMw, string TimeZone);
+    string Id, string Name, string Type, double InstalledCapacityMw, string TimeZone,
+    double? DeratingThreshold = null);
 
 /// <summary>
 /// Body for <c>PUT /api/v1/plants/{plantId}</c>. <see cref="Type"/> er enum-string —
 /// "Regulated", "RunOfRiver", "Mixed" eller "Pumped".
+/// <see cref="DeratingThreshold"/> i (0, 1]; null beholder eksisterende verdi.
 /// </summary>
 public sealed record UpdatePlantRequest(
-    string Name, string Type, double InstalledCapacityMw, string TimeZone);
+    string Name,
+    string Type,
+    double InstalledCapacityMw,
+    string TimeZone,
+    double? DeratingThreshold = null);
 
 /// <summary>Bekreftelses-body for <c>DELETE /api/v1/plants/{plantId}/data</c>.</summary>
 public sealed record ResetPlantDataRequestDto(string ConfirmText);
@@ -271,6 +303,24 @@ public sealed record ResetResultDto(
     int EventsDeleted,
     int SamplesDeleted,
     int AnnotationsDeleted);
+
+public sealed record DamDto(
+    string PlantId,
+    string DamId,
+    string Name,
+    int CascadePosition,
+    bool IsTurbineIntake,
+    double? HrvMoh,
+    double? LrvMoh,
+    double? VolumeMm3);
+
+public sealed record UpdateDamRequestDto(
+    string? Name,
+    int? CascadePosition,
+    bool IsTurbineIntake,
+    double? HrvMoh,
+    double? LrvMoh,
+    double? VolumeMm3);
 
 public sealed record PagedEnvelope<T>(
     IReadOnlyList<T> Items, string? NextCursor, int PageSize);

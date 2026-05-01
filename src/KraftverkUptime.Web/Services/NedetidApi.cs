@@ -60,6 +60,39 @@ public sealed class NedetidApi
         return resp ?? throw new InvalidOperationException("Tom respons fra /portfolio/kpis.");
     }
 
+    public async Task<CaptureRateResultDto> GetCaptureRateAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var url = BuildUrl(plantId, "capture-rate", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        var resp = await _http.GetFromJsonAsync<CaptureRateResultDto>(url, JsonOptions, ct).ConfigureAwait(false);
+        return resp ?? throw new InvalidOperationException("Tom respons fra /capture-rate.");
+    }
+
+    public async Task<IReadOnlyList<MonthlyCaptureRateDto>> GetCaptureRateMonthlyAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var url = BuildUrl(plantId, "capture-rate/monthly", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        var resp = await _http.GetFromJsonAsync<List<MonthlyCaptureRateDto>>(url, JsonOptions, ct).ConfigureAwait(false);
+        return resp ?? new List<MonthlyCaptureRateDto>();
+    }
+
+    public async Task<IReadOnlyList<DailyCaptureRateDto>> GetCaptureRateDailyAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var url = BuildUrl(plantId, "capture-rate/daily", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        var resp = await _http.GetFromJsonAsync<List<DailyCaptureRateDto>>(url, JsonOptions, ct).ConfigureAwait(false);
+        return resp ?? new List<DailyCaptureRateDto>();
+    }
+
+    /// <summary>Henter produksjons-analyse (Hydrogrid-evaluering) for en periode.</summary>
+    public async Task<ProduksjonAnalyseDto> GetProduksjonAnalyseAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var url = BuildUrl(plantId, "produksjon-analyse", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        var resp = await _http.GetFromJsonAsync<ProduksjonAnalyseDto>(url, JsonOptions, ct).ConfigureAwait(false);
+        return resp ?? throw new InvalidOperationException("Tom respons fra /produksjon-analyse.");
+    }
+
     /// <summary>Bygger nedlastings-URL for CSV-eksport (åpnes direkte i ny fane).</summary>
     public Uri BuildCsvUri(string plantId, string endpoint, DateTimeOffset fromUtc, DateTimeOffset toUtc)
     {
@@ -171,6 +204,74 @@ public sealed record EffektivitetBin(
     double EffektKwMid,
     int Antall,
     double SnittEtaPct);
+
+public sealed record CaptureRateResultDto(
+    double CapturePriceNokMwh,
+    double TimesCr,
+    double TimesBaselineNokMwh,
+    double DagCr,
+    double DagBaselineNokMwh,
+    double MerverdiNok,
+    int AntallTimer,
+    int AntallTimerProduksjon,
+    int AntallDager,
+    int AntallDagerEtterFilter);
+
+public sealed record MonthlyCaptureRateDto(
+    int Year,
+    int Month,
+    CaptureRateResultDto Result);
+
+public sealed record DailyCaptureRateDto(
+    DateOnly Date,
+    double MwhDay,
+    double SpotDayAvgNokMwh,
+    double OppnaaddNokMwh,
+    double RaCr,
+    bool ErFiltrert);
+
+public sealed record ProduksjonAnalyseDto(
+    string PlantId,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    int AntallTimer,
+    int AntallTimerMedPlan,
+    int AntallTimerProduksjon,
+    int AntallTimerOverlop,
+    double TotalElhubMwh,
+    double TotalPlanMwh,
+    double PlanTreffProsent,
+    double AndelProdIToppKvartil,
+    double AndelProdIBunnKvartil,
+    double KapasitetsutnyttelseProsent,
+    double OverlopProsent,
+    double HydrogridMerverdiNok,
+    double FaktiskMerverdiNok,
+    double SnittSpotprisNokMwh,
+    bool OverlopDataTilgjengelig,
+    IReadOnlyList<ProduksjonHourlyDto> Hourly,
+    IReadOnlyList<ProduksjonMonthlyDto> Monthly);
+
+public sealed record ProduksjonHourlyDto(
+    DateTimeOffset TimeUtc,
+    double? PlanMwh,
+    double? ElhubMwh,
+    double? SpotprisNokMwh);
+
+public sealed record ProduksjonMonthlyDto(
+    int Year,
+    int Month,
+    double ElhubMwh,
+    double PlanMwh,
+    int AntallTimerProduksjon,
+    int AntallTimerOverlop,
+    double KapasitetsutnyttelseProsent,
+    double OverlopProsent,
+    double PlanTreffProsent,
+    double AndelProdIToppKvartil,
+    double HydrogridMerverdiNok,
+    double FaktiskMerverdiNok,
+    double SnittSpotprisNokMwh);
 
 public sealed record VaktRoiResponse(
     string PlantId,

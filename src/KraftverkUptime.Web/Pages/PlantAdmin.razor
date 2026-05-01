@@ -58,6 +58,12 @@ else
                           Required="true" Variant="Variant.Outlined"
                           HelperText="F.eks. Europe/Oslo. Påvirker DST-tolkning av settlement-data." />
 
+            <MudNumericField T="double" @bind-Value="_form.DeratingThreshold"
+                             Label="Plan-avviks-terskel"
+                             Min="0.10" Max="1.0" Step="0.05" Format="F2"
+                             Required="true" Variant="Variant.Outlined"
+                             HelperText="@($"Elhub < {(_form.DeratingThreshold * 100):F0} % av Plan klassifiseres som feil (ForcedDerating). Default 0.80 = avvik > 20 % gir feil.")" />
+
             <div class="d-flex justify-end" style="gap:8px;">
                 <MudButton Variant="Variant.Text" Href="/plants">Avbryt</MudButton>
                 <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
@@ -73,6 +79,106 @@ else
             }
         </MudStack>
     </MudPaper>
+
+    @* ---- Dammer (kaskade-modell) ---- *@
+    <MudPaper Class="pa-4 mt-6" Elevation="1" Style="max-width:880px;">
+        <MudText Typo="Typo.h3" Class="mb-2">Dammer (kaskade-modell)</MudText>
+        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-3">
+            Hvert anlegg har én eller flere dammer. <strong>Terminal-dam</strong>
+            (siste før turbin) er den eneste hvor overløp koster produksjon —
+            øvre dammer renner videre i kaskaden. HRV/LRV/Volum brukes til
+            magasinstand-visualisering og fremtidig vannverdi-modell.
+        </MudText>
+
+        @if (_dams is null)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else if (_dams.Count == 0)
+        {
+            <MudAlert Severity="Severity.Warning">
+                Ingen dammer registrert. Backfill skal ha opprettet en default-dam — sjekk at
+                bootstrap-skjema-broen kjørte ved oppstart.
+            </MudAlert>
+        }
+        else
+        {
+            <MudTable Items="_dams" Hover="true" Dense="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Dam</MudTh>
+                    <MudTh Style="text-align:center">Kaskade-posisjon</MudTh>
+                    <MudTh Style="text-align:center">Terminal</MudTh>
+                    <MudTh Style="text-align:right">HRV (moh)</MudTh>
+                    <MudTh Style="text-align:right">LRV (moh)</MudTh>
+                    <MudTh Style="text-align:right">Volum (Mill.m³)</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>
+                        <strong>@context.Name</strong>
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">@context.DamId</MudText>
+                    </MudTd>
+                    <MudTd Style="text-align:center">@context.CascadePosition</MudTd>
+                    <MudTd Style="text-align:center">
+                        @if (context.IsTurbineIntake)
+                        {
+                            <MudChip T="string" Size="MudBlazor.Size.Small"
+                                     Color="MudBlazor.Color.Primary" Icon="@Icons.Material.Filled.Bolt">Terminal</MudChip>
+                        }
+                    </MudTd>
+                    <MudTd Style="text-align:right">@(context.HrvMoh?.ToString("F1") ?? "–")</MudTd>
+                    <MudTd Style="text-align:right">@(context.LrvMoh?.ToString("F1") ?? "–")</MudTd>
+                    <MudTd Style="text-align:right">@(context.VolumeMm3?.ToString("F2") ?? "–")</MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="MudBlazor.Size.Small"
+                                       OnClick="@(() => OpenEditDamAsync(context))" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+
+        @if (_damSaveError is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_damSaveError</MudAlert>
+        }
+    </MudPaper>
+
+    @* ---- Edit-dialog for dam ---- *@
+    @if (_editingDam is not null)
+    {
+        <MudDialog @bind-Visible="_editingDamOpen" Options="@(new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true })">
+            <TitleContent>Rediger @_editingDam.Name</TitleContent>
+            <DialogContent>
+                <MudStack Spacing="3">
+                    <MudTextField @bind-Value="_editForm.Name" Label="Navn" Variant="Variant.Outlined" />
+                    <MudNumericField T="int" @bind-Value="_editForm.CascadePosition"
+                                     Label="Kaskade-posisjon (1=øverst)" Min="1" Max="10"
+                                     Variant="Variant.Outlined" />
+                    <MudCheckBox T="bool" @bind-Value="_editForm.IsTurbineIntake"
+                                 Label="Terminal-dam (siste før turbin)" />
+                    <MudNumericField T="double?" @bind-Value="_editForm.HrvMoh"
+                                     Label="HRV (moh)" Step="0.1" Format="F1"
+                                     HelperText="Høyeste regulerte vannstand. Hentes fra konsesjonsdokumenter."
+                                     Variant="Variant.Outlined" />
+                    <MudNumericField T="double?" @bind-Value="_editForm.LrvMoh"
+                                     Label="LRV (moh)" Step="0.1" Format="F1"
+                                     HelperText="Laveste regulerte vannstand."
+                                     Variant="Variant.Outlined" />
+                    <MudNumericField T="double?" @bind-Value="_editForm.VolumeMm3"
+                                     Label="Volum (Mill.m³)" Step="0.01" Format="F2"
+                                     HelperText="Magasin-volum mellom HRV og LRV."
+                                     Variant="Variant.Outlined" />
+                </MudStack>
+            </DialogContent>
+            <DialogActions>
+                <MudButton OnClick="@(() => _editingDamOpen = false)">Avbryt</MudButton>
+                <MudButton Color="MudBlazor.Color.Primary" Variant="Variant.Filled"
+                           OnClick="OnDamSaveAsync" Disabled="@_damSaving">
+                    @(_damSaving ? "Lagrer…" : "Lagre")
+                </MudButton>
+            </DialogActions>
+        </MudDialog>
+    }
 
     @* ---- Farezone — slett data ---- *@
     <MudPaper Class="pa-4 mt-6" Elevation="1" Style="max-width:680px; border:1px solid #E76F51;">
@@ -128,6 +234,24 @@ else
     private string? _resetError;
     private ResetResultDto? _resetResult;
 
+    // Dam-state (egen seksjon)
+    private List<DamDto>? _dams;
+    private DamDto? _editingDam;
+    private bool _editingDamOpen;
+    private DamEditForm _editForm = new();
+    private bool _damSaving;
+    private string? _damSaveError;
+
+    private sealed class DamEditForm
+    {
+        public string Name { get; set; } = string.Empty;
+        public int CascadePosition { get; set; } = 1;
+        public bool IsTurbineIntake { get; set; }
+        public double? HrvMoh { get; set; }
+        public double? LrvMoh { get; set; }
+        public double? VolumeMm3 { get; set; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         try
@@ -145,8 +269,10 @@ else
                     Type = plant.Type,
                     InstalledCapacityMw = plant.InstalledCapacityMw,
                     TimeZone = plant.TimeZone,
+                    DeratingThreshold = plant.DeratingThreshold ?? 0.80,
                 };
             }
+            await ReloadDamsAsync();
         }
         catch (Exception ex)
         {
@@ -158,6 +284,69 @@ else
         }
     }
 
+    private async Task ReloadDamsAsync()
+    {
+        try
+        {
+            var rows = await Api.ListDamsAsync(PlantId);
+            _dams = rows.ToList();
+        }
+        catch (Exception ex)
+        {
+            _damSaveError = $"Kunne ikke hente dammer: {ex.Message}";
+            _dams = new();
+        }
+    }
+
+    private Task OpenEditDamAsync(DamDto dam)
+    {
+        _editingDam = dam;
+        _editForm = new DamEditForm
+        {
+            Name = dam.Name,
+            CascadePosition = dam.CascadePosition,
+            IsTurbineIntake = dam.IsTurbineIntake,
+            HrvMoh = dam.HrvMoh,
+            LrvMoh = dam.LrvMoh,
+            VolumeMm3 = dam.VolumeMm3,
+        };
+        _editingDamOpen = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnDamSaveAsync()
+    {
+        if (_editingDam is null) return;
+        _damSaving = true;
+        _damSaveError = null;
+        try
+        {
+            var body = new UpdateDamRequestDto(
+                Name: _editForm.Name,
+                CascadePosition: _editForm.CascadePosition,
+                IsTurbineIntake: _editForm.IsTurbineIntake,
+                HrvMoh: _editForm.HrvMoh,
+                LrvMoh: _editForm.LrvMoh,
+                VolumeMm3: _editForm.VolumeMm3);
+            await Api.UpdateDamAsync(PlantId, _editingDam.DamId, body);
+            Snackbar.Add($"{_editForm.Name} oppdatert.", Severity.Success);
+            _editingDamOpen = false;
+            await ReloadDamsAsync();
+        }
+        catch (HttpRequestException ex)
+        {
+            _damSaveError = $"Lagring feilet: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            _damSaveError = $"Uventet feil: {ex.Message}";
+        }
+        finally
+        {
+            _damSaving = false;
+        }
+    }
+
     private async Task OnSaveAsync()
     {
         if (_form is null) return;
@@ -165,7 +354,9 @@ else
         _saveError = null;
         try
         {
-            var body = new UpdatePlantRequest(_form.Name, _form.Type, _form.InstalledCapacityMw, _form.TimeZone);
+            var body = new UpdatePlantRequest(
+                _form.Name, _form.Type, _form.InstalledCapacityMw, _form.TimeZone,
+                DeratingThreshold: _form.DeratingThreshold);
             await Api.UpdatePlantAsync(PlantId, body);
             Snackbar.Add($"{_form.Name} oppdatert.", Severity.Success);
             Nav.NavigateTo("/plants");
@@ -220,5 +411,6 @@ else
         public string Type { get; set; } = "Regulated";
         public double InstalledCapacityMw { get; set; }
         public string TimeZone { get; set; } = "Europe/Oslo";
+        public double DeratingThreshold { get; set; } = 0.80;
     }
 }

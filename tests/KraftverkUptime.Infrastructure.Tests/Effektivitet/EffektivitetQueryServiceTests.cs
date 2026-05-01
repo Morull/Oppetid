@@ -194,6 +194,9 @@ public class EffektivitetQueryServiceTests
             => throw new NotImplementedException();
         public Task UpsertAsync(SignalMap signalMap, CancellationToken ct)
             => throw new NotImplementedException();
+        public Task<IReadOnlyList<SignalMap>> GetByPlantDamAndRoleAsync(
+            string plantId, string? damId, SignalRole role, CancellationToken ct)
+            => throw new NotImplementedException();
     }
 
     private sealed class StubSampleRepository : IScadaSampleRepository

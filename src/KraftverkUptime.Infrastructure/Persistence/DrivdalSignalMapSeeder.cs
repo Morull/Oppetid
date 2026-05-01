@@ -18,6 +18,12 @@ public static class DrivdalSignalMapSeeder
 {
     private const string PlantId = "drivdal";
     private const string OwnerOrgId = "dev-org";
+    /// <summary>
+    /// Drivdal er ett-dam-anlegg. Default-dammen som backfill oppretter heter
+    /// <c>drivdal_main</c> og er terminal-dam (IsTurbineIntake=true).
+    /// Dam-relaterte signaler får denne DamId-en; generator/turbin-tags er null.
+    /// </summary>
+    private const string MainDamId = "drivdal_main";
 
     private static readonly (string SignalId, string CsvColumn, string Unit, SignalRole Role)[] Mappings =
     [
@@ -88,6 +94,7 @@ public static class DrivdalSignalMapSeeder
                 StoreSamples = true,
                 IsActive = true,
                 OwnerOrgId = OwnerOrgId,
+                DamId = IsDamRelated(role) ? MainDamId : null,
             });
             added++;
         }
@@ -134,4 +141,23 @@ public static class DrivdalSignalMapSeeder
         }
         return false;
     }
+
+    /// <summary>
+    /// Roller som er knyttet til en spesifikk dam (kaskade-modell). Generator-
+    /// og turbin-roller forblir null fordi de er per-anlegg, ikke per-dam.
+    /// </summary>
+    private static bool IsDamRelated(SignalRole role) => role switch
+    {
+        SignalRole.OverflowFlow => true,
+        SignalRole.UpstreamLevel => true,
+        SignalRole.DownstreamLevel => true,
+        SignalRole.ReservoirFillFactor => true,
+        SignalRole.LowestRegulatedLevel => true,
+        // Nye kaskade-roller (Spec KASKADE-DAMMER):
+        SignalRole.GateFlow => true,
+        SignalRole.GatePosition => true,
+        SignalRole.TotalDamFlow => true,
+        SignalRole.ReservoirVolume => true,
+        _ => false,
+    };
 }

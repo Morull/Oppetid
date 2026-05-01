@@ -95,6 +95,7 @@ public static class PlantsEndpoints
         string plantId,
         KraftverkDbContext db,
         IQueryContext queryContext,
+        KraftverkUptime.Core.Configuration.IPlantConfiguration plantConfig,
         CancellationToken ct)
     {
         var plant = await queryContext
@@ -109,6 +110,13 @@ public static class PlantsEndpoints
                 statusCode: StatusCodes.Status404NotFound);
         }
 
+        // Hent klassifiserings-konfig — null = bruker default (0.80)
+        var deratingThreshold = await plantConfig
+            .GetAsync<double?>(plantId,
+                KraftverkUptime.Infrastructure.Configuration.PlantClassificationConfigProvider.KeyDeratingThreshold,
+                ct)
+            .ConfigureAwait(false);
+
         return Results.Ok(new
         {
             plant.Id,
@@ -116,6 +124,7 @@ public static class PlantsEndpoints
             Type = plant.Type.ToString(),
             plant.InstalledCapacityMw,
             plant.TimeZone,
+            DeratingThreshold = deratingThreshold ?? 0.80, // default = 20 % avvik
         });
     }
 
@@ -126,6 +135,7 @@ public static class PlantsEndpoints
         UpdatePlantRequest body,
         KraftverkDbContext db,
         IQueryContext queryContext,
+        KraftverkUptime.Core.Configuration.IPlantConfiguration plantConfig,
         CancellationToken ct)
     {
         if (body is null)
@@ -178,6 +188,30 @@ public static class PlantsEndpoints
 
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
 
+        // Lagre derating-terskel til plant_configuration. Validering: må være
+        // i (0, 1] — 0 ville klassifisert all produksjon som ForcedDerating,
+        // og >1 betyr "krever overlevering" som ikke er meningsfullt.
+        if (body.DeratingThreshold.HasValue)
+        {
+            var t = body.DeratingThreshold.Value;
+            if (t <= 0 || t > 1)
+            {
+                return Results.Problem(
+                    title: "Ugyldig DeratingThreshold",
+                    detail: "Må være i intervallet (0, 1]. F.eks. 0.80 = 20 % toleranse for avvik.",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+            await plantConfig.SetAsync(plantId,
+                KraftverkUptime.Infrastructure.Configuration.PlantClassificationConfigProvider.KeyDeratingThreshold,
+                t, ct).ConfigureAwait(false);
+        }
+
+        var savedThreshold = await plantConfig
+            .GetAsync<double?>(plantId,
+                KraftverkUptime.Infrastructure.Configuration.PlantClassificationConfigProvider.KeyDeratingThreshold,
+                ct)
+            .ConfigureAwait(false);
+
         return Results.Ok(new
         {
             plant.Id,
@@ -185,6 +219,7 @@ public static class PlantsEndpoints
             Type = plant.Type.ToString(),
             plant.InstalledCapacityMw,
             plant.TimeZone,
+            DeratingThreshold = savedThreshold ?? 0.80,
         });
     }
 
@@ -255,12 +290,18 @@ public static class PlantsEndpoints
 /// <summary>Marker for ILogger-kategori.</summary>
 public sealed class PlantsResetLogger { }
 
-/// <summary>Request-body for <c>PUT /api/v1/plants/{plantId}</c>.</summary>
+/// <summary>
+/// Request-body for <c>PUT /api/v1/plants/{plantId}</c>.
+/// <see cref="DeratingThreshold"/>: per-anlegg terskel for plan-avvik som teller
+/// som ForcedDerating. 0.80 = avvik &gt; 20 % gir feil. Null beholder
+/// eksisterende verdi. Lovlig intervall (0, 1].
+/// </summary>
 public sealed record UpdatePlantRequest(
     string Name,
     string Type,
     double InstalledCapacityMw,
-    string TimeZone);
+    string TimeZone,
+    double? DeratingThreshold = null);
 
 /// <summary>Bekreftelses-body for <c>DELETE /api/v1/plants/{plantId}/data</c>.</summary>
 public sealed record ResetPlantDataRequest(string ConfirmText);

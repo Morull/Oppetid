@@ -28,6 +28,7 @@ public sealed class KraftverkDbContext : DbContext
     public DbSet<SampleFactEntry> SampleFacts => Set<SampleFactEntry>();
     public DbSet<ClassifiedEventEntry> ClassifiedEvents => Set<ClassifiedEventEntry>();
     public DbSet<MarketPriceEntry> MarketPrices => Set<MarketPriceEntry>();
+    public DbSet<DamEntry> Dams => Set<DamEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -124,10 +125,11 @@ public sealed class KraftverkDbContext : DbContext
             b.Property(x => x.DisplayName).HasMaxLength(200).IsRequired();
             b.Property(x => x.ColorHex).HasMaxLength(16).IsRequired();
             b.Property(x => x.UnitStateOverride).HasConversion<string>().HasMaxLength(32).IsRequired();
+            b.Property(x => x.Description).HasMaxLength(2000); // nullable
             b.HasIndex(x => x.SortOrder);
         });
 
-        // SCADA foundation — ref ANALYSE-NEDETID-SCADA.md
+        // SCADA foundation — ref ANALYSE-NEDETID-SCADA.md + Spec KASKADE-DAMMER
         modelBuilder.Entity<SignalMapEntry>(b =>
         {
             b.ToTable("signal_map");
@@ -138,8 +140,11 @@ public sealed class KraftverkDbContext : DbContext
             b.Property(x => x.Unit).HasMaxLength(32).IsRequired();
             b.Property(x => x.Role).HasConversion<string>().HasMaxLength(64).IsRequired();
             b.Property(x => x.OwnerOrgId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.DamId).HasMaxLength(64); // nullable
             b.HasIndex(x => x.PlantId);
             b.HasIndex(x => new { x.PlantId, x.Role });
+            b.HasIndex(x => new { x.PlantId, x.DamId, x.Role })
+                .HasDatabaseName("ix_signal_map_dam");
         });
 
         modelBuilder.Entity<SampleFactEntry>(b =>
@@ -172,6 +177,19 @@ public sealed class KraftverkDbContext : DbContext
             b.Property(x => x.PriceArea).HasMaxLength(8).IsRequired();
             b.Property(x => x.Source).HasMaxLength(16).IsRequired();
             b.HasIndex(x => x.TimeUtc);
+        });
+
+        modelBuilder.Entity<DamEntry>(b =>
+        {
+            b.ToTable("dams");
+            b.HasKey(x => new { x.PlantId, x.DamId });
+            b.Property(x => x.PlantId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.DamId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.Name).HasMaxLength(128).IsRequired();
+            b.Property(x => x.OwnerOrgId).HasMaxLength(64).IsRequired();
+            b.HasIndex(x => x.PlantId);
+            // Hovedoppslag for OverflowQueryService — finn terminal-dam per plant.
+            b.HasIndex(x => new { x.PlantId, x.IsTurbineIntake });
         });
 
         modelBuilder.ApplyOwnedEntityFilters(_queryContext);

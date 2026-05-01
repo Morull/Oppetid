@@ -1,0 +1,349 @@
+@page "/admin/kategorier"
+@inject AnnotationsApi Api
+@inject ISnackbar Snackbar
+
+<PageTitle>Hendelses-kategorier</PageTitle>
+
+<MudGrid Class="mb-4">
+    <MudItem xs="12" md="9">
+        <MudText Typo="Typo.h1">Hendelses-kategorier</MudText>
+        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+            Brukes når du annoterer timer i drifts-tidslinjen på en rapport. Hver
+            kategori mapper til en <strong>UnitState</strong> som styrer hvordan
+            timer telles i KPI-er (Tilgjengelighet, FOR, EAF). System-kategorier
+            kan deaktiveres (gjemmes fra UI) men ikke slettes.
+        </MudText>
+    </MudItem>
+    <MudItem xs="12" md="3" Class="d-flex justify-end align-center">
+        <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenCreateAsync">
+            Ny kategori
+        </MudButton>
+    </MudItem>
+</MudGrid>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+@if (_categories is null)
+{
+    <MudProgressCircular Indeterminate="true" />
+    <MudText Class="ml-2 d-inline">Henter kategorier…</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudTable Items="_categories" Hover="true" Dense="true" Elevation="0"
+                  Filter="MatchesCatSearch">
+            <ToolBarContent>
+                <MudTextField @bind-Value="_catSearch" Placeholder="Søk navn, id, beskrivelse…"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Margin="Margin.Dense" Immediate="true" />
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh><MudTableSortLabel SortBy="@_catSortName">Navn / Beskrivelse</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:center">Farge</MudTh>
+                <MudTh><MudTableSortLabel SortBy="@_catSortMapping">Mapping</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:center"><MudTableSortLabel SortBy="@_catSortOrder">#</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:center"><MudTableSortLabel SortBy="@_catSortActive">Aktiv</MudTableSortLabel></MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <div class="d-flex align-center" style="gap:8px;">
+                        <strong>@context.DisplayName</strong>
+                        @if (context.IsSystem)
+                        {
+                            <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Outlined">System</MudChip>
+                        }
+                    </div>
+                    <MudText Typo="Typo.caption" Style="font-family: monospace; color: var(--mud-palette-text-secondary);">@context.Id</MudText>
+                    @if (!string.IsNullOrWhiteSpace(context.Description))
+                    {
+                        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary"
+                                 Style="margin-top: 4px; max-width: 600px;">
+                            @context.Description
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Warning"
+                                 Style="font-style: italic;">
+                            Ingen beskrivelse — klikk redigér for å legge til
+                        </MudText>
+                    }
+                </MudTd>
+                <MudTd Style="text-align:center">
+                    <div style="@($"background:{context.ColorHex}; width:24px; height:24px; border-radius:4px; border:1px solid #ccc; display:inline-block;")"
+                         title="@context.ColorHex"></div>
+                </MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="MudBlazor.Size.Small"
+                             Color="@StateColor(context.UnitStateOverride)">
+                        @StateDisplayName(context.UnitStateOverride)
+                    </MudChip>
+                </MudTd>
+                <MudTd Style="text-align:center">@context.SortOrder</MudTd>
+                <MudTd Style="text-align:center">
+                    @if (context.IsActive)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle"
+                                 Color="MudBlazor.Color.Success" Size="MudBlazor.Size.Small" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.RemoveCircleOutline"
+                                 Color="MudBlazor.Color.Default" Size="MudBlazor.Size.Small" />
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="MudBlazor.Size.Small"
+                                   OnClick="@(() => OpenEditAsync(context))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="MudBlazor.Size.Small"
+                                   Color="MudBlazor.Color.Error"
+                                   Disabled="@context.IsSystem"
+                                   OnClick="@(() => ConfirmDeleteAsync(context))" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@* ---- Edit/Create-dialog ---- *@
+@if (_editing is not null)
+{
+    <MudDialog @bind-Visible="_editingOpen"
+               Options="@(new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true })">
+        <TitleContent>
+            @(_isCreating ? "Ny kategori" : $"Rediger {_editing.DisplayName}")
+        </TitleContent>
+        <DialogContent>
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_form.Id" Label="Id (slug)"
+                              Disabled="@(!_isCreating)"
+                              HelperText="@(_isCreating ? "Stabil semantisk slug — kan ikke endres senere. Eks: 'rist_blokkering'" : "Id endres ikke etter opprettelse.")"
+                              Variant="Variant.Outlined" />
+                <MudTextField @bind-Value="_form.DisplayName" Label="Navn (vises i UI)"
+                              Required="true" Variant="Variant.Outlined" />
+                <div class="d-flex align-center" style="gap:12px;">
+                    <MudTextField @bind-Value="_form.ColorHex" Label="Farge (hex)"
+                                  HelperText="F.eks. #D32F2F"
+                                  Variant="Variant.Outlined" Class="flex-grow-1" />
+                    <div style="@($"background:{_form.ColorHex}; width:40px; height:40px; border-radius:4px; border:1px solid #ccc;")"></div>
+                </div>
+                <MudSelect T="string" @bind-Value="_form.UnitStateOverride"
+                           Label="Mapping til UnitState"
+                           Disabled="@(_editing.IsSystem)"
+                           HelperText="@(_editing.IsSystem ? "System-kategorier kan ikke endre mapping." : "Bestemmer hvordan annoterte timer telles i KPI-er.")"
+                           Variant="Variant.Outlined">
+                    <MudSelectItem Value="@("InService")">Drift (InService)</MudSelectItem>
+                    <MudSelectItem Value="@("ForcedOutage")">Nedetid (ForcedOutage)</MudSelectItem>
+                    <MudSelectItem Value="@("PlannedOutage")">Planlagt revisjon (PlannedOutage)</MudSelectItem>
+                    <MudSelectItem Value="@("MaintenanceOutage")">Vedlikehold (MaintenanceOutage)</MudSelectItem>
+                    <MudSelectItem Value="@("ResourceUnavailable")">Vannmangel (ResourceUnavailable)</MudSelectItem>
+                    <MudSelectItem Value="@("ReserveShutdown")">Stille (ReserveShutdown)</MudSelectItem>
+                    <MudSelectItem Value="@("ForcedDerating")">Tvangs-derating</MudSelectItem>
+                    <MudSelectItem Value="@("PlannedDerating")">Planlagt derating</MudSelectItem>
+                    <MudSelectItem Value="@("InformationUnavailable")">Mangler data</MudSelectItem>
+                </MudSelect>
+                <MudNumericField T="int" @bind-Value="_form.SortOrder" Label="Sortering"
+                                 HelperText="Lavere tall først i lister. Bruk f.eks. 10/20/30… for å gi rom for innskudd."
+                                 Variant="Variant.Outlined" />
+                <MudCheckBox T="bool" @bind-Value="_form.IsActive" Label="Aktiv (vises i annoterings-dialog)" />
+                <MudTextField @bind-Value="_form.Description" Label="Beskrivelse (hva trigger denne kategorien?)"
+                              Lines="4" Variant="Variant.Outlined"
+                              HelperText="Forklar hvilke trigger-situasjoner som hører hjemme i denne kategorien. Vises for drifts-leder i annoterings-dialogen og admin-skjermen." />
+            </MudStack>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _editingOpen = false)">Avbryt</MudButton>
+            <MudButton Color="MudBlazor.Color.Primary" Variant="Variant.Filled"
+                       OnClick="OnSaveAsync" Disabled="@_saving">
+                @(_saving ? "Lagrer…" : "Lagre")
+            </MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<AnnotationCategoryDto>? _categories;
+    private string? _error;
+    private string _catSearch = string.Empty;
+
+    private readonly Func<AnnotationCategoryDto, object> _catSortName = c => c.DisplayName;
+    private readonly Func<AnnotationCategoryDto, object> _catSortMapping = c => c.UnitStateOverride;
+    private readonly Func<AnnotationCategoryDto, object> _catSortOrder = c => c.SortOrder;
+    private readonly Func<AnnotationCategoryDto, object> _catSortActive = c => c.IsActive;
+
+    private bool MatchesCatSearch(AnnotationCategoryDto c)
+    {
+        if (string.IsNullOrWhiteSpace(_catSearch)) return true;
+        var s = _catSearch.Trim();
+        return c.DisplayName.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || c.Id.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || (c.Description?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private AnnotationCategoryDto? _editing;
+    private bool _editingOpen;
+    private bool _isCreating;
+    private bool _saving;
+    private CategoryForm _form = new();
+
+    private sealed class CategoryForm
+    {
+        public string Id { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public string ColorHex { get; set; } = "#888888";
+        public string UnitStateOverride { get; set; } = "ForcedOutage";
+        public int SortOrder { get; set; } = 100;
+        public bool IsActive { get; set; } = true;
+        public string? Description { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            var rows = await Api.ListAllCategoriesAsync();
+            _categories = rows.OrderBy(c => c.SortOrder).ThenBy(c => c.DisplayName).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente kategorier: {ex.Message}";
+        }
+    }
+
+    private Task OpenCreateAsync()
+    {
+        _isCreating = true;
+        // En "tom" sentinel slik at dialogen kan vise "Ny kategori"-tittel og
+        // checkbox-er starter i kjent state. Reell create-call gjøres ved Lagre.
+        _editing = new AnnotationCategoryDto(
+            Id: "",
+            DisplayName: "",
+            ColorHex: "#888888",
+            UnitStateOverride: "ForcedOutage",
+            SortOrder: 100,
+            IsActive: true,
+            IsSystem: false);
+        _form = new CategoryForm();
+        _editingOpen = true;
+        return Task.CompletedTask;
+    }
+
+    private Task OpenEditAsync(AnnotationCategoryDto cat)
+    {
+        _isCreating = false;
+        _editing = cat;
+        _form = new CategoryForm
+        {
+            Id = cat.Id,
+            DisplayName = cat.DisplayName,
+            ColorHex = cat.ColorHex,
+            UnitStateOverride = cat.UnitStateOverride,
+            SortOrder = cat.SortOrder,
+            IsActive = cat.IsActive,
+            Description = cat.Description,
+        };
+        _editingOpen = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnSaveAsync()
+    {
+        if (_editing is null) return;
+        _saving = true;
+        try
+        {
+            if (_isCreating)
+            {
+                if (string.IsNullOrWhiteSpace(_form.Id) || string.IsNullOrWhiteSpace(_form.DisplayName))
+                {
+                    Snackbar.Add("Id og navn er påkrevd.", Severity.Warning);
+                    _saving = false;
+                    return;
+                }
+                await Api.CreateCategoryAsync(
+                    _form.Id, _form.DisplayName, _form.ColorHex,
+                    _form.UnitStateOverride, _form.SortOrder, _form.IsActive,
+                    _form.Description);
+                Snackbar.Add($"Kategori '{_form.DisplayName}' opprettet.", Severity.Success);
+            }
+            else
+            {
+                // For update: send tom string istedenfor null hvis brukeren har
+                // tømt feltet (server tolker tom = "fjern", null = "ikke endre").
+                await Api.UpdateCategoryAsync(
+                    _editing.Id, _form.DisplayName, _form.ColorHex,
+                    _form.UnitStateOverride, _form.SortOrder, _form.IsActive,
+                    _form.Description ?? "");
+                Snackbar.Add($"'{_form.DisplayName}' oppdatert.", Severity.Success);
+            }
+            _editingOpen = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Lagring feilet: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task ConfirmDeleteAsync(AnnotationCategoryDto cat)
+    {
+        if (cat.IsSystem) return;
+        try
+        {
+            await Api.DeleteCategoryAsync(cat.Id);
+            Snackbar.Add($"'{cat.DisplayName}' slettet.", Severity.Success);
+            await ReloadAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Server svarte 400 — typisk: kategorien er referert til av annoteringer
+            Snackbar.Add(ex.Message, Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Sletting feilet: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private static MudBlazor.Color StateColor(string state) => state switch
+    {
+        "InService" => MudBlazor.Color.Success,
+        "ForcedOutage" => MudBlazor.Color.Error,
+        "PlannedOutage" => MudBlazor.Color.Info,
+        "MaintenanceOutage" => MudBlazor.Color.Info,
+        "ReserveShutdown" => MudBlazor.Color.Secondary,
+        "ResourceUnavailable" => MudBlazor.Color.Warning,
+        "ForcedDerating" or "PlannedDerating" => MudBlazor.Color.Warning,
+        _ => MudBlazor.Color.Default,
+    };
+
+    private static string StateDisplayName(string state) => state switch
+    {
+        "InService" => "Drift",
+        "ForcedOutage" => "Nedetid",
+        "PlannedOutage" => "Planlagt revisjon",
+        "MaintenanceOutage" => "Vedlikehold",
+        "ReserveShutdown" => "Stille",
+        "ResourceUnavailable" => "Vannmangel",
+        "ForcedDerating" => "Tvangs-derating",
+        "PlannedDerating" => "Planlagt derating",
+        "InformationUnavailable" => "Mangler data",
+        _ => state,
+    };
+}

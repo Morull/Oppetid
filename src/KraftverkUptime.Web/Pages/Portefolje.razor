@@ -1,39 +1,22 @@
 @page "/portefolje"
 @inject NedetidApi NedetidApi
 
-<PageTitle>Portefølje</PageTitle>
+<PageTitle>Portefølje-rapport</PageTitle>
 
 <MudGrid Class="mb-4">
     <MudItem xs="12">
-        <MudText Typo="Typo.h1">Portefølje</MudText>
+        <MudText Typo="Typo.h1">Portefølje-rapport</MudText>
         <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
-            KPI-er på tvers av alle anlegg for valgt periode. Anlegg uten
-            settlement-import for perioden listes ikke. Sortering: klikk på
-            kolonne-headeren.
+            Samlet rapport på tvers av alle anlegg: drift-KPI-er, økonomi,
+            capture rate, vakt-ROI og nedetid for valgt periode. Klikk på
+            anleggs-navn for detalj-visning per anlegg.
         </MudText>
     </MudItem>
 </MudGrid>
 
 @* ---- Filter ---- *@
 <MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudGrid>
-        <MudItem xs="12" sm="4">
-            <MudDatePicker Date="_fromDate" DateChanged="@(d => _fromDate = d)"
-                           Label="Fra dato" Variant="Variant.Outlined" Margin="Margin.Dense" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudDatePicker Date="_toDate" DateChanged="@(d => _toDate = d)"
-                           Label="Til dato (eks.)" Variant="Variant.Outlined" Margin="Margin.Dense" />
-        </MudItem>
-        <MudItem xs="12" sm="4" Class="d-flex justify-end">
-            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Search"
-                       OnClick="LoadAsync"
-                       Disabled="@(_loading || !_fromDate.HasValue || !_toDate.HasValue)">
-                Hent
-            </MudButton>
-        </MudItem>
-    </MudGrid>
+    <DateRangeFilter From="_fromDate" To="_toDate" OnChanged="@OnRangeChanged" />
 </MudPaper>
 
 @if (_error is not null)
@@ -43,11 +26,11 @@
 else if (_loading)
 {
     <MudProgressCircular Indeterminate="true" />
-    <MudText Class="ml-2 d-inline">Henter portefølje-data…</MudText>
+    <MudText Class="ml-2 d-inline">Henter portefølje-data (alle anlegg parallelt)…</MudText>
 }
-else if (_response is not null)
+else if (_rows is not null)
 {
-    @if (_response.Plants.Count == 0)
+    @if (_rows.Count == 0)
     {
         <MudAlert Severity="Severity.Info">
             Ingen anlegg har en settlement-import som dekker valgt periode.
@@ -55,45 +38,151 @@ else if (_response is not null)
     }
     else
     {
+        @* ---- Data-mangler-banner (hvis noen anlegg mangler delsett) ---- *@
+        var medMangler = _rows.Where(r => r.MissingData.Count > 0).ToList();
+        @if (medMangler.Count > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3" Dense="true">
+                <MudText Typo="Typo.body2">
+                    <strong>Rapporten er ikke komplett:</strong>
+                    @medMangler.Count av @_rows.Count anlegg mangler data —
+                    @string.Join("; ",
+                        medMangler.Select(r =>
+                            $"{r.PlantName} ({string.Join(", ", r.MissingData)})"))
+                </MudText>
+            </MudAlert>
+        }
+
+        @* ---- Lønnsomhets-vurdering for vaktordningen ---- *@
+        <MudPaper Class="pa-4 mb-4" Elevation="1">
+            <MudGrid>
+                <MudItem xs="12" md="3">
+                    <MudText Typo="Typo.h3" Class="mb-2">Vurdering av vaktordningen</MudText>
+                    <MudNumericField T="double" @bind-Value="_aarligVaktKostNok"
+                                     Label="Årlig vakt-kost (NOK)"
+                                     Step="50000" Format="N0"
+                                     HelperText="Drifts-leders estimat"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="6" sm="3" md="2">
+                    <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Total reddet</MudText>
+                        <MudText Typo="Typo.h3">@FormatNok(_totalReddetNok)</MudText>
+                        <MudText Typo="Typo.caption">NOK i perioden</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3" md="2">
+                    <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Annualisert</MudText>
+                        <MudText Typo="Typo.h3">@FormatNok(AnnualisertReddet())</MudText>
+                        <MudText Typo="Typo.caption">NOK/år (skalert)</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3" md="2">
+                    <MudPaper Class="pa-3" Elevation="2" Style="@VaktKostStyle()">
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Vakt-kost / år</MudText>
+                        <MudText Typo="Typo.h3">@FormatNok(_aarligVaktKostNok)</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3" md="3">
+                    <MudPaper Class="pa-3" Elevation="2" Style="@VurderingStyle()">
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Vurdering</MudText>
+                        <MudText Typo="Typo.h3">@VurderingText()</MudText>
+                        <MudText Typo="Typo.caption">@VurderingForklaring()</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mt-2">
+                Annualisering: total reddet × (365 / antall_dager_i_periode). ROI = annualisert reddet / årlig vakt-kost.
+                Lønnsom ≥ 1.0, marginal 0.5–1.0, ikke lønnsom &lt; 0.5.
+            </MudText>
+        </MudPaper>
+
+        @* ---- Hovedtabell ---- *@
         <MudPaper Class="pa-4 mb-4" Elevation="1">
             <MudText Typo="Typo.h4" Class="mb-2">
-                @_response.PlantCount anlegg med data for perioden
+                @_rows.Count anlegg med data for perioden
             </MudText>
-            <MudTable Items="_response.Plants" Hover="true" Dense="true" Elevation="0"
-                      SortLabel="Sortér">
-<HeaderContent>
-                    <MudTh><MudTableSortLabel SortBy="@SortByName">Anlegg</MudTableSortLabel></MudTh>
-                    <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByCapacity">Effekt (MW)</MudTableSortLabel></MudTh>
-                    <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortBySh">Drifts-timer</MudTableSortLabel></MudTh>
-                    <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByFoh">FO-timer</MudTableSortLabel></MudTh>
-                    <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByAf">AF</MudTableSortLabel></MudTh>
-                    <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByFor">FOR</MudTableSortLabel></MudTh>
-                    <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByMwh">Produksjon (MWh)</MudTableSortLabel></MudTh>
-                    <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByNok" InitialDirection="SortDirection.Descending">Spotoms (NOK)</MudTableSortLabel></MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd>
-                        <MudLink Href="@($"/effektivitet/{context.PlantId}")">@context.PlantName</MudLink>
-                    </MudTd>
-                    <MudTd Style="text-align:right">
-                        @if (context.InstalledCapacityMw <= 0)
-                        {
-                            <MudIcon Icon="@Icons.Material.Filled.PriorityHigh"
-                                     Color="MudBlazor.Color.Error" Size="MudBlazor.Size.Small" />
-                        }
-                        else
-                        {
-                            @context.InstalledCapacityMw.ToString("F1")
-                        }
-                    </MudTd>
-                    <MudTd Style="text-align:right">@FormatHours(Kpi(context, "ServiceHours_SH"))</MudTd>
-                    <MudTd Style="text-align:right">@FormatHours(Kpi(context, "ForcedOutageHours_FOH"))</MudTd>
-                    <MudTd Style="text-align:right">@FormatRatio(Kpi(context, "AvailabilityFactor_AF"))</MudTd>
-                    <MudTd Style="text-align:right">@FormatRatio(Kpi(context, "ForcedOutageRate_FOR"))</MudTd>
-                    <MudTd Style="text-align:right">@FormatMwh(Kpi(context, "TotalProduction_MWh"))</MudTd>
-                    <MudTd Style="text-align:right">@FormatNok(Kpi(context, "Spotomsetning_NOK"))</MudTd>
-                </RowTemplate>
-            </MudTable>
+            <div style="overflow-x: auto;">
+                <MudTable Items="_rows" Hover="true" Dense="true" Elevation="0" SortLabel="Sortér">
+                    <HeaderContent>
+                        <MudTh><MudTableSortLabel SortBy="@SortByName">Anlegg</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByCapacity">Effekt (MW)</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByAf">AF</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByFor">FOR</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByMwh">Produksjon (MWh)</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByNok"
+                                InitialDirection="SortDirection.Descending">Spotoms (NOK)</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByCr">CR</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByMerverdi">Merverdi</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByNedetid">Nedetid (t)</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByTapNok">Tap (NOK)</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByReddetNok">Reddet vakt (NOK)</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right">Reddbare</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>
+                            <div class="d-flex align-center" style="gap:6px;">
+                                <MudLink Href="@($"/anlegg/{context.PlantId}")">@context.PlantName</MudLink>
+                                @if (context.MissingData.Count > 0)
+                                {
+                                    <MudTooltip Text="@($"Mangler: {string.Join(", ", context.MissingData)}")">
+                                        <MudIcon Icon="@Icons.Material.Filled.Warning"
+                                                 Color="MudBlazor.Color.Warning"
+                                                 Size="MudBlazor.Size.Small" />
+                                    </MudTooltip>
+                                }
+                            </div>
+                        </MudTd>
+                        <MudTd Style="text-align:right">
+                            @if (context.InstalledCapacityMw <= 0)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.PriorityHigh"
+                                         Color="MudBlazor.Color.Error" Size="MudBlazor.Size.Small" />
+                            }
+                            else { @context.InstalledCapacityMw.ToString("F1") }
+                        </MudTd>
+                        <MudTd Style="text-align:right">@FormatRatio(context.AvailabilityFactor)</MudTd>
+                        <MudTd Style="text-align:right">@FormatRatio(context.ForcedOutageRate)</MudTd>
+                        <MudTd Style="text-align:right">@FormatMwh(context.TotalProductionMwh)</MudTd>
+                        <MudTd Style="text-align:right">@FormatNok(context.SpotomsetningNok)</MudTd>
+                        <MudTd Style="text-align:right">@FormatCr(context.CaptureRateTimes)</MudTd>
+                        <MudTd Style="text-align:right">@FormatMerverdi(context.MerverdiNok)</MudTd>
+                        <MudTd Style="text-align:right">@FormatHours(context.NedetidTimer)</MudTd>
+                        <MudTd Style="text-align:right">@FormatNok(context.TapNok)</MudTd>
+                        <MudTd Style="text-align:right">
+                            <span style="color: @(context.ReddetNok > 0 ? "#2A9D8F" : "inherit"); font-weight: @(context.ReddetNok > 0 ? "600" : "400");">
+                                @FormatNok(context.ReddetNok)
+                            </span>
+                        </MudTd>
+                        <MudTd Style="text-align:right">
+                            @if (context.AntallEvents > 0)
+                            {
+                                <span>@context.AntallReddbare / @context.AntallEvents</span>
+                            }
+                            else { <span>–</span> }
+                        </MudTd>
+                    </RowTemplate>
+                    <FooterContent>
+                        <MudTFootRow>
+                            <MudTd><strong>SUM</strong></MudTd>
+                            <MudTd Style="text-align:right"><strong>@_rows.Sum(r => r.InstalledCapacityMw).ToString("F1")</strong></MudTd>
+                            <MudTd></MudTd>
+                            <MudTd></MudTd>
+                            <MudTd Style="text-align:right"><strong>@FormatMwh(_rows.Sum(r => r.TotalProductionMwh))</strong></MudTd>
+                            <MudTd Style="text-align:right"><strong>@FormatNok(_rows.Sum(r => r.SpotomsetningNok))</strong></MudTd>
+                            <MudTd></MudTd>
+                            <MudTd Style="text-align:right"><strong>@FormatNokSigned(_rows.Sum(r => r.MerverdiNok))</strong></MudTd>
+                            <MudTd Style="text-align:right"><strong>@FormatHours(_rows.Sum(r => r.NedetidTimer))</strong></MudTd>
+                            <MudTd Style="text-align:right"><strong>@FormatNok(_rows.Sum(r => r.TapNok))</strong></MudTd>
+                            <MudTd Style="text-align:right"><strong>@FormatNok(_totalReddetNok)</strong></MudTd>
+                            <MudTd Style="text-align:right">
+                                <strong>@_rows.Sum(r => r.AntallReddbare) / @_rows.Sum(r => r.AntallEvents)</strong>
+                            </MudTd>
+                        </MudTFootRow>
+                    </FooterContent>
+                </MudTable>
+            </div>
         </MudPaper>
     }
 }
@@ -103,29 +192,81 @@ else if (_response is not null)
     private DateTime? _toDate;
     private bool _loading;
     private string? _error;
-    private PortfolioKpiResponse? _response;
+    private List<Row>? _rows;
+    private double _totalReddetNok;
+    // Default vakt-kost — drifts-leder kan justere i input
+    private double _aarligVaktKostNok = 360_000;
+
+
+    /// <summary>
+    /// Aggregert rad per anlegg som kombinerer portefølje-KPI-er, vakt-ROI og
+    /// nedetid-summary. Bygges ved å fan-out parallelle API-kall fra Web.
+    /// <see cref="MissingData"/> samler hvilke kall som feilet for dette
+    /// anlegget; UI viser et advarsel-ikon på raden + en summary-banner.
+    /// </summary>
+    private sealed record Row(
+        string PlantId,
+        string PlantName,
+        double InstalledCapacityMw,
+        double AvailabilityFactor,
+        double ForcedOutageRate,
+        double TotalProductionMwh,
+        double SpotomsetningNok,
+        double CaptureRateTimes,
+        double MerverdiNok,
+        double NedetidTimer,
+        double TapNok,
+        double ReddetNok,
+        int AntallEvents,
+        int AntallReddbare,
+        IReadOnlyList<string> MissingData);
 
     protected override async Task OnInitializedAsync()
     {
         // Default-periode: forrige måned
-        var now = DateTime.UtcNow;
-        var firstOfThisMonth = new DateTime(now.Year, now.Month, 1);
-        _fromDate = firstOfThisMonth.AddMonths(-1);
-        _toDate = firstOfThisMonth;
+        var today = DateTime.Today;
+        var firstThis = new DateTime(today.Year, today.Month, 1);
+        _fromDate = firstThis.AddMonths(-1);
+        _toDate = firstThis;
         await LoadAsync();
     }
 
+    /// <summary>Kalles automatisk fra DateRangeFilter når perioden endres.</summary>
+    private async Task OnRangeChanged((DateTime From, DateTime To) range)
+    {
+        _fromDate = range.From;
+        _toDate = range.To;
+        await LoadAsync();
+    }
+
+    /// <summary>
+    /// Henter portefølje-KPI-er, vakt-ROI og nedetid for hver plant parallelt.
+    /// Hver plant feiler isolert — én feilende vakt-ROI gir bare 0 i de
+    /// kolonnene, ikke ødelagt rapport. Skalerer til 11 anlegg uten merkbar
+    /// forsinkelse takket være parallel-fanout.
+    /// </summary>
     private async Task LoadAsync()
     {
         if (!_fromDate.HasValue || !_toDate.HasValue) return;
         _loading = true;
         _error = null;
-        _response = null;
+        _rows = null;
+        _totalReddetNok = 0;
+        StateHasChanged();
+
         try
         {
-            var fromUtc = new DateTimeOffset(_fromDate.Value.Date, TimeSpan.Zero);
-            var toUtc = new DateTimeOffset(_toDate.Value.Date, TimeSpan.Zero);
-            _response = await NedetidApi.GetPortfolioKpisAsync(fromUtc, toUtc);
+            var fromUtc = _fromDate.ToUtcOffsetSafe();
+            var toUtc = _toDate.ToUtcOffsetSafe();
+
+            var portfolio = await NedetidApi.GetPortfolioKpisAsync(fromUtc, toUtc);
+
+            // Fan-out: vakt-ROI + nedetid for hver plant parallelt.
+            var enrichTasks = portfolio.Plants.Select(p => EnrichAsync(p, fromUtc, toUtc));
+            var enriched = await Task.WhenAll(enrichTasks);
+
+            _rows = enriched.OrderByDescending(r => r.ReddetNok).ToList();
+            _totalReddetNok = _rows.Sum(r => r.ReddetNok);
         }
         catch (Exception ex)
         {
@@ -134,30 +275,108 @@ else if (_response is not null)
         finally
         {
             _loading = false;
+            StateHasChanged();
         }
     }
 
-    /// <summary>
-    /// Helper: returnerer KPI-verdien som double (eller 0 hvis null/manglende),
-    /// brukt som sort-key i MudTable.
-    /// </summary>
-    private static double Kpi(PortfolioPlantKpi p, string name)
-        => p.Kpis.TryGetValue(name, out var v) && v.HasValue ? v.Value : 0;
+    private async Task<Row> EnrichAsync(PortfolioPlantKpi p, DateTimeOffset fromUtc, DateTimeOffset toUtc)
+    {
+        double Kpi(string name) => p.Kpis.TryGetValue(name, out var v) && v.HasValue ? v.Value : 0;
 
-    // Sort-funksjoner for MudTableSortLabel. Definert som felt for å unngå
-    // Razor-attributt-escapings-problemer med string literals.
-    private static readonly Func<PortfolioPlantKpi, object> SortByName     = p => p.PlantName;
-    private static readonly Func<PortfolioPlantKpi, object> SortByCapacity = p => p.InstalledCapacityMw;
-    private static readonly Func<PortfolioPlantKpi, object> SortBySh       = p => Kpi(p, "ServiceHours_SH");
-    private static readonly Func<PortfolioPlantKpi, object> SortByFoh      = p => Kpi(p, "ForcedOutageHours_FOH");
-    private static readonly Func<PortfolioPlantKpi, object> SortByAf       = p => Kpi(p, "AvailabilityFactor_AF");
-    private static readonly Func<PortfolioPlantKpi, object> SortByFor      = p => Kpi(p, "ForcedOutageRate_FOR");
-    private static readonly Func<PortfolioPlantKpi, object> SortByMwh      = p => Kpi(p, "TotalProduction_MWh");
-    private static readonly Func<PortfolioPlantKpi, object> SortByNok      = p => Kpi(p, "Spotomsetning_NOK");
+        // Vakt-ROI og Nedetid feiler stille per plant — vi får 0 i tabellen
+        // hvis SCADA-data eller settlement-data mangler for periode. Samler
+        // hvilke som feilet i MissingData så UI kan flagge anlegget.
+        VaktRoiResponse? vakt = null;
+        NedetidResponse? ned = null;
+        var missing = new List<string>();
+        try { vakt = await NedetidApi.GetVaktRoiAsync(p.PlantId, fromUtc, toUtc); }
+        catch { missing.Add("Vakt-ROI"); }
+        try { ned = await NedetidApi.GetNedetidAsync(p.PlantId, fromUtc, toUtc); }
+        catch { missing.Add("Nedetid"); }
 
+        // Capture rate er allerede i p.Kpis fra portefølje-API. Hvis nøkkelen
+        // mangler, betyr det at server-side feilet på det anlegget — flagg.
+        if (!p.Kpis.ContainsKey("CaptureRate_Times"))
+        {
+            missing.Add("Capture rate");
+        }
+
+        return new Row(
+            PlantId: p.PlantId,
+            PlantName: p.PlantName,
+            InstalledCapacityMw: p.InstalledCapacityMw,
+            AvailabilityFactor: Kpi("AvailabilityFactor_AF"),
+            ForcedOutageRate: Kpi("ForcedOutageRate_FOR"),
+            TotalProductionMwh: Kpi("TotalProduction_MWh"),
+            SpotomsetningNok: Kpi("Spotomsetning_NOK"),
+            CaptureRateTimes: Kpi("CaptureRate_Times"),
+            MerverdiNok: Kpi("Merverdi_NOK"),
+            NedetidTimer: ned?.TotalNedetidTimer ?? 0,
+            TapNok: ned?.TotalTapNok ?? 0,
+            ReddetNok: vakt?.TotalReddetNok ?? 0,
+            AntallEvents: vakt?.AntallEventsTotalt ?? 0,
+            AntallReddbare: vakt?.AntallReddbareInnenforVakt ?? 0,
+            MissingData: missing);
+    }
+
+    // -- Lønnsomhets-vurdering --
+
+    private double AnnualisertReddet()
+    {
+        if (!_fromDate.HasValue || !_toDate.HasValue) return 0;
+        var dager = (_toDate.Value - _fromDate.Value).TotalDays;
+        return dager <= 0 ? 0 : _totalReddetNok * (365.0 / dager);
+    }
+
+    private double Roi() => _aarligVaktKostNok <= 0 ? 0 : AnnualisertReddet() / _aarligVaktKostNok;
+
+    private string VurderingText()
+    {
+        var r = Roi();
+        if (r >= 1.0) return $"Lønnsom ({r:F2}×)";
+        if (r >= 0.5) return $"Marginal ({r:F2}×)";
+        if (r > 0) return $"Ikke lønnsom ({r:F2}×)";
+        return "–";
+    }
+
+    private string VurderingForklaring()
+    {
+        var r = Roi();
+        if (r >= 1.0) return "Vakt-ordningen tjener inn kostnaden.";
+        if (r >= 0.5) return "Halv inntjening — vurder bemanningsmodell.";
+        if (r > 0) return "Underdekning — vurder reduksjon.";
+        return "Ikke nok data til vurdering.";
+    }
+
+    private string VurderingStyle()
+    {
+        var r = Roi();
+        if (r >= 1.0) return "border-left: 4px solid #2A9D8F;";
+        if (r >= 0.5) return "border-left: 4px solid #F39C12;";
+        if (r > 0) return "border-left: 4px solid #E76F51;";
+        return "border-left: 4px solid #999;";
+    }
+
+    private string VaktKostStyle() => "border-left: 4px solid #6E59A5;";
+
+    // -- Sort-funksjoner --
+    private static readonly Func<Row, object> SortByName     = r => r.PlantName;
+    private static readonly Func<Row, object> SortByCapacity = r => r.InstalledCapacityMw;
+    private static readonly Func<Row, object> SortByAf       = r => r.AvailabilityFactor;
+    private static readonly Func<Row, object> SortByFor      = r => r.ForcedOutageRate;
+    private static readonly Func<Row, object> SortByMwh      = r => r.TotalProductionMwh;
+    private static readonly Func<Row, object> SortByNok      = r => r.SpotomsetningNok;
+    private static readonly Func<Row, object> SortByCr       = r => r.CaptureRateTimes;
+    private static readonly Func<Row, object> SortByMerverdi = r => r.MerverdiNok;
+    private static readonly Func<Row, object> SortByNedetid  = r => r.NedetidTimer;
+    private static readonly Func<Row, object> SortByTapNok   = r => r.TapNok;
+    private static readonly Func<Row, object> SortByReddetNok= r => r.ReddetNok;
+
+    // -- Format-helpers --
     private static string FormatHours(double v) => v == 0 ? "–" : v.ToString("F0");
     private static string FormatMwh(double v) => v == 0 ? "–" : v.ToString("F1");
     private static string FormatRatio(double v) => v == 0 ? "–" : (v * 100).ToString("F1") + " %";
+    private static string FormatCr(double v) => v == 0 ? "–" : v.ToString("F2");
 
     private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
     {
@@ -166,4 +385,11 @@ else if (_response is not null)
         NumberGroupSizes = new[] { 3 },
     };
     private static string FormatNok(double v) => v == 0 ? "–" : v.ToString("N0", NorskTall);
+    private static string FormatNokSigned(double v)
+    {
+        if (v == 0) return "–";
+        var sign = v > 0 ? "+" : "";
+        return sign + v.ToString("N0", NorskTall);
+    }
+    private static string FormatMerverdi(double v) => FormatNokSigned(v);
 }

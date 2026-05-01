@@ -1,0 +1,72 @@
+@*
+   Felles dato-velger for alle rapport-sider:
+   - Én MudDateRangePicker (drag fra/til på samme kalender)
+   - Innebygde periode-presets (Forrige uke/Mnd/etc.)
+   - Auto-load: OnChanged kalles så snart begge datoer er satt — ingen
+     "Hent"-knapp kreves
+*@
+
+<div class="d-flex flex-column" style="gap:8px;">
+    <MudDateRangePicker @bind-DateRange="_range"
+                        Label="@Label"
+                        Variant="Variant.Outlined"
+                        Margin="Margin.Dense"
+                        PlaceholderStart="Fra dato"
+                        PlaceholderEnd="Til dato (eks.)" />
+    <PeriodPresets ShowLabel="true" OnSelected="@OnPresetPickedAsync" />
+</div>
+
+@code {
+    /// <summary>Etikett vist over dato-velgeren. Default "Periode".</summary>
+    [Parameter] public string Label { get; set; } = "Periode";
+
+    /// <summary>Initial fra-dato. Brukes til å sette intern range når komponenten lastes.</summary>
+    [Parameter] public DateTime? From { get; set; }
+
+    /// <summary>Initial til-dato (eksklusiv).</summary>
+    [Parameter] public DateTime? To { get; set; }
+
+    /// <summary>
+    /// Kalles når brukeren har valgt både fra og til, eller har trykket en
+    /// preset. Får (fra, til) — Til er eksklusiv.
+    /// </summary>
+    [Parameter] public EventCallback<(DateTime From, DateTime To)> OnChanged { get; set; }
+
+    private DateRange? _range;
+    private DateRange? _previousFiredRange;
+
+    protected override void OnParametersSet()
+    {
+        if (From.HasValue && To.HasValue && _range is null)
+        {
+            _range = new DateRange(From.Value, To.Value);
+        }
+    }
+
+    /// <summary>
+    /// MudDateRangePicker setter Start først, så End. Vi lytter på endring
+    /// og fyrer OnChanged kun når begge er satt og det faktisk er ny verdi
+    /// (unngår dobbelt-load ved Start→End-overgang).
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_range is null || _range.Start is null || _range.End is null) return;
+
+        if (_previousFiredRange is not null
+            && _previousFiredRange.Start == _range.Start
+            && _previousFiredRange.End == _range.End)
+        {
+            return;
+        }
+        _previousFiredRange = _range;
+        await OnChanged.InvokeAsync((_range.Start.Value, _range.End.Value));
+    }
+
+    private async Task OnPresetPickedAsync((DateTime From, DateTime To) range)
+    {
+        _range = new DateRange(range.From, range.To);
+        _previousFiredRange = _range;
+        StateHasChanged();
+        await OnChanged.InvokeAsync(range);
+    }
+}

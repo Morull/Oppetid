@@ -44,6 +44,24 @@ public sealed class EfSignalMapRepository : ISignalMapRepository
             .FirstOrDefaultAsync(ct).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<SignalMap>> GetByPlantDamAndRoleAsync(
+        string plantId, string? damId, SignalRole role, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        // Filtrerer på DamId — null i parameteren matches mot rader med null DamId
+        // (f.eks. generator-tags som ikke er dam-knyttet).
+        var query = _queryContext.Apply(_db.SignalMaps.AsQueryable())
+            .Where(x => x.PlantId == plantId && x.Role == role && x.IsActive);
+        query = damId is null
+            ? query.Where(x => x.DamId == null)
+            : query.Where(x => x.DamId == damId);
+
+        var rows = await query
+            .OrderBy(x => x.SignalId)
+            .ToListAsync(ct).ConfigureAwait(false);
+        return rows.ConvertAll(ToDomain);
+    }
+
     public async Task UpsertAsync(SignalMap signalMap, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(signalMap);
@@ -61,6 +79,7 @@ public sealed class EfSignalMapRepository : ISignalMapRepository
                 Role = signalMap.Role,
                 StoreSamples = signalMap.StoreSamples,
                 IsActive = signalMap.IsActive,
+                DamId = signalMap.DamId,
             });
         }
         else
@@ -70,11 +89,12 @@ public sealed class EfSignalMapRepository : ISignalMapRepository
             existing.Role = signalMap.Role;
             existing.StoreSamples = signalMap.StoreSamples;
             existing.IsActive = signalMap.IsActive;
+            existing.DamId = signalMap.DamId;
             existing.UpdatedAt = DateTimeOffset.UtcNow;
         }
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
 
     private static SignalMap ToDomain(SignalMapEntry e) => new(
-        e.PlantId, e.SignalId, e.CsvColumn, e.Unit, e.Role, e.StoreSamples, e.IsActive);
+        e.PlantId, e.SignalId, e.CsvColumn, e.Unit, e.Role, e.StoreSamples, e.IsActive, e.DamId);
 }

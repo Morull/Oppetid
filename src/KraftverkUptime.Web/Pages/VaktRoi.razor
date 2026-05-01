@@ -28,11 +28,8 @@
                 }
             </MudSelect>
         </MudItem>
-        <MudItem xs="12" sm="2">
-            <MudDatePicker Date="Filter.FromDate" DateChanged="@(d => Filter.FromDate = d)" Label="Fra dato" Variant="Variant.Outlined" Margin="Margin.Dense" />
-        </MudItem>
-        <MudItem xs="12" sm="2">
-            <MudDatePicker Date="Filter.ToDate" DateChanged="@(d => Filter.ToDate = d)" Label="Til dato (eks.)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        <MudItem xs="12" sm="4">
+            <DateRangeFilter From="Filter.FromDate" To="Filter.ToDate" OnChanged="@OnRangeChanged" />
         </MudItem>
         <MudItem xs="12" sm="2">
             <MudNumericField T="double" @bind-Value="_kapasitetsfaktor" Label="Kap.faktor"
@@ -43,14 +40,6 @@
             <MudNumericField T="double" @bind-Value="_aarligVaktKost" Label="Årlig vakt-kost (NOK)"
                              Step="50000" Format="N0"
                              Variant="Variant.Outlined" Margin="Margin.Dense" />
-        </MudItem>
-        <MudItem xs="12" sm="1" Class="d-flex justify-end">
-            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Search"
-                       OnClick="LoadAsync"
-                       Disabled="@(_loading || !Filter.ErKlar)">
-                Hent
-            </MudButton>
         </MudItem>
     </MudGrid>
 </MudPaper>
@@ -174,17 +163,24 @@ else if (_response is not null)
             </MudButton>
         </div>
         <MudTable Items="_response.Events" Hover="true" Dense="true" Elevation="0"
-                  FixedHeader="true" Height="500px" Virtualize="true">
+                  FixedHeader="true" Height="500px" Virtualize="true"
+                  Filter="MatchesVaktSearch">
+            <ToolBarContent>
+                <MudTextField @bind-Value="_vaktSearch" Placeholder="Søk kategori, status…"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Margin="Margin.Dense" Immediate="true" />
+            </ToolBarContent>
             <HeaderContent>
-                <MudTh>Start</MudTh>
-                <MudTh>Slutt</MudTh>
-                <MudTh Style="text-align:right">Faktisk (t)</MudTh>
-                <MudTh>Kategori</MudTh>
-                <MudTh>Vakt-vindu</MudTh>
-                <MudTh>Reddbar</MudTh>
-                <MudTh Style="text-align:right">Ekstra (t)</MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByVaktStart"
+                       InitialDirection="SortDirection.Descending">Start</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByVaktEnd">Slutt</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVaktDuration">Faktisk (t)</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByVaktCategory">Kategori</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByVaktInWindow">Vakt-vindu</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByVaktReddbar">Reddbar</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVaktExtra">Ekstra (t)</MudTableSortLabel></MudTh>
                 <MudTh Style="text-align:right">Overløp</MudTh>
-                <MudTh Style="text-align:right">Reddet (NOK)</MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVaktReddetNok">Reddet (NOK)</MudTableSortLabel></MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="Start">@FormatLocal(context.Event.StartUtc)</MudTd>
@@ -213,8 +209,28 @@ else if (_response is not null)
     private string? _csvUrl;
     private List<MonthlyPoint> _monthlyTrend = new();
     private int _chartVersion;
+    private string _vaktSearch = string.Empty;
 
     private ApexChartOptions<MonthlyPoint> _trendOptions = new();
+
+    // Sort-funksjoner for vakt-roi events
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktStart    = e => e.Event.StartUtc;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktEnd      = e => e.Event.EndUtc;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktDuration = e => e.Event.VarighetTimer;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktCategory = e => e.Event.Kategori;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktInWindow = e => e.ErInnenforVakt;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktReddbar  = e => e.ErReddbar;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktExtra    = e => e.EkstraTimerSpart;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktReddetNok = e => e.ReddetNok;
+
+    private bool MatchesVaktSearch(VaktRoiEventDto e)
+    {
+        if (string.IsNullOrWhiteSpace(_vaktSearch)) return true;
+        var s = _vaktSearch.Trim();
+        return e.Event.Kategori.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || (e.Event.CauseCode?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+            || e.Forklaring.Contains(s, StringComparison.OrdinalIgnoreCase);
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -243,8 +259,8 @@ else if (_response is not null)
                 _response = Filter.CachedVaktRoi;
                 BuildCharts(_response!);
                 _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "vakt-roi",
-                    new DateTimeOffset(Filter.FromDate!.Value.Date, TimeSpan.Zero),
-                    new DateTimeOffset(Filter.ToDate!.Value.Date, TimeSpan.Zero)).ToString();
+                    Filter.FromDate!.Value.ToUtcOffsetSafe(),
+                    Filter.ToDate!.Value.ToUtcOffsetSafe()).ToString();
             }
             else if (Filter.ErKlar)
             {
@@ -268,6 +284,13 @@ else if (_response is not null)
         return Task.CompletedTask;
     }
 
+    private async Task OnRangeChanged((DateTime From, DateTime To) range)
+    {
+        Filter.FromDate = DateTime.SpecifyKind(range.From, DateTimeKind.Unspecified);
+        Filter.ToDate = DateTime.SpecifyKind(range.To, DateTimeKind.Unspecified);
+        await LoadAsync();
+    }
+
     private async Task LoadAsync()
     {
         if (!Filter.ErKlar) return;
@@ -276,8 +299,8 @@ else if (_response is not null)
         _response = null;
         try
         {
-            var fromUtc = new DateTimeOffset(Filter.FromDate!.Value.Date, TimeSpan.Zero);
-            var toUtc = new DateTimeOffset(Filter.ToDate!.Value.Date, TimeSpan.Zero);
+            var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
+            var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
             _response = await NedetidApi.GetVaktRoiAsync(Filter.PlantId, fromUtc, toUtc, _kapasitetsfaktor);
             _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "vakt-roi", fromUtc, toUtc).ToString();
             Filter.StoreVaktRoi(_response);
@@ -306,6 +329,12 @@ else if (_response is not null)
         _trendOptions = new ApexChartOptions<MonthlyPoint>
         {
             Xaxis = new XAxis { Type = XAxisType.Datetime },
+            // NOK-tall: ingen desimaler. Default ApexCharts viser hele
+            // floating-point-presisjonen ("40000.00000000000") som er stygg.
+            Yaxis = new List<YAxis>
+            {
+                new() { Title = new AxisTitle { Text = "NOK" }, DecimalsInFloat = 0 }
+            },
             Tooltip = new Tooltip { X = new TooltipX { Format = "MMM yyyy" } },
             Colors = new List<string> { "#2A9D8F" },
         };

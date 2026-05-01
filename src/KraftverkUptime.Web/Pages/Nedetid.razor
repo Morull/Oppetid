@@ -29,19 +29,8 @@
                 }
             </MudSelect>
         </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudDatePicker Date="Filter.FromDate" DateChanged="@(d => Filter.FromDate = d)" Label="Fra dato" Variant="Variant.Outlined" Margin="Margin.Dense" />
-        </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudDatePicker Date="Filter.ToDate" DateChanged="@(d => Filter.ToDate = d)" Label="Til dato (eks.)" Variant="Variant.Outlined" Margin="Margin.Dense" />
-        </MudItem>
-        <MudItem xs="12" sm="2" Class="d-flex justify-end">
-            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Search"
-                       OnClick="LoadAsync"
-                       Disabled="@(_loading || !Filter.ErKlar)">
-                Hent
-            </MudButton>
+        <MudItem xs="12" sm="8">
+            <DateRangeFilter From="Filter.FromDate" To="Filter.ToDate" OnChanged="@OnRangeChanged" />
         </MudItem>
     </MudGrid>
 </MudPaper>
@@ -148,15 +137,22 @@ else if (_response is not null)
             </MudButton>
         </div>
         <MudTable Items="_response.Events" Hover="true" Dense="true" Elevation="0"
-                  FixedHeader="true" Height="500px" Virtualize="true">
+                  FixedHeader="true" Height="500px" Virtualize="true"
+                  Filter="MatchesEventSearch">
+            <ToolBarContent>
+                <MudTextField @bind-Value="_eventSearch" Placeholder="Søk kategori, cause-code…"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Margin="Margin.Dense" Immediate="true" />
+            </ToolBarContent>
             <HeaderContent>
-                <MudTh>Start</MudTh>
-                <MudTh>Slutt</MudTh>
-                <MudTh Style="text-align:right">Varighet (t)</MudTh>
-                <MudTh>Kategori</MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByEventStart"
+                       InitialDirection="SortDirection.Descending">Start</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByEventEnd">Slutt</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEventDuration">Varighet (t)</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByEventCategory">Kategori</MudTableSortLabel></MudTh>
                 <MudTh>Cause</MudTh>
-                <MudTh Style="text-align:right">Tap (MWh)</MudTh>
-                <MudTh Style="text-align:right">Tap (NOK)</MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEventTapMwh">Tap (MWh)</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEventTapNok">Tap (NOK)</MudTableSortLabel></MudTh>
                 <MudTh>Operlog</MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -202,6 +198,24 @@ else if (_response is not null)
     private string? _error;
     private NedetidResponse? _response;
     private string? _csvUrl;
+    private string _eventSearch = string.Empty;
+
+    // Sort-funksjoner for events-tabell (default sortering = Start synkende)
+    private static readonly Func<NedetidEventDto, object> SortByEventStart    = e => e.StartUtc;
+    private static readonly Func<NedetidEventDto, object> SortByEventEnd      = e => e.EndUtc;
+    private static readonly Func<NedetidEventDto, object> SortByEventDuration = e => e.VarighetTimer;
+    private static readonly Func<NedetidEventDto, object> SortByEventCategory = e => e.Kategori;
+    private static readonly Func<NedetidEventDto, object> SortByEventTapMwh   = e => e.TapMwh;
+    private static readonly Func<NedetidEventDto, object> SortByEventTapNok   = e => e.TapNok;
+
+    private bool MatchesEventSearch(NedetidEventDto e)
+    {
+        if (string.IsNullOrWhiteSpace(_eventSearch)) return true;
+        var s = _eventSearch.Trim();
+        return e.Kategori.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || (e.CauseCode?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+            || e.State.Contains(s, StringComparison.OrdinalIgnoreCase);
+    }
     private List<WeeklyPoint> _weeklyTrend = new();
     private int _chartVersion;
 
@@ -240,8 +254,8 @@ else if (_response is not null)
                 _response = Filter.CachedNedetid;
                 BuildCharts(_response!);
                 _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "nedetid",
-                    new DateTimeOffset(Filter.FromDate!.Value.Date, TimeSpan.Zero),
-                    new DateTimeOffset(Filter.ToDate!.Value.Date, TimeSpan.Zero)).ToString();
+                    Filter.FromDate!.Value.ToUtcOffsetSafe(),
+                    Filter.ToDate!.Value.ToUtcOffsetSafe()).ToString();
             }
             else if (Filter.ErKlar)
             {
@@ -265,6 +279,14 @@ else if (_response is not null)
         return Task.CompletedTask;
     }
 
+    /// <summary>Setter perioden fra DateRangeFilter og laster automatisk.</summary>
+    private async Task OnRangeChanged((DateTime From, DateTime To) range)
+    {
+        Filter.FromDate = DateTime.SpecifyKind(range.From, DateTimeKind.Unspecified);
+        Filter.ToDate = DateTime.SpecifyKind(range.To, DateTimeKind.Unspecified);
+        await LoadAsync();
+    }
+
     private async Task LoadAsync()
     {
         if (!Filter.ErKlar) return;
@@ -273,8 +295,8 @@ else if (_response is not null)
         _response = null;
         try
         {
-            var fromUtc = new DateTimeOffset(Filter.FromDate!.Value.Date, TimeSpan.Zero);
-            var toUtc = new DateTimeOffset(Filter.ToDate!.Value.Date, TimeSpan.Zero);
+            var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
+            var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
             _response = await NedetidApi.GetNedetidAsync(Filter.PlantId, fromUtc, toUtc);
             _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "nedetid", fromUtc, toUtc).ToString();
             Filter.StoreNedetid(_response);
@@ -311,6 +333,11 @@ else if (_response is not null)
         _trendOptions = new ApexChartOptions<WeeklyPoint>
         {
             Xaxis = new XAxis { Type = XAxisType.Datetime },
+            // Timer-tall: 1 desimal er nok for ukentlig snitt-varighet
+            Yaxis = new List<YAxis>
+            {
+                new() { Title = new AxisTitle { Text = "Timer" }, DecimalsInFloat = 1 }
+            },
             Tooltip = new Tooltip { X = new TooltipX { Format = "dd MMM yyyy" } },
             Colors = new List<string> { "#E76F51" },
         };

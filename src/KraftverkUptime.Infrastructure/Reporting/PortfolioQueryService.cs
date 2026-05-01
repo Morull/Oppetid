@@ -1,5 +1,6 @@
 using KraftverkUptime.Core.Reporting;
 using KraftverkUptime.Infrastructure.Persistence;
+using KraftverkUptime.Modules.Reporting.CaptureRate;
 using KraftverkUptime.Modules.Reporting.Portefolje;
 using KraftverkUptime.Modules.Reporting.Storage;
 using KraftverkUptime.Modules.Settlement.Persistence;
@@ -26,17 +27,20 @@ public sealed class PortfolioQueryService : IPortfolioQueryService
     private readonly KraftverkDbContext _db;
     private readonly ISettlementImportRecorder _imports;
     private readonly IUptimeReportStore _reports;
+    private readonly ICaptureRateQueryService _captureRate;
     private readonly ILogger<PortfolioQueryService> _log;
 
     public PortfolioQueryService(
         KraftverkDbContext db,
         ISettlementImportRecorder imports,
         IUptimeReportStore reports,
+        ICaptureRateQueryService captureRate,
         ILogger<PortfolioQueryService> log)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _imports = imports ?? throw new ArgumentNullException(nameof(imports));
         _reports = reports ?? throw new ArgumentNullException(nameof(reports));
+        _captureRate = captureRate ?? throw new ArgumentNullException(nameof(captureRate));
         _log = log ?? throw new ArgumentNullException(nameof(log));
     }
 
@@ -78,6 +82,27 @@ public sealed class PortfolioQueryService : IPortfolioQueryService
 
             var kpiDict = report.Kpis.ToDictionary(
                 k => k.Name, k => k.Value, StringComparer.Ordinal);
+
+            // Capture rate beregnes on-demand (er ikke en del av UptimeReport-blob).
+            // Defensiv: hvis CR-kalkulatoren feiler (f.eks. mangler market_prices)
+            // logger vi og fortsetter — KPI-listen viser bare 0 i UI istedenfor å
+            // krasje hele portefølje-spørringen.
+            try
+            {
+                var cr = await _captureRate
+                    .GetForPlantAsync(plant.Id, fromUtc, toUtc, ct)
+                    .ConfigureAwait(false);
+                kpiDict["CapturePrice_NOK_MWh"] = cr.CapturePriceNokMwh;
+                kpiDict["CaptureRate_Times"] = cr.TimesCr;
+                kpiDict["CaptureRate_Dag"] = cr.DagCr;
+                kpiDict["Merverdi_NOK"] = cr.MerverdiNok;
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex,
+                    "Portefølje: capture rate-kalkulasjon feilet for {PlantId}. Fortsetter uten CR-felter.",
+                    plant.Id);
+            }
 
             rows.Add(new PortfolioPlantKpi(
                 PlantId: plant.Id,
