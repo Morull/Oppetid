@@ -78,6 +78,35 @@ public static class AnnotationsEndpoints
             .AllowAnonymous() // TODO: .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<IReadOnlyList<DowntimeCategoryDto>>(StatusCodes.Status200OK);
 
+        rootGroup.MapGet("/categories/all", ListAllCategoriesAsync)
+            .WithName("ListAllAnnotationCategories")
+            .WithSummary("Lister alle nedetidskategorier inkl. inaktive — for admin-skjermen.")
+            .AllowAnonymous()
+            .Produces<IReadOnlyList<DowntimeCategoryDto>>(StatusCodes.Status200OK);
+
+        rootGroup.MapPost("/categories", CreateCategoryAsync)
+            .WithName("CreateAnnotationCategory")
+            .WithSummary("Oppretter en ny brukerdefinert kategori.")
+            .AllowAnonymous()
+            .Produces<DowntimeCategoryDto>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        rootGroup.MapPut("/categories/{id}", UpdateCategoryAsync)
+            .WithName("UpdateAnnotationCategory")
+            .WithSummary("Oppdaterer en eksisterende kategori.")
+            .AllowAnonymous()
+            .Produces<DowntimeCategoryDto>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        rootGroup.MapDelete("/categories/{id}", DeleteCategoryAsync)
+            .WithName("DeleteAnnotationCategory")
+            .WithSummary("Sletter en brukerdefinert kategori (system-kategorier kan ikke slettes).")
+            .AllowAnonymous()
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         return endpoints;
     }
 
@@ -258,6 +287,120 @@ public static class AnnotationsEndpoints
         var dtos = rows.Select(DowntimeCategoryDto.From).ToList();
         return Results.Ok(dtos);
     }
+
+    private static async Task<IResult> ListAllCategoriesAsync(
+        IDowntimeCategoryRepository repo,
+        CancellationToken ct)
+    {
+        var rows = await repo.ListAllAsync(ct).ConfigureAwait(false);
+        var dtos = rows.Select(DowntimeCategoryDto.From).ToList();
+        return Results.Ok(dtos);
+    }
+
+    private static async Task<IResult> CreateCategoryAsync(
+        CreateCategoryRequest request,
+        IDowntimeCategoryRepository repo,
+        CancellationToken ct)
+    {
+        if (request is null)
+        {
+            return Results.Problem(title: "Mangler body",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+        if (string.IsNullOrWhiteSpace(request.Id))
+        {
+            return Results.Problem(title: "Id er påkrevd",
+                detail: "Bruk en stabil slug, f.eks. 'rist_blokkering'.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+        if (string.IsNullOrWhiteSpace(request.DisplayName))
+        {
+            return Results.Problem(title: "DisplayName er påkrevd",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+        if (await repo.GetAsync(request.Id, ct).ConfigureAwait(false) is not null)
+        {
+            return Results.Problem(title: "Kategori finnes allerede",
+                detail: $"Id '{request.Id}' er allerede i bruk.",
+                statusCode: StatusCodes.Status409Conflict);
+        }
+
+        var category = new DowntimeCategory(
+            Id: request.Id.Trim(),
+            DisplayName: request.DisplayName.Trim(),
+            ColorHex: string.IsNullOrWhiteSpace(request.ColorHex) ? "#888888" : request.ColorHex.Trim(),
+            UnitStateOverride: request.UnitStateOverride,
+            SortOrder: request.SortOrder,
+            IsActive: request.IsActive,
+            IsSystem: false);
+        await repo.AddAsync(category, ct).ConfigureAwait(false);
+        return Results.Created(
+            $"/api/v1/annotations/categories/{request.Id}",
+            DowntimeCategoryDto.From(category));
+    }
+
+    private static async Task<IResult> UpdateCategoryAsync(
+        string id,
+        UpdateCategoryRequest request,
+        IDowntimeCategoryRepository repo,
+        CancellationToken ct)
+    {
+        if (request is null)
+        {
+            return Results.Problem(title: "Mangler body",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+        var existing = await repo.GetAsync(id, ct).ConfigureAwait(false);
+        if (existing is null)
+        {
+            return Results.Problem(title: "Kategori ikke funnet",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var updated = existing with
+        {
+            DisplayName = string.IsNullOrWhiteSpace(request.DisplayName) ? existing.DisplayName : request.DisplayName.Trim(),
+            ColorHex = string.IsNullOrWhiteSpace(request.ColorHex) ? existing.ColorHex : request.ColorHex.Trim(),
+            UnitStateOverride = request.UnitStateOverride ?? existing.UnitStateOverride,
+            SortOrder = request.SortOrder ?? existing.SortOrder,
+            IsActive = request.IsActive ?? existing.IsActive,
+        };
+        await repo.UpdateAsync(updated, ct).ConfigureAwait(false);
+        return Results.Ok(DowntimeCategoryDto.From(updated));
+    }
+
+    private static async Task<IResult> DeleteCategoryAsync(
+        string id,
+        IDowntimeCategoryRepository repo,
+        CancellationToken ct)
+    {
+        try
+        {
+            await repo.DeleteAsync(id, ct).ConfigureAwait(false);
+            return Results.NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.Problem(title: "Kan ikke slette",
+                detail: ex.Message,
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+    }
+
+    public sealed record CreateCategoryRequest(
+        string Id,
+        string DisplayName,
+        string? ColorHex,
+        UnitState UnitStateOverride,
+        int SortOrder,
+        bool IsActive);
+
+    public sealed record UpdateCategoryRequest(
+        string? DisplayName,
+        string? ColorHex,
+        UnitState? UnitStateOverride,
+        int? SortOrder,
+        bool? IsActive);
 
     // ---- Helpers ---------------------------------------------------------
 

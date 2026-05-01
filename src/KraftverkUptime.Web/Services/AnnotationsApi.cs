@@ -40,6 +40,65 @@ public sealed class AnnotationsApi
         return items ?? (IReadOnlyList<AnnotationCategoryDto>)Array.Empty<AnnotationCategoryDto>();
     }
 
+    /// <summary>Henter alle kategorier inkl. inaktive — for admin-skjermen.</summary>
+    public async Task<IReadOnlyList<AnnotationCategoryDto>> ListAllCategoriesAsync(CancellationToken ct = default)
+    {
+        var items = await _http
+            .GetFromJsonAsync<List<AnnotationCategoryDto>>("api/v1/annotations/categories/all", JsonOptions, ct)
+            .ConfigureAwait(false);
+        return items ?? (IReadOnlyList<AnnotationCategoryDto>)Array.Empty<AnnotationCategoryDto>();
+    }
+
+    public async Task<AnnotationCategoryDto> CreateCategoryAsync(
+        string id, string displayName, string colorHex,
+        string unitStateOverride, int sortOrder, bool isActive,
+        CancellationToken ct = default)
+    {
+        var body = new { id, displayName, colorHex, unitStateOverride, sortOrder, isActive };
+        var resp = await _http.PostAsJsonAsync("api/v1/annotations/categories", body, JsonOptions, ct)
+            .ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<AnnotationCategoryDto>(JsonOptions, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Tom respons fra create-category.");
+    }
+
+    public async Task<AnnotationCategoryDto> UpdateCategoryAsync(
+        string id, string? displayName, string? colorHex,
+        string? unitStateOverride, int? sortOrder, bool? isActive,
+        CancellationToken ct = default)
+    {
+        var body = new { displayName, colorHex, unitStateOverride, sortOrder, isActive };
+        var url = $"api/v1/annotations/categories/{Uri.EscapeDataString(id)}";
+        var resp = await _http.PutAsJsonAsync(url, body, JsonOptions, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<AnnotationCategoryDto>(JsonOptions, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Tom respons fra update-category.");
+    }
+
+    public async Task DeleteCategoryAsync(string id, CancellationToken ct = default)
+    {
+        var url = new Uri($"api/v1/annotations/categories/{Uri.EscapeDataString(id)}", UriKind.Relative);
+        var resp = await _http.DeleteAsync(url, ct).ConfigureAwait(false);
+        if (resp.StatusCode == HttpStatusCode.BadRequest)
+        {
+            // Server svarer 400 ved system-kategori eller referert kategori.
+            // Les ut detail-feltet til en exception som UI kan vise.
+            var problem = await resp.Content
+                .ReadFromJsonAsync<DeleteCategoryProblem>(JsonOptions, ct)
+                .ConfigureAwait(false);
+            throw new InvalidOperationException(problem?.Detail ?? "Kunne ikke slette kategori.");
+        }
+        resp.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
+    /// ProblemDetails-payload fra backend ved 400 BadRequest. Public slik at
+    /// JSON-deserialisering kan reflektere over typen — CA1812 trigget på
+    /// internal record som "aldri instansiert" siden EF deserialisering
+    /// regnes som ikke-instansiering av analysatoren.
+    /// </summary>
+    public sealed record DeleteCategoryProblem(string? Title, string? Detail);
+
     public async Task<IReadOnlyList<AnnotationDto>> ListAsync(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
     {

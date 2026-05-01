@@ -16,4 +16,22 @@ public interface IDowntimeCategoryRepository
 
     /// <summary>Henter én kategori på Id (slug). Null hvis ikke finnes.</summary>
     Task<DowntimeCategory?> GetAsync(string id, CancellationToken ct);
+
+    /// <summary>Oppretter en ny bruker-definert kategori (IsSystem=false).</summary>
+    Task AddAsync(DowntimeCategory category, CancellationToken ct);
+
+    /// <summary>
+    /// Oppdaterer en eksisterende kategori. Selve <c>Id</c> er immutable.
+    /// IsSystem-kategorier kan oppdateres mht. DisplayName/Color/SortOrder/
+    /// IsActive, men ikke endre UnitStateOverride (mapping er fundamental).
+    /// </summary>
+    Task UpdateAsync(DowntimeCategory category, CancellationToken ct);
+
+    /// <summary>
+    /// Sletter en bruker-definert kategori. IsSystem-kategorier kan ikke
+    /// slettes — bruk IsActive=false for å gjemme dem fra UI istedenfor.
+    /// Kaster <see cref="InvalidOperationException"/> hvis kategorien er
+    /// referert til av en eller flere annoteringer.
+    /// </summary>
+    Task DeleteAsync(string id, CancellationToken ct);
 }
