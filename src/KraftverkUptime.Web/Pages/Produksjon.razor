@@ -147,6 +147,7 @@ else if (_data is not null)
                 <MudTable Items="_data.Monthly" Hover="true" Dense="true" Elevation="0">
                     <HeaderContent>
                         <MudTh>Måned</MudTh>
+                        <MudTh Style="text-align:right">Timer prod.</MudTh>
                         <MudTh Style="text-align:right">Elhub (MWh)</MudTh>
                         <MudTh Style="text-align:right">Plan (MWh)</MudTh>
                         <MudTh Style="text-align:right">Plan-treff</MudTh>
@@ -157,6 +158,19 @@ else if (_data is not null)
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd>@($"{context.Year}-{context.Month:D2}")</MudTd>
+                        <MudTd Style="text-align:right">
+                            <div class="d-flex align-center justify-end" style="gap:4px;">
+                                <span>@context.AntallTimerProduksjon</span>
+                                @if (ErOverlopRisiko(context))
+                                {
+                                    <MudTooltip Text="Mange produksjonstimer + lav snittpris = sannsynlig overløp-risiko (måtte produsere for å unngå at magasinet flommet over)">
+                                        <MudIcon Icon="@Icons.Material.Filled.WaterDrop"
+                                                 Color="MudBlazor.Color.Warning"
+                                                 Size="MudBlazor.Size.Small" />
+                                    </MudTooltip>
+                                }
+                            </div>
+                        </MudTd>
                         <MudTd Style="text-align:right">@context.ElhubMwh.ToString("F0")</MudTd>
                         <MudTd Style="text-align:right">@context.PlanMwh.ToString("F0")</MudTd>
                         <MudTd Style="text-align:right">
@@ -294,6 +308,18 @@ else if (_data is not null)
     }
 
     // -- Tolknings-helpere --
+
+    /// <summary>
+    /// Heuristikk for overløp-risiko: mange produksjonstimer + svak topp-pris-
+    /// utnyttelse antyder at anlegget måtte produsere uansett pris for å unngå
+    /// at magasinet flommet over. Da er svakt CR/merverdi ikke Hydrogrids feil
+    /// — det er en hydrologisk realitet drifts-leder kan informere ledelsen om.
+    /// </summary>
+    private static bool ErOverlopRisiko(ProduksjonMonthlyDto m)
+    {
+        // ~70 % av timene i en standard måned (720 t × 0.7 ≈ 500)
+        return m.AntallTimerProduksjon >= 500 && m.AndelProdIToppKvartil < 0.22;
+    }
 
     private string TimingTolkning(double andel)
     {

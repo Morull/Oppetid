@@ -24,7 +24,7 @@ public static class ProduksjonAnalyseCalculator
         ArgumentNullException.ThrowIfNull(hours);
 
         var (planTreff, andelTopp, andelBunn, hgMerverdi, faktiskMerverdi, snittSpot,
-             totalElhub, totalPlan, antTimerMedPlan)
+             totalElhub, totalPlan, antTimerMedPlan, antTimerProduksjon)
             = ComputeAggregate(hours);
 
         // Per-måned: re-bruker samme aggregat-funksjon på filtrert delmengde
@@ -34,13 +34,14 @@ public static class ProduksjonAnalyseCalculator
             .Select(g =>
             {
                 var rows = g.ToList();
-                var (mt, mTopp, _, mHg, mFaktisk, mSnittSpot, mElhub, mPlan, _)
+                var (mt, mTopp, _, mHg, mFaktisk, mSnittSpot, mElhub, mPlan, _, mProd)
                     = ComputeAggregate(rows);
                 return new ProduksjonMonthly(
                     Year: g.Key.Year,
                     Month: g.Key.Month,
                     ElhubMwh: mElhub,
                     PlanMwh: mPlan,
+                    AntallTimerProduksjon: mProd,
                     PlanTreffProsent: mt,
                     AndelProdIToppKvartil: mTopp,
                     HydrogridMerverdiNok: mHg,
@@ -63,6 +64,7 @@ public static class ProduksjonAnalyseCalculator
             ToUtc: toUtc,
             AntallTimer: hours.Count,
             AntallTimerMedPlan: antTimerMedPlan,
+            AntallTimerProduksjon: antTimerProduksjon,
             TotalElhubMwh: totalElhub,
             TotalPlanMwh: totalPlan,
             PlanTreffProsent: planTreff,
@@ -78,17 +80,22 @@ public static class ProduksjonAnalyseCalculator
     private static (
         double planTreff, double andelTopp, double andelBunn,
         double hgMerverdi, double faktiskMerverdi, double snittSpot,
-        double totalElhub, double totalPlan, int antTimerMedPlan)
+        double totalElhub, double totalPlan, int antTimerMedPlan,
+        int antTimerProduksjon)
         ComputeAggregate(IReadOnlyList<HourlyInput> rows)
     {
         if (rows.Count == 0)
         {
-            return (0, 0, 0, 0, 0, 0, 0, 0, 0);
+            return (0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
 
         // 1. Plan-treff: 1 - Σ|Elhub - Plan| / Σ|Plan| for timer med Plan > 0
+        // Tell også produksjonstimer (Elhub > 0) — høy verdi i kombinasjon med
+        // lav snittpris er en sterk overløp-risiko-indikator (vi måtte produsere
+        // for å unngå at magasinet flommet over).
         double sumAbsAvvik = 0, sumPlan = 0, sumElhub = 0;
         var antTimerMedPlan = 0;
+        var antTimerProduksjon = 0;
         foreach (var r in rows)
         {
             if (r.PlanMwh.HasValue && r.ElhubMwh.HasValue && r.PlanMwh.Value > 0)
@@ -97,7 +104,11 @@ public static class ProduksjonAnalyseCalculator
                 sumPlan += r.PlanMwh.Value;
                 antTimerMedPlan++;
             }
-            if (r.ElhubMwh.HasValue) sumElhub += r.ElhubMwh.Value;
+            if (r.ElhubMwh.HasValue)
+            {
+                sumElhub += r.ElhubMwh.Value;
+                if (r.ElhubMwh.Value > 0) antTimerProduksjon++;
+            }
         }
         var planTreff = sumPlan > 0
             ? Math.Clamp(1.0 - sumAbsAvvik / sumPlan, 0.0, 1.0)
@@ -152,6 +163,6 @@ public static class ProduksjonAnalyseCalculator
         }
 
         return (planTreff, andelTopp, andelBunn, hgMerverdi, faktiskMerverdi,
-                snittSpot, sumElhub, sumPlan, antTimerMedPlan);
+                snittSpot, sumElhub, sumPlan, antTimerMedPlan, antTimerProduksjon);
     }
 }
