@@ -65,7 +65,7 @@ else if (_data is not null)
                               Value="@(_data.PlanTreffProsent * 100)"
                               PreviousValue="@(_previous?.PlanTreffProsent * 100)"
                               Format="F1" Unit="%"
-                              SubText="@($"Σ avvik / Σ plan over {_data.AntallTimerMedPlan} timer")"
+                              SubText="@($"1 − MAE/Σplan over {_data.AntallTimerMedPlan} timer med plan > 0")"
                               HigherIsBetter="true" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
@@ -73,7 +73,7 @@ else if (_data is not null)
                               Value="@(_data.AndelProdIToppKvartil * 100)"
                               PreviousValue="@(_previous?.AndelProdIToppKvartil * 100)"
                               Format="F1" Unit="%"
-                              SubText="@TimingTolkning(_data.AndelProdIToppKvartil)"
+                              SubText="@($"MWh-andel i øverste 25 % spot-timer ({(_data.AndelTimerProdIToppKvartil * 100):F0} % av drifts-timer). Naiv baseline = 25 %.")"
                               HigherIsBetter="true" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
@@ -190,6 +190,7 @@ else if (_data is not null)
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortPlan">Plan (MWh)</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortPlanTreff">Plan-treff</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortToppPris">Topp-pris-andel</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortBunnPris">Bunn-pris-andel</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortHgMerverdi">Hydrogrid-merverdi</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortFaktiskMerverdi">Faktisk merverdi</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortSnittSpot">Snitt-spot</MudTableSortLabel></MudTh>
@@ -236,6 +237,13 @@ else if (_data is not null)
                                 @((context.AndelProdIToppKvartil * 100).ToString("F0")) %
                             </span>
                         </MudTd>
+                        <MudTd Style="text-align:right">
+                            @* Høy bunn-andel = produserte mest når prisen var lav. Hvis bunn > topp er det
+                               et tydelig drifts-flagg (overløp-tvang eller minstevannføring). *@
+                            <span style="@($"color: {(context.AndelProdIBunnKvartil > context.AndelProdIToppKvartil ? "#E76F51" : "inherit")};")">
+                                @((context.AndelProdIBunnKvartil * 100).ToString("F0")) %
+                            </span>
+                        </MudTd>
                         <MudTd Style="text-align:right">@FormatNokSigned(context.HydrogridMerverdiNok)</MudTd>
                         <MudTd Style="text-align:right">@FormatNokSigned(context.FaktiskMerverdiNok)</MudTd>
                         <MudTd Style="text-align:right">@context.SnittSpotprisNokMwh.ToString("F0")</MudTd>
@@ -280,6 +288,7 @@ else if (_data is not null)
     private readonly Func<ProduksjonMonthlyDto, object> _sortPlan = m => m.PlanMwh;
     private readonly Func<ProduksjonMonthlyDto, object> _sortPlanTreff = m => m.PlanTreffProsent;
     private readonly Func<ProduksjonMonthlyDto, object> _sortToppPris = m => m.AndelProdIToppKvartil;
+    private readonly Func<ProduksjonMonthlyDto, object> _sortBunnPris = m => m.AndelProdIBunnKvartil;
     private readonly Func<ProduksjonMonthlyDto, object> _sortHgMerverdi = m => m.HydrogridMerverdiNok;
     private readonly Func<ProduksjonMonthlyDto, object> _sortFaktiskMerverdi = m => m.FaktiskMerverdiNok;
     private readonly Func<ProduksjonMonthlyDto, object> _sortSnittSpot = m => m.SnittSpotprisNokMwh;
@@ -472,14 +481,15 @@ else if (_data is not null)
         return "lavt nivå — naturlig variasjon";
     }
 
-    private string TimingTolkning(double andel)
-    {
-        var pct = andel * 100;
-        if (andel >= 0.30) return $"god timing — {pct:F0} % er klart over 25 % baseline";
-        if (andel >= 0.27) return $"litt over baseline";
-        if (andel >= 0.23) return "ingen tydelig timing-effekt";
-        return $"svak timing — produserer mest når prisen er lav";
-    }
+    private string TimingTolkning(double andelTopp) =>
+        andelTopp switch
+        {
+            >= 0.40 => "Sterkt — produksjonen veies tungt i topp-pris-timer",
+            >= 0.30 => "Bra — produksjonen samsvarer godt med høye priser",
+            >= 0.25 => "Nøytralt — jevn fordeling (baseline = 25 %)",
+            >= 0.15 => "Svak — produksjonen vektes mot lavere priser",
+            _ => "Dårlig — produserte hovedsakelig i lavpris-perioder"
+        };
 
     private string FaktiskVsHydrogrid()
     {
@@ -502,36 +512,29 @@ else if (_data is not null)
     {
         if (_data is null || _data.AntallTimerMedPlan == 0) return string.Empty;
 
-        var planTreff = _data.PlanTreffProsent;
-        var topp = _data.AndelProdIToppKvartil;
+        var planTreffStr = _data.PlanTreffProsent >= 0.85 ? "godt på plan" :
+                           _data.PlanTreffProsent >= 0.65 ? "moderate avvik fra planen" :
+                           "store avvik fra planen";
+        var timingStr = _data.AndelProdIToppKvartil >= 0.30 ? "Hydrogrids timing er sterk."
+                      : _data.AndelProdIToppKvartil >= 0.25 ? "Hydrogrids timing er nøytral."
+                      : "Hydrogrids timing er svak — produserer mest når prisen er lav. Sjekk om dette skyldes overløpsrisiko eller minstevannføring.";
+        var merverdiStr = _data.HydrogridMerverdiNok >= 0
+            ? $"Hydrogrid-merverdien er positiv ({_data.HydrogridMerverdiNok:N0} NOK)."
+            : $"Hydrogrid-merverdien er negativ ({_data.HydrogridMerverdiNok:N0} NOK) — planen plasserte volum under snittpris.";
+
+        // Behold del3 for "vi vs. plan"-sammenligningen
         var hg = _data.HydrogridMerverdiNok;
         var faktisk = _data.FaktiskMerverdiNok;
-
-        var del1 = planTreff switch
-        {
-            >= 0.90 => "Operasjonen følger Hydrogrids plan svært tett.",
-            >= 0.75 => "Operasjonen følger planen rimelig bra.",
-            >= 0.60 => "Det er moderate avvik fra planen.",
-            _       => "Store avvik fra planen — sjekk om dette skyldes nedetid eller manuelle overstyringer."
-        };
-
-        var del2 = topp switch
-        {
-            >= 0.30 => "Hydrogrid treffer godt på de beste prisperiodene.",
-            >= 0.27 => "Hydrogrids timing er litt bedre enn naiv spreding.",
-            >= 0.23 => "Hydrogrids timing-effekt er marginal.",
-            _       => "Hydrogrids timing er svak — produserer mest når prisen er lav."
-        };
-
         var del3 = (hg, faktisk) switch
         {
             ( > 0, _) when faktisk > hg => $"Vi tjente {faktisk - hg:N0} NOK mer enn Hydrogrids plan tilsa.",
             ( > 0, _) when faktisk < hg => $"Vi mistet {hg - faktisk:N0} NOK ved å avvike fra planen.",
             ( > 0, _) => "Plan og faktisk var i praksis like.",
-            _ => "Hydrogrid-merverdien er ikke positiv i perioden."
+            _ => string.Empty,
         };
 
-        return $"{del1} {del2} {del3}";
+        var trailing = string.IsNullOrEmpty(del3) ? "" : $" {del3}";
+        return $"Det er {planTreffStr}. {timingStr} {merverdiStr}{trailing}";
     }
 
     private static readonly System.Globalization.NumberFormatInfo NorskTall = new()

@@ -243,6 +243,8 @@ public sealed record ProduksjonAnalyseDto(
     double PlanTreffProsent,
     double AndelProdIToppKvartil,
     double AndelProdIBunnKvartil,
+    double AndelTimerProdIToppKvartil,
+    double AndelTimerProdIBunnKvartil,
     double KapasitetsutnyttelseProsent,
     double OverlopProsent,
     double HydrogridMerverdiNok,
@@ -269,6 +271,9 @@ public sealed record ProduksjonMonthlyDto(
     double OverlopProsent,
     double PlanTreffProsent,
     double AndelProdIToppKvartil,
+    double AndelProdIBunnKvartil,
+    double AndelTimerProdIToppKvartil,
+    double AndelTimerProdIBunnKvartil,
     double HydrogridMerverdiNok,
     double FaktiskMerverdiNok,
     double SnittSpotprisNokMwh);

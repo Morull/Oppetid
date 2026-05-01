@@ -27,9 +27,13 @@ public interface IProduksjonAnalyseService
 /// Aggregert analyse-resultat for en periode.
 ///   PlanTreffProsent: 1 − Σ|Elhub − Plan| / Σ|Plan| for timer med Plan &gt; 0.
 ///     1.0 = perfekt treff, 0.0 = avvik 100 % i snitt. Klippet til [0, 1].
-///   AndelProdIToppKvartil: andel av Elhub-MWh i øverste 25 % spotpris-timer.
-///     0.25 = "ingen timing-effekt", &gt; 0.25 = god timing.
-///   AndelProdIBunnKvartil: andel i bunn-25 % av prisen. Lavere = bedre.
+///   AndelProdIToppKvartil: MWh-volum-andel i øverste 25 % spotpris-timer.
+///     0.25 = "ingen timing-effekt" (volum-perspektiv).
+///   AndelProdIBunnKvartil: MWh-volum-andel i bunn-25 % av prisen.
+///   AndelTimerProdIToppKvartil: drifts-time-andel i øverste 25 % spot —
+///     "av timene vi produserte, hvor mange falt i topp-pris-vinduet?"
+///     Komplementært til volum-andelen ovenfor.
+///   AndelTimerProdIBunnKvartil: drifts-time-andel i bunn-25 %.
 ///   HydrogridMerverdiNok: Σ(Plan_t × spot_t) − Σ(Plan_t) × snitt_spot.
 ///     Positiv = Hydrogrid flyttet produksjon til høypristimer.
 ///   FaktiskMerverdiNok: tilsvarende for Elhub. Sammenlign mot
@@ -48,6 +52,8 @@ public sealed record ProduksjonAnalyseResult(
     double PlanTreffProsent,
     double AndelProdIToppKvartil,
     double AndelProdIBunnKvartil,
+    double AndelTimerProdIToppKvartil,
+    double AndelTimerProdIBunnKvartil,
     double KapasitetsutnyttelseProsent,
     double OverlopProsent,
     double HydrogridMerverdiNok,
@@ -75,6 +81,9 @@ public sealed record ProduksjonMonthly(
     double OverlopProsent,
     double PlanTreffProsent,
     double AndelProdIToppKvartil,
+    double AndelProdIBunnKvartil,
+    double AndelTimerProdIToppKvartil,
+    double AndelTimerProdIBunnKvartil,
     double HydrogridMerverdiNok,
     double FaktiskMerverdiNok,
     double SnittSpotprisNokMwh);

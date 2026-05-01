@@ -26,7 +26,9 @@ public static class ProduksjonAnalyseCalculator
         ArgumentNullException.ThrowIfNull(hours);
         var overflow = overflowHours ?? new HashSet<DateTimeOffset>();
 
-        var (planTreff, andelTopp, andelBunn, hgMerverdi, faktiskMerverdi, snittSpot,
+        var (planTreff, andelTopp, andelBunn,
+             andelTimerTopp, andelTimerBunn,
+             hgMerverdi, faktiskMerverdi, snittSpot,
              totalElhub, totalPlan, antTimerMedPlan, antTimerProduksjon)
             = ComputeAggregate(hours);
 
@@ -44,7 +46,8 @@ public static class ProduksjonAnalyseCalculator
             .Select(g =>
             {
                 var rows = g.ToList();
-                var (mt, mTopp, _, mHg, mFaktisk, mSnittSpot, mElhub, mPlan, _, mProd)
+                var (mt, mTopp, mBunn, mTimerTopp, mTimerBunn,
+                     mHg, mFaktisk, mSnittSpot, mElhub, mPlan, _, mProd)
                     = ComputeAggregate(rows);
                 var mOverlop = rows.Count(h => overflow.Contains(TruncateToHour(h.TimeUtc)));
                 var mKap = rows.Count > 0 ? (double)mProd / rows.Count : 0;
@@ -60,6 +63,9 @@ public static class ProduksjonAnalyseCalculator
                     OverlopProsent: mOvrPct,
                     PlanTreffProsent: mt,
                     AndelProdIToppKvartil: mTopp,
+                    AndelProdIBunnKvartil: mBunn,
+                    AndelTimerProdIToppKvartil: mTimerTopp,
+                    AndelTimerProdIBunnKvartil: mTimerBunn,
                     HydrogridMerverdiNok: mHg,
                     FaktiskMerverdiNok: mFaktisk,
                     SnittSpotprisNokMwh: mSnittSpot);
@@ -87,6 +93,8 @@ public static class ProduksjonAnalyseCalculator
             PlanTreffProsent: planTreff,
             AndelProdIToppKvartil: andelTopp,
             AndelProdIBunnKvartil: andelBunn,
+            AndelTimerProdIToppKvartil: andelTimerTopp,
+            AndelTimerProdIBunnKvartil: andelTimerBunn,
             KapasitetsutnyttelseProsent: kapasitetsutnyttelse,
             OverlopProsent: overlopProsent,
             HydrogridMerverdiNok: hgMerverdi,
@@ -105,7 +113,9 @@ public static class ProduksjonAnalyseCalculator
     }
 
     private static (
-        double planTreff, double andelTopp, double andelBunn,
+        double planTreff,
+        double andelTopp, double andelBunn,
+        double andelTimerTopp, double andelTimerBunn,
         double hgMerverdi, double faktiskMerverdi, double snittSpot,
         double totalElhub, double totalPlan, int antTimerMedPlan,
         int antTimerProduksjon)
@@ -113,7 +123,7 @@ public static class ProduksjonAnalyseCalculator
     {
         if (rows.Count == 0)
         {
-            return (0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            return (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
 
         // 1. Plan-treff: 1 - Σ|Elhub - Plan| / Σ|Plan| for timer med Plan > 0
@@ -141,10 +151,15 @@ public static class ProduksjonAnalyseCalculator
             ? Math.Clamp(1.0 - sumAbsAvvik / sumPlan, 0.0, 1.0)
             : 0;
 
-        // 2. Andel produksjon i topp-kvartil av spot
-        // Sortér timer på spot, plukk topp/bunn-25 % av timene, summer Elhub i de
+        // 2. Andel produksjon i topp-/bunn-kvartil av spot
+        // Sortér timer på spot, plukk topp/bunn-25 % av timene, og beregn både:
+        //   - Volum-andel (sum Elhub-MWh i kvartilen / total Elhub-MWh)
+        //   - Tids-andel (antall produksjons-timer i kvartilen / antall produksjons-
+        //     timer totalt) — komplementær til volum, svarer på "av timene vi
+        //     produserte, hvor mange falt i topp/bunn-vinduet?"
         var medSpot = rows.Where(r => r.SpotprisNokMwh.HasValue).ToList();
         double andelTopp = 0, andelBunn = 0, snittSpot = 0;
+        double andelTimerTopp = 0, andelTimerBunn = 0;
         if (medSpot.Count > 0)
         {
             snittSpot = medSpot.Average(r => r.SpotprisNokMwh!.Value);
@@ -153,11 +168,25 @@ public static class ProduksjonAnalyseCalculator
             // Topp 25 % = de siste i sortert liste
             var toppTimer = sortertEtterSpot.TakeLast(kvartilSize).ToHashSet();
             var bunnTimer = sortertEtterSpot.Take(kvartilSize).ToHashSet();
+
+            // Volum-andel
             var elhubITopp = toppTimer.Sum(r => r.ElhubMwh ?? 0);
             var elhubIBunn = bunnTimer.Sum(r => r.ElhubMwh ?? 0);
             var totalElhubMedSpot = medSpot.Sum(r => r.ElhubMwh ?? 0);
             andelTopp = totalElhubMedSpot > 0 ? elhubITopp / totalElhubMedSpot : 0;
             andelBunn = totalElhubMedSpot > 0 ? elhubIBunn / totalElhubMedSpot : 0;
+
+            // Tids-andel (drifts-leders intuisjon: "av timene vi kjørte, hvor
+            // mange falt i topp-pris-vinduet?"). Bruker bare timer der vi
+            // faktisk produserte.
+            var antTimerProdMedSpot = medSpot.Count(r => (r.ElhubMwh ?? 0) > 0);
+            if (antTimerProdMedSpot > 0)
+            {
+                var antProdITopp = toppTimer.Count(r => (r.ElhubMwh ?? 0) > 0);
+                var antProdIBunn = bunnTimer.Count(r => (r.ElhubMwh ?? 0) > 0);
+                andelTimerTopp = (double)antProdITopp / antTimerProdMedSpot;
+                andelTimerBunn = (double)antProdIBunn / antTimerProdMedSpot;
+            }
         }
 
         // 3. Hydrogrid-merverdi vs. flat baseline:
@@ -189,7 +218,9 @@ public static class ProduksjonAnalyseCalculator
             faktiskMerverdi = sumElhubRevenue - sumElhubMedSpot * snittSpot;
         }
 
-        return (planTreff, andelTopp, andelBunn, hgMerverdi, faktiskMerverdi,
+        return (planTreff, andelTopp, andelBunn,
+                andelTimerTopp, andelTimerBunn,
+                hgMerverdi, faktiskMerverdi,
                 snittSpot, sumElhub, sumPlan, antTimerMedPlan, antTimerProduksjon);
     }
 }
