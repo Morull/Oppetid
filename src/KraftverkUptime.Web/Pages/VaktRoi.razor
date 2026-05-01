@@ -246,8 +246,8 @@ else if (_response is not null)
                 _response = Filter.CachedVaktRoi;
                 BuildCharts(_response!);
                 _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "vakt-roi",
-                    new DateTimeOffset(Filter.FromDate!.Value.Date, TimeSpan.Zero),
-                    new DateTimeOffset(Filter.ToDate!.Value.Date, TimeSpan.Zero)).ToString();
+                    Filter.FromDate!.Value.ToUtcOffsetSafe(),
+                    Filter.ToDate!.Value.ToUtcOffsetSafe()).ToString();
             }
             else if (Filter.ErKlar)
             {
@@ -286,8 +286,8 @@ else if (_response is not null)
         _response = null;
         try
         {
-            var fromUtc = new DateTimeOffset(Filter.FromDate!.Value.Date, TimeSpan.Zero);
-            var toUtc = new DateTimeOffset(Filter.ToDate!.Value.Date, TimeSpan.Zero);
+            var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
+            var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
             _response = await NedetidApi.GetVaktRoiAsync(Filter.PlantId, fromUtc, toUtc, _kapasitetsfaktor);
             _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "vakt-roi", fromUtc, toUtc).ToString();
             Filter.StoreVaktRoi(_response);

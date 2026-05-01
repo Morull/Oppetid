@@ -52,9 +52,10 @@ public sealed class AnnotationsApi
     public async Task<AnnotationCategoryDto> CreateCategoryAsync(
         string id, string displayName, string colorHex,
         string unitStateOverride, int sortOrder, bool isActive,
+        string? description,
         CancellationToken ct = default)
     {
-        var body = new { id, displayName, colorHex, unitStateOverride, sortOrder, isActive };
+        var body = new { id, displayName, colorHex, unitStateOverride, sortOrder, isActive, description };
         var resp = await _http.PostAsJsonAsync("api/v1/annotations/categories", body, JsonOptions, ct)
             .ConfigureAwait(false);
         resp.EnsureSuccessStatusCode();
@@ -65,9 +66,10 @@ public sealed class AnnotationsApi
     public async Task<AnnotationCategoryDto> UpdateCategoryAsync(
         string id, string? displayName, string? colorHex,
         string? unitStateOverride, int? sortOrder, bool? isActive,
+        string? description,
         CancellationToken ct = default)
     {
-        var body = new { displayName, colorHex, unitStateOverride, sortOrder, isActive };
+        var body = new { displayName, colorHex, unitStateOverride, sortOrder, isActive, description };
         var url = $"api/v1/annotations/categories/{Uri.EscapeDataString(id)}";
         var resp = await _http.PutAsJsonAsync(url, body, JsonOptions, ct).ConfigureAwait(false);
         resp.EnsureSuccessStatusCode();
@@ -214,7 +216,8 @@ public sealed record AnnotationCategoryDto(
     string UnitStateOverride,
     int SortOrder,
     bool IsActive,
-    bool IsSystem);
+    bool IsSystem,
+    string? Description = null);
 
 public sealed record AnnotationOverlapConflictDto(
     string Message,

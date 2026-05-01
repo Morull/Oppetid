@@ -265,8 +265,8 @@ else if (_aggregate is not null)
         _daily = Array.Empty<DailyCaptureRateDto>();
         try
         {
-            var fromUtc = new DateTimeOffset(_fromDate.Value.Date, TimeSpan.Zero);
-            var toUtc = new DateTimeOffset(_toDate.Value.Date, TimeSpan.Zero);
+            var fromUtc = _fromDate.ToUtcOffsetSafe();
+            var toUtc = _toDate.ToUtcOffsetSafe();
 
             var aggregateTask = NedetidApi.GetCaptureRateAsync(_plantId, fromUtc, toUtc);
             var monthlyTask = NedetidApi.GetCaptureRateMonthlyAsync(_plantId, fromUtc, toUtc);

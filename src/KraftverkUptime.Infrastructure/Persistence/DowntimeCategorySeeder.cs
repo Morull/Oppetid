@@ -24,7 +24,10 @@ public static class DowntimeCategorySeeder
             UnitStateOverride = UnitState.MaintenanceOutage,
             SortOrder = 10,
             IsActive = true,
-            IsSystem = true
+            IsSystem = true,
+            Description = "Forhåndsavtalt vedlikehold som er varslet inn — turbinservice, "
+                + "smøring, kontrollsjekk, vannveis-tømming. Telles som MaintenanceOutage "
+                + "(EAF reduseres, ikke FOR/AF). Bruk når jobben er planlagt > 24t i forveien."
         },
         new()
         {
@@ -34,7 +37,10 @@ public static class DowntimeCategorySeeder
             UnitStateOverride = UnitState.PlannedOutage,
             SortOrder = 20,
             IsActive = true,
-            IsSystem = true
+            IsSystem = true,
+            Description = "Større planlagt revisjon — typisk årlig generator-revisjon, "
+                + "dam-inspeksjon eller annen langvarig stans avtalt med Statnett. "
+                + "Telles som PlannedOutage (EAF reduseres, ikke FOR/AF)."
         },
         new()
         {
@@ -44,7 +50,11 @@ public static class DowntimeCategorySeeder
             UnitStateOverride = UnitState.ForcedOutage,
             SortOrder = 30,
             IsActive = true,
-            IsSystem = true
+            IsSystem = true,
+            Description = "Uvarslet havari på selve anlegget — generator-feil, lager-skade, "
+                + "lukke-svikt, ledeapparat-stuck, hydraulikk-lekkasje, kjølesystem-svikt. "
+                + "Telles som ForcedOutage (drar ned både FOR og AF). Default-valg når "
+                + "klassifikatoren har plukket opp ForcedOutage og du skal annotere årsaken."
         },
         new()
         {
@@ -54,7 +64,11 @@ public static class DowntimeCategorySeeder
             UnitStateOverride = UnitState.ForcedOutage,
             SortOrder = 40,
             IsActive = true,
-            IsSystem = true
+            IsSystem = true,
+            Description = "Anlegget gikk ned fordi nettet falt ut — typisk varslet "
+                + "spenningssprang, kortslutning på linje, brytertripp eller Statnett-"
+                + "anmodning om effektreduksjon. Skiller seg fra 'fault' ved at årsaken "
+                + "ligger utenfor anleggets kontroll, men telles fortsatt som ForcedOutage."
         },
         new()
         {
@@ -64,7 +78,11 @@ public static class DowntimeCategorySeeder
             UnitStateOverride = UnitState.ResourceUnavailable,
             SortOrder = 50,
             IsActive = true,
-            IsSystem = true
+            IsSystem = true,
+            Description = "Ekstremvær som forhindrer drift — flom (overløp som ikke kan "
+                + "passere turbin), frost/is i inntak, lyn-tripp, stormskade på kraftlinje. "
+                + "Telles som ResourceUnavailable (gir ikke FOR-utslag). Skiller seg fra "
+                + "'resource' ved at det er en kortvarig hendelse, ikke kronisk vannmangel."
         },
         new()
         {
@@ -74,7 +92,11 @@ public static class DowntimeCategorySeeder
             UnitStateOverride = UnitState.ResourceUnavailable,
             SortOrder = 60,
             IsActive = true,
-            IsSystem = true
+            IsSystem = true,
+            Description = "Anlegget kunne ikke produsere fordi det var for lite vann i "
+                + "magasinet — typisk tørke om sommeren, eller bevisst sparing inn mot "
+                + "vinter. Telles som ResourceUnavailable (gir ikke FOR-utslag — det er "
+                + "ingen feil, bare manglende ressurs)."
         },
         new()
         {
@@ -84,7 +106,10 @@ public static class DowntimeCategorySeeder
             UnitStateOverride = UnitState.ForcedOutage,
             SortOrder = 90,
             IsActive = true,
-            IsSystem = true
+            IsSystem = true,
+            Description = "Catch-all for hendelser som ikke passer i de andre kategoriene. "
+                + "Skriv en tydelig kommentar i annoteringa slik at det er sporbart. "
+                + "Vurder å lage en egen kategori hvis denne typen hendelser gjentar seg."
         }
     ];
 
@@ -135,6 +160,31 @@ public static class DowntimeCategorySeeder
         {
             logger.LogDebug("Default downtime categories already present, skipping seed.");
         }
+
+        // Idempotent: fyll inn description på eksisterende system-kategorier som
+        // mangler den (DB-er som ble seedet før Description-feltet ble lagt til).
+        // Endrer ikke description-er som brukeren har redigert manuelt.
+        await BackfillDescriptionsAsync(db, logger, ct).ConfigureAwait(false);
+    }
+
+    private static async Task BackfillDescriptionsAsync(
+        KraftverkDbContext db, ILogger logger, CancellationToken ct)
+    {
+        var defaults = SystemCategories.ToDictionary(c => c.Id, c => c.Description, StringComparer.Ordinal);
+        var systemRows = await db.DowntimeCategories
+            .Where(c => c.IsSystem && c.Description == null)
+            .ToListAsync(ct).ConfigureAwait(false);
+        if (systemRows.Count == 0) return;
+
+        foreach (var row in systemRows)
+        {
+            if (defaults.TryGetValue(row.Id, out var desc))
+            {
+                row.Description = desc;
+            }
+        }
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
+        logger.LogInformation("Backfilled description for {Count} system-kategorier.", systemRows.Count);
     }
 
     /// <summary>

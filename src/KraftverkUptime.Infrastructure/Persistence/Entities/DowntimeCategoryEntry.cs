@@ -27,4 +27,12 @@ public sealed class DowntimeCategoryEntry
     public bool IsActive { get; set; } = true;
 
     public bool IsSystem { get; set; }
+
+    /// <summary>
+    /// Fri-tekst-forklaring av kategorien. Vises i annoterings-dialogen og
+    /// admin-skjermen. Drifts-leder kan redigere både for system- og
+    /// bruker-kategorier — system-flagget styrer kun sletting, ikke
+    /// metadata-oppdatering.
+    /// </summary>
+    public string? Description { get; set; }
 }

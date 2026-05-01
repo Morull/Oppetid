@@ -65,6 +65,7 @@ public sealed class EfDowntimeCategoryRepository : IDowntimeCategoryRepository
             SortOrder = category.SortOrder,
             IsActive = category.IsActive,
             IsSystem = false, // Brukerdefinerte kategorier er aldri system
+            Description = category.Description,
         };
         _db.DowntimeCategories.Add(entry);
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
@@ -85,6 +86,7 @@ public sealed class EfDowntimeCategoryRepository : IDowntimeCategoryRepository
         existing.ColorHex = category.ColorHex;
         existing.SortOrder = category.SortOrder;
         existing.IsActive = category.IsActive;
+        existing.Description = category.Description;
 
         // System-kategorier får IKKE endre UnitStateOverride — overlay-koden
         // antar at fault → ForcedOutage osv. Brukerdefinerte kategorier kan
@@ -128,5 +130,6 @@ public sealed class EfDowntimeCategoryRepository : IDowntimeCategoryRepository
         e.UnitStateOverride,
         e.SortOrder,
         e.IsActive,
-        e.IsSystem);
+        e.IsSystem,
+        e.Description);
 }

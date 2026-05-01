@@ -65,6 +65,21 @@ else if (_rows is not null)
     }
     else
     {
+        @* ---- Data-mangler-banner (hvis noen anlegg mangler delsett) ---- *@
+        var medMangler = _rows.Where(r => r.MissingData.Count > 0).ToList();
+        @if (medMangler.Count > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3" Dense="true">
+                <MudText Typo="Typo.body2">
+                    <strong>Rapporten er ikke komplett:</strong>
+                    @medMangler.Count av @_rows.Count anlegg mangler data —
+                    @string.Join("; ",
+                        medMangler.Select(r =>
+                            $"{r.PlantName} ({string.Join(", ", r.MissingData)})"))
+                </MudText>
+            </MudAlert>
+        }
+
         @* ---- Lønnsomhets-vurdering for vaktordningen ---- *@
         <MudPaper Class="pa-4 mb-4" Elevation="1">
             <MudGrid>
@@ -134,7 +149,17 @@ else if (_rows is not null)
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd>
-                            <MudLink Href="@($"/anlegg/{context.PlantId}")">@context.PlantName</MudLink>
+                            <div class="d-flex align-center" style="gap:6px;">
+                                <MudLink Href="@($"/anlegg/{context.PlantId}")">@context.PlantName</MudLink>
+                                @if (context.MissingData.Count > 0)
+                                {
+                                    <MudTooltip Text="@($"Mangler: {string.Join(", ", context.MissingData)}")">
+                                        <MudIcon Icon="@Icons.Material.Filled.Warning"
+                                                 Color="MudBlazor.Color.Warning"
+                                                 Size="MudBlazor.Size.Small" />
+                                    </MudTooltip>
+                                }
+                            </div>
                         </MudTd>
                         <MudTd Style="text-align:right">
                             @if (context.InstalledCapacityMw <= 0)
@@ -204,6 +229,8 @@ else if (_rows is not null)
     /// <summary>
     /// Aggregert rad per anlegg som kombinerer portefølje-KPI-er, vakt-ROI og
     /// nedetid-summary. Bygges ved å fan-out parallelle API-kall fra Web.
+    /// <see cref="MissingData"/> samler hvilke kall som feilet for dette
+    /// anlegget; UI viser et advarsel-ikon på raden + en summary-banner.
     /// </summary>
     private sealed record Row(
         string PlantId,
@@ -219,7 +246,8 @@ else if (_rows is not null)
         double TapNok,
         double ReddetNok,
         int AntallEvents,
-        int AntallReddbare);
+        int AntallReddbare,
+        IReadOnlyList<string> MissingData);
 
     protected override async Task OnInitializedAsync()
     {
@@ -276,8 +304,8 @@ else if (_rows is not null)
 
         try
         {
-            var fromUtc = new DateTimeOffset(_fromDate.Value.Date, TimeSpan.Zero);
-            var toUtc = new DateTimeOffset(_toDate.Value.Date, TimeSpan.Zero);
+            var fromUtc = _fromDate.ToUtcOffsetSafe();
+            var toUtc = _toDate.ToUtcOffsetSafe();
 
             var portfolio = await NedetidApi.GetPortfolioKpisAsync(fromUtc, toUtc);
 
@@ -304,13 +332,22 @@ else if (_rows is not null)
         double Kpi(string name) => p.Kpis.TryGetValue(name, out var v) && v.HasValue ? v.Value : 0;
 
         // Vakt-ROI og Nedetid feiler stille per plant — vi får 0 i tabellen
-        // hvis SCADA-data eller settlement-data mangler for periode.
+        // hvis SCADA-data eller settlement-data mangler for periode. Samler
+        // hvilke som feilet i MissingData så UI kan flagge anlegget.
         VaktRoiResponse? vakt = null;
         NedetidResponse? ned = null;
+        var missing = new List<string>();
         try { vakt = await NedetidApi.GetVaktRoiAsync(p.PlantId, fromUtc, toUtc); }
-        catch { /* ignored */ }
+        catch { missing.Add("Vakt-ROI"); }
         try { ned = await NedetidApi.GetNedetidAsync(p.PlantId, fromUtc, toUtc); }
-        catch { /* ignored */ }
+        catch { missing.Add("Nedetid"); }
+
+        // Capture rate er allerede i p.Kpis fra portefølje-API. Hvis nøkkelen
+        // mangler, betyr det at server-side feilet på det anlegget — flagg.
+        if (!p.Kpis.ContainsKey("CaptureRate_Times"))
+        {
+            missing.Add("Capture rate");
+        }
 
         return new Row(
             PlantId: p.PlantId,
@@ -326,7 +363,8 @@ else if (_rows is not null)
             TapNok: ned?.TotalTapNok ?? 0,
             ReddetNok: vakt?.TotalReddetNok ?? 0,
             AntallEvents: vakt?.AntallEventsTotalt ?? 0,
-            AntallReddbare: vakt?.AntallReddbareInnenforVakt ?? 0);
+            AntallReddbare: vakt?.AntallReddbareInnenforVakt ?? 0,
+            MissingData: missing);
     }
 
     // -- Lønnsomhets-vurdering --

@@ -141,6 +141,11 @@ public static class DatabaseBootstrapper
             CREATE INDEX IF NOT EXISTS ix_downtime_annotations_plant_period
                 ON core.downtime_annotations (plant_id, start_utc, end_utc)
                 WHERE deleted_at IS NULL;
+
+            -- Description-kolonne for kategorier (Spec: brukerredigerbar
+            -- trigger-forklaring). Idempotent ALTER med IF NOT EXISTS.
+            ALTER TABLE core.downtime_categories
+                ADD COLUMN IF NOT EXISTS description varchar(2000) NULL;
             """;
 
         try

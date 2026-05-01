@@ -125,6 +125,7 @@ public sealed class KraftverkDbContext : DbContext
             b.Property(x => x.DisplayName).HasMaxLength(200).IsRequired();
             b.Property(x => x.ColorHex).HasMaxLength(16).IsRequired();
             b.Property(x => x.UnitStateOverride).HasConversion<string>().HasMaxLength(32).IsRequired();
+            b.Property(x => x.Description).HasMaxLength(2000); // nullable
             b.HasIndex(x => x.SortOrder);
         });
 

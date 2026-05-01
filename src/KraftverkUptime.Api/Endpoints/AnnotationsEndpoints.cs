@@ -332,7 +332,8 @@ public static class AnnotationsEndpoints
             UnitStateOverride: request.UnitStateOverride,
             SortOrder: request.SortOrder,
             IsActive: request.IsActive,
-            IsSystem: false);
+            IsSystem: false,
+            Description: string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim());
         await repo.AddAsync(category, ct).ConfigureAwait(false);
         return Results.Created(
             $"/api/v1/annotations/categories/{request.Id}",
@@ -364,6 +365,10 @@ public static class AnnotationsEndpoints
             UnitStateOverride = request.UnitStateOverride ?? existing.UnitStateOverride,
             SortOrder = request.SortOrder ?? existing.SortOrder,
             IsActive = request.IsActive ?? existing.IsActive,
+            // Description: tom string tolkes som "fjern" (set null); null i payload
+            // betyr "ikke endre". Null check via Description == null vs != null.
+            Description = request.Description is null ? existing.Description
+                          : (string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim()),
         };
         await repo.UpdateAsync(updated, ct).ConfigureAwait(false);
         return Results.Ok(DowntimeCategoryDto.From(updated));
@@ -393,14 +398,16 @@ public static class AnnotationsEndpoints
         string? ColorHex,
         UnitState UnitStateOverride,
         int SortOrder,
-        bool IsActive);
+        bool IsActive,
+        string? Description);
 
     public sealed record UpdateCategoryRequest(
         string? DisplayName,
         string? ColorHex,
         UnitState? UnitStateOverride,
         int? SortOrder,
-        bool? IsActive);
+        bool? IsActive,
+        string? Description);
 
     // ---- Helpers ---------------------------------------------------------
 

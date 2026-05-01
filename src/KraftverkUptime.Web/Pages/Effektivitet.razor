@@ -241,8 +241,8 @@ else if (_response is not null)
         _captureRate = null;
         try
         {
-            var fromUtc = new DateTimeOffset(_fromDate.Value.Date, TimeSpan.Zero);
-            var toUtc = new DateTimeOffset(_toDate.Value.Date, TimeSpan.Zero);
+            var fromUtc = _fromDate.ToUtcOffsetSafe();
+            var toUtc = _toDate.ToUtcOffsetSafe();
             _response = await NedetidApi.GetEffektivitetAsync(_plantId, fromUtc, toUtc);
 
             // Capture rate er sekundær — feiler den, viser vi bare effektivitets-data.

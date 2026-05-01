@@ -450,8 +450,8 @@ else
     {
         if (_plant is null || !_fromDate.HasValue || !_toDate.HasValue) return;
 
-        var fromUtc = new DateTimeOffset(_fromDate.Value.Date, TimeSpan.Zero);
-        var toUtc = new DateTimeOffset(_toDate.Value.Date, TimeSpan.Zero);
+        var fromUtc = _fromDate.ToUtcOffsetSafe();
+        var toUtc = _toDate.ToUtcOffsetSafe();
 
         _imports = null; _nedetid = null; _vaktRoi = null;
         _effektivitet = null; _captureRate = null; _plantKpis = null;

@@ -10,6 +10,11 @@ namespace KraftverkUptime.Core.Domain;
 /// til <see cref="UnitState"/> ved overlay. Datadrevet — nye kategorier kan
 /// legges til uten å endre overlay-koden.
 ///
+/// <see cref="Description"/> er en fri-tekst-forklaring som vises i
+/// annoterings-dialogen og admin-skjermen. Forklarer typisk hvilke trigger-
+/// situasjoner som hører hjemme i denne kategorien. Drifts-leder kan
+/// redigere denne for både system- og bruker-kategorier.
+///
 /// <see cref="IsSystem"/> markerer de 7 default-kategoriene som seedes ved
 /// oppstart. System-kategorier kan ikke slettes; brukere kan deaktivere via
 /// <see cref="IsActive"/>.
@@ -21,4 +26,5 @@ public sealed record DowntimeCategory(
     UnitState UnitStateOverride,
     int SortOrder,
     bool IsActive,
-    bool IsSystem);
+    bool IsSystem,
+    string? Description = null);

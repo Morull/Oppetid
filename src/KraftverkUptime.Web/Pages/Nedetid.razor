@@ -243,8 +243,8 @@ else if (_response is not null)
                 _response = Filter.CachedNedetid;
                 BuildCharts(_response!);
                 _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "nedetid",
-                    new DateTimeOffset(Filter.FromDate!.Value.Date, TimeSpan.Zero),
-                    new DateTimeOffset(Filter.ToDate!.Value.Date, TimeSpan.Zero)).ToString();
+                    Filter.FromDate!.Value.ToUtcOffsetSafe(),
+                    Filter.ToDate!.Value.ToUtcOffsetSafe()).ToString();
             }
             else if (Filter.ErKlar)
             {
@@ -284,8 +284,8 @@ else if (_response is not null)
         _response = null;
         try
         {
-            var fromUtc = new DateTimeOffset(Filter.FromDate!.Value.Date, TimeSpan.Zero);
-            var toUtc = new DateTimeOffset(Filter.ToDate!.Value.Date, TimeSpan.Zero);
+            var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
+            var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
             _response = await NedetidApi.GetNedetidAsync(Filter.PlantId, fromUtc, toUtc);
             _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "nedetid", fromUtc, toUtc).ToString();
             Filter.StoreNedetid(_response);

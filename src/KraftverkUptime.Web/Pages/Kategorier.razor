@@ -38,19 +38,37 @@ else
     <MudPaper Class="pa-4" Elevation="1">
         <MudTable Items="_categories" Hover="true" Dense="true" Elevation="0">
             <HeaderContent>
-                <MudTh>Navn</MudTh>
-                <MudTh>Id (slug)</MudTh>
+                <MudTh>Navn / Beskrivelse</MudTh>
                 <MudTh Style="text-align:center">Farge</MudTh>
-                <MudTh>Mapping (UnitState)</MudTh>
-                <MudTh Style="text-align:center">Sortering</MudTh>
+                <MudTh>Mapping</MudTh>
+                <MudTh Style="text-align:center">#</MudTh>
                 <MudTh Style="text-align:center">Aktiv</MudTh>
-                <MudTh Style="text-align:center">System</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd><strong>@context.DisplayName</strong></MudTd>
                 <MudTd>
-                    <MudText Typo="Typo.caption" Style="font-family: monospace;">@context.Id</MudText>
+                    <div class="d-flex align-center" style="gap:8px;">
+                        <strong>@context.DisplayName</strong>
+                        @if (context.IsSystem)
+                        {
+                            <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Outlined">System</MudChip>
+                        }
+                    </div>
+                    <MudText Typo="Typo.caption" Style="font-family: monospace; color: var(--mud-palette-text-secondary);">@context.Id</MudText>
+                    @if (!string.IsNullOrWhiteSpace(context.Description))
+                    {
+                        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary"
+                                 Style="margin-top: 4px; max-width: 600px;">
+                            @context.Description
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Warning"
+                                 Style="font-style: italic;">
+                            Ingen beskrivelse — klikk redigér for å legge til
+                        </MudText>
+                    }
                 </MudTd>
                 <MudTd Style="text-align:center">
                     <div style="@($"background:{context.ColorHex}; width:24px; height:24px; border-radius:4px; border:1px solid #ccc; display:inline-block;")"
@@ -73,12 +91,6 @@ else
                     {
                         <MudIcon Icon="@Icons.Material.Filled.RemoveCircleOutline"
                                  Color="MudBlazor.Color.Default" Size="MudBlazor.Size.Small" />
-                    }
-                </MudTd>
-                <MudTd Style="text-align:center">
-                    @if (context.IsSystem)
-                    {
-                        <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Outlined">System</MudChip>
                     }
                 </MudTd>
                 <MudTd>
@@ -135,6 +147,9 @@ else
                                  HelperText="Lavere tall først i lister. Bruk f.eks. 10/20/30… for å gi rom for innskudd."
                                  Variant="Variant.Outlined" />
                 <MudCheckBox T="bool" @bind-Value="_form.IsActive" Label="Aktiv (vises i annoterings-dialog)" />
+                <MudTextField @bind-Value="_form.Description" Label="Beskrivelse (hva trigger denne kategorien?)"
+                              Lines="4" Variant="Variant.Outlined"
+                              HelperText="Forklar hvilke trigger-situasjoner som hører hjemme i denne kategorien. Vises for drifts-leder i annoterings-dialogen og admin-skjermen." />
             </MudStack>
         </DialogContent>
         <DialogActions>
@@ -165,6 +180,7 @@ else
         public string UnitStateOverride { get; set; } = "ForcedOutage";
         public int SortOrder { get; set; } = 100;
         public bool IsActive { get; set; } = true;
+        public string? Description { get; set; }
     }
 
     protected override async Task OnInitializedAsync()
@@ -215,6 +231,7 @@ else
             UnitStateOverride = cat.UnitStateOverride,
             SortOrder = cat.SortOrder,
             IsActive = cat.IsActive,
+            Description = cat.Description,
         };
         _editingOpen = true;
         return Task.CompletedTask;
@@ -236,14 +253,18 @@ else
                 }
                 await Api.CreateCategoryAsync(
                     _form.Id, _form.DisplayName, _form.ColorHex,
-                    _form.UnitStateOverride, _form.SortOrder, _form.IsActive);
+                    _form.UnitStateOverride, _form.SortOrder, _form.IsActive,
+                    _form.Description);
                 Snackbar.Add($"Kategori '{_form.DisplayName}' opprettet.", Severity.Success);
             }
             else
             {
+                // For update: send tom string istedenfor null hvis brukeren har
+                // tømt feltet (server tolker tom = "fjern", null = "ikke endre").
                 await Api.UpdateCategoryAsync(
                     _editing.Id, _form.DisplayName, _form.ColorHex,
-                    _form.UnitStateOverride, _form.SortOrder, _form.IsActive);
+                    _form.UnitStateOverride, _form.SortOrder, _form.IsActive,
+                    _form.Description ?? "");
                 Snackbar.Add($"'{_form.DisplayName}' oppdatert.", Severity.Success);
             }
             _editingOpen = false;

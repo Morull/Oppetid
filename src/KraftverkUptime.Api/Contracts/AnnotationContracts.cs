@@ -27,10 +27,11 @@ public sealed record DowntimeCategoryDto(
     UnitState UnitStateOverride,
     int SortOrder,
     bool IsActive,
-    bool IsSystem)
+    bool IsSystem,
+    string? Description)
 {
     public static DowntimeCategoryDto From(DowntimeCategory c) => new(
-        c.Id, c.DisplayName, c.ColorHex, c.UnitStateOverride, c.SortOrder, c.IsActive, c.IsSystem);
+        c.Id, c.DisplayName, c.ColorHex, c.UnitStateOverride, c.SortOrder, c.IsActive, c.IsSystem, c.Description);
 }
 
 /// <summary>
