@@ -19,13 +19,23 @@ public static class ProduksjonAnalyseCalculator
         string plantId,
         DateTimeOffset fromUtc,
         DateTimeOffset toUtc,
-        IReadOnlyList<HourlyInput> hours)
+        IReadOnlyList<HourlyInput> hours,
+        IReadOnlySet<DateTimeOffset>? overflowHours = null,
+        bool overlopDataTilgjengelig = false)
     {
         ArgumentNullException.ThrowIfNull(hours);
+        var overflow = overflowHours ?? new HashSet<DateTimeOffset>();
 
         var (planTreff, andelTopp, andelBunn, hgMerverdi, faktiskMerverdi, snittSpot,
              totalElhub, totalPlan, antTimerMedPlan, antTimerProduksjon)
             = ComputeAggregate(hours);
+
+        // Tell timer i perioden som hadde overløp på terminal-dam
+        var antTimerOverlop = hours.Count(h => overflow.Contains(TruncateToHour(h.TimeUtc)));
+        var kapasitetsutnyttelse = hours.Count > 0
+            ? (double)antTimerProduksjon / hours.Count : 0;
+        var overlopProsent = hours.Count > 0
+            ? (double)antTimerOverlop / hours.Count : 0;
 
         // Per-måned: re-bruker samme aggregat-funksjon på filtrert delmengde
         var monthly = hours
@@ -36,12 +46,18 @@ public static class ProduksjonAnalyseCalculator
                 var rows = g.ToList();
                 var (mt, mTopp, _, mHg, mFaktisk, mSnittSpot, mElhub, mPlan, _, mProd)
                     = ComputeAggregate(rows);
+                var mOverlop = rows.Count(h => overflow.Contains(TruncateToHour(h.TimeUtc)));
+                var mKap = rows.Count > 0 ? (double)mProd / rows.Count : 0;
+                var mOvrPct = rows.Count > 0 ? (double)mOverlop / rows.Count : 0;
                 return new ProduksjonMonthly(
                     Year: g.Key.Year,
                     Month: g.Key.Month,
                     ElhubMwh: mElhub,
                     PlanMwh: mPlan,
                     AntallTimerProduksjon: mProd,
+                    AntallTimerOverlop: mOverlop,
+                    KapasitetsutnyttelseProsent: mKap,
+                    OverlopProsent: mOvrPct,
                     PlanTreffProsent: mt,
                     AndelProdIToppKvartil: mTopp,
                     HydrogridMerverdiNok: mHg,
@@ -65,16 +81,27 @@ public static class ProduksjonAnalyseCalculator
             AntallTimer: hours.Count,
             AntallTimerMedPlan: antTimerMedPlan,
             AntallTimerProduksjon: antTimerProduksjon,
+            AntallTimerOverlop: antTimerOverlop,
             TotalElhubMwh: totalElhub,
             TotalPlanMwh: totalPlan,
             PlanTreffProsent: planTreff,
             AndelProdIToppKvartil: andelTopp,
             AndelProdIBunnKvartil: andelBunn,
+            KapasitetsutnyttelseProsent: kapasitetsutnyttelse,
+            OverlopProsent: overlopProsent,
             HydrogridMerverdiNok: hgMerverdi,
             FaktiskMerverdiNok: faktiskMerverdi,
             SnittSpotprisNokMwh: snittSpot,
+            OverlopDataTilgjengelig: overlopDataTilgjengelig,
             Hourly: hourlyOutput,
             Monthly: monthly);
+    }
+
+    /// <summary>Trunkerer time-stempel til hel time slik at overflow-set-lookup matcher.</summary>
+    private static DateTimeOffset TruncateToHour(DateTimeOffset t)
+    {
+        var u = t.UtcDateTime;
+        return new DateTimeOffset(u.Year, u.Month, u.Day, u.Hour, 0, 0, TimeSpan.Zero);
     }
 
     private static (

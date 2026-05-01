@@ -1,4 +1,5 @@
 using KraftverkUptime.Modules.Classification.Dtos;
+using KraftverkUptime.Modules.Reporting.Nedetid;
 using KraftverkUptime.Modules.Reporting.Produksjon;
 using KraftverkUptime.Modules.Reporting.Storage;
 using KraftverkUptime.Modules.Settlement.Persistence;
@@ -10,18 +11,25 @@ namespace KraftverkUptime.Infrastructure.Reporting;
 /// beregner produksjons-KPI-er via <see cref="ProduksjonAnalyseCalculator"/>.
 /// Bruker samme load-mønster som <see cref="CaptureRateQueryService"/> —
 /// itererer over overlappende imports og leser UptimeReport-blobs.
+///
+/// Henter også overløp-data fra <see cref="IOverflowQueryService"/> slik at
+/// vi kan flagge timer der terminal-dam hadde overløp. Hvis SCADA-data
+/// mangler vises kapasitetsutnyttelse uten overløp-info.
 /// </summary>
 public sealed class ProduksjonAnalyseQueryService : IProduksjonAnalyseService
 {
     private readonly ISettlementImportRecorder _imports;
     private readonly IUptimeReportStore _reports;
+    private readonly IOverflowQueryService _overflow;
 
     public ProduksjonAnalyseQueryService(
         ISettlementImportRecorder imports,
-        IUptimeReportStore reports)
+        IUptimeReportStore reports,
+        IOverflowQueryService overflow)
     {
         _imports = imports ?? throw new ArgumentNullException(nameof(imports));
         _reports = reports ?? throw new ArgumentNullException(nameof(reports));
+        _overflow = overflow ?? throw new ArgumentNullException(nameof(overflow));
     }
 
     public async Task<ProduksjonAnalyseResult> GetAsync(
@@ -67,6 +75,24 @@ public sealed class ProduksjonAnalyseQueryService : IProduksjonAnalyseService
                 SpotprisNokMwh: h.Row.SpotprisNokMwh))
             .ToList();
 
-        return ProduksjonAnalyseCalculator.Compute(plantId, fromUtc, toUtc, input);
+        // Hent overløp-data fra terminal-dam (kaskade-modell). Feil eller
+        // manglende SCADA-data håndteres som "ingen overløp-info" — vi
+        // viser fortsatt kapasitetsutnyttelse + andre KPI-er.
+        IReadOnlySet<DateTimeOffset> overflowHours = new HashSet<DateTimeOffset>();
+        var overlopTilgjengelig = false;
+        try
+        {
+            var ds = await _overflow.GetOverflowDatasetAsync(plantId, fromUtc, toUtc, ct)
+                .ConfigureAwait(false);
+            overflowHours = ds.OverflowHours;
+            overlopTilgjengelig = ds.DataAvailable;
+        }
+        catch
+        {
+            // Beholdes som tom HashSet — UI viser bare "ingen overløp-data"
+        }
+
+        return ProduksjonAnalyseCalculator.Compute(
+            plantId, fromUtc, toUtc, input, overflowHours, overlopTilgjengelig);
     }
 }

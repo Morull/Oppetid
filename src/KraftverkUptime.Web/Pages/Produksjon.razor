@@ -96,6 +96,42 @@ else if (_data is not null)
             </MudItem>
         </MudGrid>
 
+        @* ---- KPI-rad 2: kapasitet + overløp ---- *@
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="6" md="3">
+                <KpiTrendCard Label="Kapasitetsutnyttelse"
+                              Value="@(_data.KapasitetsutnyttelseProsent * 100)"
+                              PreviousValue="@(_previous?.KapasitetsutnyttelseProsent * 100)"
+                              Format="F1" Unit="%"
+                              SubText="@KapasitetTolkning(_data.KapasitetsutnyttelseProsent)"
+                              HigherIsBetter="false" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiTrendCard Label="Andel timer med overløp"
+                              Value="@(_data.OverlopProsent * 100)"
+                              PreviousValue="@(_previous?.OverlopProsent * 100)"
+                              Format="F1" Unit="%"
+                              SubText="@OverlopTolkning(_data)"
+                              HigherIsBetter="false" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiTrendCard Label="Antall timer overløp"
+                              Value="_data.AntallTimerOverlop"
+                              PreviousValue="_previous?.AntallTimerOverlop"
+                              Format="F0" Unit="timer"
+                              SubText="@(_data.OverlopDataTilgjengelig ? $"av {_data.AntallTimer} timer" : "Mangler SCADA-data")"
+                              HigherIsBetter="false" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiTrendCard Label="Produksjons-timer"
+                              Value="_data.AntallTimerProduksjon"
+                              PreviousValue="_previous?.AntallTimerProduksjon"
+                              Format="F0" Unit="timer"
+                              SubText="@($"av {_data.AntallTimer} mulige")"
+                              HigherIsBetter="true" />
+            </MudItem>
+        </MudGrid>
+
         @* ---- Tolkning-banner ---- *@
         <MudAlert Severity="@TolkningSeverity()" Class="mb-4" Dense="true" Icon="@Icons.Material.Filled.Insights">
             <MudText Typo="Typo.body2">@HelhetligTolkning()</MudText>
@@ -148,6 +184,8 @@ else if (_data is not null)
                     <HeaderContent>
                         <MudTh><MudTableSortLabel SortBy="@_sortMonth">Måned</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortTimer">Timer prod.</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortKap">Kap.utn.</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortOverlop">Overløp (t)</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortElhub">Elhub (MWh)</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortPlan">Plan (MWh)</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortPlanTreff">Plan-treff</MudTableSortLabel></MudTh>
@@ -163,13 +201,28 @@ else if (_data is not null)
                                 <span>@context.AntallTimerProduksjon</span>
                                 @if (ErOverlopRisiko(context))
                                 {
-                                    <MudTooltip Text="Mange produksjonstimer + lav snittpris = sannsynlig overløp-risiko (måtte produsere for å unngå at magasinet flommet over)">
+                                    <MudTooltip Text="@(context.AntallTimerOverlop > 0 ? $"{context.AntallTimerOverlop} timer overløp på terminal-dam — magasinet flommet" : "Mange produksjonstimer + lav snittpris = sannsynlig overløp-risiko")">
                                         <MudIcon Icon="@Icons.Material.Filled.WaterDrop"
                                                  Color="MudBlazor.Color.Warning"
                                                  Size="MudBlazor.Size.Small" />
                                     </MudTooltip>
                                 }
                             </div>
+                        </MudTd>
+                        <MudTd Style="text-align:right">
+                            <span style="@($"color: {(context.KapasitetsutnyttelseProsent >= 0.95 ? "#E76F51" : context.KapasitetsutnyttelseProsent >= 0.80 ? "#F39C12" : "inherit")};")">
+                                @((context.KapasitetsutnyttelseProsent * 100).ToString("F0")) %
+                            </span>
+                        </MudTd>
+                        <MudTd Style="text-align:right">
+                            @if (context.AntallTimerOverlop > 0)
+                            {
+                                <span style="color: #E76F51; font-weight: 600;">@context.AntallTimerOverlop</span>
+                            }
+                            else
+                            {
+                                <span>0</span>
+                            }
                         </MudTd>
                         <MudTd Style="text-align:right">@context.ElhubMwh.ToString("F0")</MudTd>
                         <MudTd Style="text-align:right">@context.PlanMwh.ToString("F0")</MudTd>
@@ -221,6 +274,8 @@ else if (_data is not null)
     // Sort-funksjoner for månedstabellen
     private readonly Func<ProduksjonMonthlyDto, object> _sortMonth = m => m.Year * 100 + m.Month;
     private readonly Func<ProduksjonMonthlyDto, object> _sortTimer = m => m.AntallTimerProduksjon;
+    private readonly Func<ProduksjonMonthlyDto, object> _sortKap = m => m.KapasitetsutnyttelseProsent;
+    private readonly Func<ProduksjonMonthlyDto, object> _sortOverlop = m => m.AntallTimerOverlop;
     private readonly Func<ProduksjonMonthlyDto, object> _sortElhub = m => m.ElhubMwh;
     private readonly Func<ProduksjonMonthlyDto, object> _sortPlan = m => m.PlanMwh;
     private readonly Func<ProduksjonMonthlyDto, object> _sortPlanTreff = m => m.PlanTreffProsent;
@@ -379,11 +434,42 @@ else if (_data is not null)
     /// utnyttelse antyder at anlegget måtte produsere uansett pris for å unngå
     /// at magasinet flommet over. Da er svakt CR/merverdi ikke Hydrogrids feil
     /// — det er en hydrologisk realitet drifts-leder kan informere ledelsen om.
+    ///
+    /// Hvis SCADA-overløp-data finnes, bruker vi reell måling istedenfor
+    /// heuristikken.
     /// </summary>
     private static bool ErOverlopRisiko(ProduksjonMonthlyDto m)
     {
-        // ~70 % av timene i en standard måned (720 t × 0.7 ≈ 500)
+        if (m.AntallTimerOverlop > 0) return true;
+        // Fallback-heuristikk når overløp-tag mangler
         return m.AntallTimerProduksjon >= 500 && m.AndelProdIToppKvartil < 0.22;
+    }
+
+    /// <summary>
+    /// Tolker kapasitetsutnyttelse. Høy verdi = anlegget kjører nesten
+    /// konstant — typisk underdimensjonert eller ren elvekraft uten
+    /// magasinregulering.
+    /// </summary>
+    private static string KapasitetTolkning(double andel) => andel switch
+    {
+        >= 0.95 => "kjører nesten konstant — sannsynlig underdimensjonert",
+        >= 0.80 => "høy utnyttelse — lite reguleringsrom",
+        >= 0.50 => "moderat utnyttelse",
+        >= 0.20 => "lav utnyttelse — god reguleringsevne",
+        _       => "svært lav — lite vann eller mye nedetid"
+    };
+
+    /// <summary>
+    /// Tolker overløp. Vis tydelig hvis SCADA-data mangler eller hvis det
+    /// er reelle overløp-timer.
+    /// </summary>
+    private static string OverlopTolkning(ProduksjonAnalyseDto d)
+    {
+        if (!d.OverlopDataTilgjengelig) return "SCADA-data mangler — sjekk OverflowFlow-tag";
+        if (d.AntallTimerOverlop == 0) return "ingen overløp i perioden";
+        if (d.OverlopProsent >= 0.10) return "kritisk høyt — magasinet flommer ofte";
+        if (d.OverlopProsent >= 0.03) return "moderat — vurder kapasitets-økning";
+        return "lavt nivå — naturlig variasjon";
     }
 
     private string TimingTolkning(double andel)
