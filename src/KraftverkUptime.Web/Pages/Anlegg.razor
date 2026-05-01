@@ -43,30 +43,9 @@ else
         </MudItem>
     </MudGrid>
 
-    @* ---- Periode-velger med shortcuts ---- *@
+    @* ---- Periode-velger ---- *@
     <MudPaper Class="pa-4 mb-4" Elevation="1">
-        <MudGrid>
-            <MudItem xs="12" sm="4">
-                <MudDatePicker Date="_fromDate" DateChanged="@OnFromChanged"
-                               Label="Fra dato" Variant="Variant.Outlined" Margin="Margin.Dense" />
-            </MudItem>
-            <MudItem xs="12" sm="4">
-                <MudDatePicker Date="_toDate" DateChanged="@OnToChanged"
-                               Label="Til dato (eks.)" Variant="Variant.Outlined" Margin="Margin.Dense" />
-            </MudItem>
-            <MudItem xs="12" sm="4" Class="d-flex align-center" Style="gap:4px; flex-wrap: wrap;">
-                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
-                           OnClick="@(() => SetPreset(Preset.ForrigeUke))">Forrige uke</MudButton>
-                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
-                           OnClick="@(() => SetPreset(Preset.ForrigeManed))">Forrige mnd</MudButton>
-                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
-                           OnClick="@(() => SetPreset(Preset.DenneManed))">Denne mnd</MudButton>
-                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
-                           OnClick="@(() => SetPreset(Preset.HittilIAr))">Hittil i år</MudButton>
-                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
-                           OnClick="@(() => SetPreset(Preset.ForrigeAr))">Forrige år</MudButton>
-            </MudItem>
-        </MudGrid>
+        <DateRangeFilter From="_fromDate" To="_toDate" OnChanged="@OnRangeChanged" />
     </MudPaper>
 
     @* ---- KPI-strip (henter aggregerte tall fra portefølje-API for valgt periode) ---- *@
@@ -382,8 +361,6 @@ else
     private EffektivitetResponse? _effektivitet;
     private CaptureRateResultDto? _captureRate;
 
-    private enum Preset { ForrigeUke, ForrigeManed, DenneManed, HittilIAr, ForrigeAr }
-
     protected override async Task OnInitializedAsync()
     {
         try
@@ -396,8 +373,11 @@ else
                 return;
             }
 
-            // Default-periode: forrige måned (samme som de andre rapport-sidene)
-            SetPreset(Preset.ForrigeManed);
+            // Default-periode: forrige måned
+            var today = DateTime.Today;
+            var firstThis = new DateTime(today.Year, today.Month, 1);
+            _fromDate = firstThis.AddMonths(-1);
+            _toDate = firstThis;
             await ReloadAllAsync();
         }
         catch (Exception ex)
@@ -406,40 +386,11 @@ else
         }
     }
 
-    private async Task OnFromChanged(DateTime? d) { _fromDate = d; await ReloadAllAsync(); }
-    private async Task OnToChanged(DateTime? d) { _toDate = d; await ReloadAllAsync(); }
-
-    private void SetPreset(Preset preset)
+    private async Task OnRangeChanged((DateTime From, DateTime To) range)
     {
-        var today = DateTime.Today;
-        switch (preset)
-        {
-            case Preset.ForrigeUke:
-                // Mandag forrige uke til mandag denne uken (eks.)
-                var dayOfWeek = (int)today.DayOfWeek;
-                var thisMonday = today.AddDays(dayOfWeek == 0 ? -6 : -(dayOfWeek - 1));
-                _fromDate = thisMonday.AddDays(-7);
-                _toDate = thisMonday;
-                break;
-            case Preset.ForrigeManed:
-                var firstThis = new DateTime(today.Year, today.Month, 1);
-                _fromDate = firstThis.AddMonths(-1);
-                _toDate = firstThis;
-                break;
-            case Preset.DenneManed:
-                _fromDate = new DateTime(today.Year, today.Month, 1);
-                _toDate = today.AddDays(1);
-                break;
-            case Preset.HittilIAr:
-                _fromDate = new DateTime(today.Year, 1, 1);
-                _toDate = today.AddDays(1);
-                break;
-            case Preset.ForrigeAr:
-                _fromDate = new DateTime(today.Year - 1, 1, 1);
-                _toDate = new DateTime(today.Year, 1, 1);
-                break;
-        }
-        _ = ReloadAllAsync();
+        _fromDate = range.From;
+        _toDate = range.To;
+        await ReloadAllAsync();
     }
 
     /// <summary>

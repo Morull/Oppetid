@@ -29,22 +29,8 @@
                 }
             </MudSelect>
         </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudDatePicker Date="Filter.FromDate" DateChanged="@(d => Filter.FromDate = d)" Label="Fra dato" Variant="Variant.Outlined" Margin="Margin.Dense" />
-        </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudDatePicker Date="Filter.ToDate" DateChanged="@(d => Filter.ToDate = d)" Label="Til dato (eks.)" Variant="Variant.Outlined" Margin="Margin.Dense" />
-        </MudItem>
-        <MudItem xs="12" sm="2" Class="d-flex justify-end">
-            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Search"
-                       OnClick="LoadAsync"
-                       Disabled="@(_loading || !Filter.ErKlar)">
-                Hent
-            </MudButton>
-        </MudItem>
-        <MudItem xs="12" Class="mt-1">
-            <PeriodPresets OnSelected="@OnPresetSelected" />
+        <MudItem xs="12" sm="8">
+            <DateRangeFilter From="Filter.FromDate" To="Filter.ToDate" OnChanged="@OnRangeChanged" />
         </MudItem>
     </MudGrid>
 </MudPaper>
@@ -268,8 +254,8 @@ else if (_response is not null)
         return Task.CompletedTask;
     }
 
-    /// <summary>Setter perioden fra preset-component og laster automatisk.</summary>
-    private async Task OnPresetSelected((DateTime From, DateTime To) range)
+    /// <summary>Setter perioden fra DateRangeFilter og laster automatisk.</summary>
+    private async Task OnRangeChanged((DateTime From, DateTime To) range)
     {
         Filter.FromDate = DateTime.SpecifyKind(range.From, DateTimeKind.Unspecified);
         Filter.ToDate = DateTime.SpecifyKind(range.To, DateTimeKind.Unspecified);

@@ -14,36 +14,9 @@
     </MudItem>
 </MudGrid>
 
-@* ---- Filter med presets ---- *@
+@* ---- Filter ---- *@
 <MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudGrid>
-        <MudItem xs="12" sm="3">
-            <MudDatePicker Date="_fromDate" DateChanged="@(d => _fromDate = d)"
-                           Label="Fra dato" Variant="Variant.Outlined" Margin="Margin.Dense" />
-        </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudDatePicker Date="_toDate" DateChanged="@(d => _toDate = d)"
-                           Label="Til dato (eks.)" Variant="Variant.Outlined" Margin="Margin.Dense" />
-        </MudItem>
-        <MudItem xs="12" sm="6" Class="d-flex align-center justify-end" Style="gap:4px; flex-wrap:wrap;">
-            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
-                       OnClick="@(() => SetPreset(Preset.ForrigeUke))">Forrige uke</MudButton>
-            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
-                       OnClick="@(() => SetPreset(Preset.ForrigeManed))">Forrige mnd</MudButton>
-            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
-                       OnClick="@(() => SetPreset(Preset.DenneManed))">Denne mnd</MudButton>
-            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
-                       OnClick="@(() => SetPreset(Preset.HittilIAr))">Hittil i år</MudButton>
-            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
-                       OnClick="@(() => SetPreset(Preset.ForrigeAr))">Forrige år</MudButton>
-            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Search"
-                       OnClick="LoadAsync"
-                       Disabled="@(_loading || !_fromDate.HasValue || !_toDate.HasValue)">
-                Hent
-            </MudButton>
-        </MudItem>
-    </MudGrid>
+    <DateRangeFilter From="_fromDate" To="_toDate" OnChanged="@OnRangeChanged" />
 </MudPaper>
 
 @if (_error is not null)
@@ -224,7 +197,6 @@ else if (_rows is not null)
     // Default vakt-kost — drifts-leder kan justere i input
     private double _aarligVaktKostNok = 360_000;
 
-    private enum Preset { ForrigeUke, ForrigeManed, DenneManed, HittilIAr, ForrigeAr }
 
     /// <summary>
     /// Aggregert rad per anlegg som kombinerer portefølje-KPI-er, vakt-ROI og
@@ -251,40 +223,20 @@ else if (_rows is not null)
 
     protected override async Task OnInitializedAsync()
     {
-        SetPreset(Preset.ForrigeManed);
+        // Default-periode: forrige måned
+        var today = DateTime.Today;
+        var firstThis = new DateTime(today.Year, today.Month, 1);
+        _fromDate = firstThis.AddMonths(-1);
+        _toDate = firstThis;
         await LoadAsync();
     }
 
-    private void SetPreset(Preset preset)
+    /// <summary>Kalles automatisk fra DateRangeFilter når perioden endres.</summary>
+    private async Task OnRangeChanged((DateTime From, DateTime To) range)
     {
-        var today = DateTime.Today;
-        switch (preset)
-        {
-            case Preset.ForrigeUke:
-                var dayOfWeek = (int)today.DayOfWeek;
-                var thisMonday = today.AddDays(dayOfWeek == 0 ? -6 : -(dayOfWeek - 1));
-                _fromDate = thisMonday.AddDays(-7);
-                _toDate = thisMonday;
-                break;
-            case Preset.ForrigeManed:
-                var firstThis = new DateTime(today.Year, today.Month, 1);
-                _fromDate = firstThis.AddMonths(-1);
-                _toDate = firstThis;
-                break;
-            case Preset.DenneManed:
-                _fromDate = new DateTime(today.Year, today.Month, 1);
-                _toDate = today.AddDays(1);
-                break;
-            case Preset.HittilIAr:
-                _fromDate = new DateTime(today.Year, 1, 1);
-                _toDate = today.AddDays(1);
-                break;
-            case Preset.ForrigeAr:
-                _fromDate = new DateTime(today.Year - 1, 1, 1);
-                _toDate = new DateTime(today.Year, 1, 1);
-                break;
-        }
-        _ = LoadAsync();
+        _fromDate = range.From;
+        _toDate = range.To;
+        await LoadAsync();
     }
 
     /// <summary>

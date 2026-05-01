@@ -31,24 +31,8 @@
                 }
             </MudSelect>
         </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudDatePicker Date="_fromDate" DateChanged="@(d => _fromDate = d)"
-                           Label="Fra dato" Variant="Variant.Outlined" Margin="Margin.Dense" />
-        </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudDatePicker Date="_toDate" DateChanged="@(d => _toDate = d)"
-                           Label="Til dato (eks.)" Variant="Variant.Outlined" Margin="Margin.Dense" />
-        </MudItem>
-        <MudItem xs="12" sm="2" Class="d-flex justify-end">
-            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Search"
-                       OnClick="LoadAsync"
-                       Disabled="@(_loading || string.IsNullOrEmpty(_plantId) || !_fromDate.HasValue || !_toDate.HasValue)">
-                Hent
-            </MudButton>
-        </MudItem>
-        <MudItem xs="12" Class="mt-1">
-            <PeriodPresets OnSelected="@OnPresetSelected" />
+        <MudItem xs="12" sm="8">
+            <DateRangeFilter From="_fromDate" To="_toDate" OnChanged="@OnRangeChanged" />
         </MudItem>
     </MudGrid>
 </MudPaper>
@@ -243,7 +227,7 @@ else if (_data is not null)
         return Task.CompletedTask;
     }
 
-    private async Task OnPresetSelected((DateTime From, DateTime To) range)
+    private async Task OnRangeChanged((DateTime From, DateTime To) range)
     {
         _fromDate = range.From;
         _toDate = range.To;
