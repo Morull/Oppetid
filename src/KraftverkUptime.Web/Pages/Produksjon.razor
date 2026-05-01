@@ -101,36 +101,36 @@ else if (_data is not null)
             <MudText Typo="Typo.body2">@HelhetligTolkning()</MudText>
         </MudAlert>
 
-        @* ---- Plan vs faktisk-graf med spot-overlegg ---- *@
-        @if (_data.Hourly.Count > 0)
+        @* ---- Plan vs faktisk-graf (daglig aggregert for lange perioder) ---- *@
+        @if (_dailyPoints.Count > 0)
         {
             <MudPaper Class="pa-4 mb-4" Elevation="1">
                 <MudText Typo="Typo.h3" Class="mb-2">Plan vs. faktisk (med spotpris)</MudText>
                 <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-2">
-                    Når plan- og faktisk-linjene følger hverandre tett er Hydrogrid riktig
-                    og operasjonen følger planen. Når spotprisen (høyre akse) topper, ønsker
-                    vi at både plan og faktisk er høye.
+                    @_grafForklaring Når plan- og faktisk-linjene følger hverandre tett er
+                    Hydrogrid riktig og operasjonen følger planen. Når spotprisen (høyre
+                    akse) topper, ønsker vi at både plan og faktisk er høye.
                 </MudText>
-                <ApexChart @key="@($"hg-{_chartVersion}")" TItem="ProduksjonHourlyDto"
+                <ApexChart @key="@($"hg-{_chartVersion}")" TItem="DailyPoint"
                            Options="_chartOptions" Height="380">
-                    <ApexPointSeries TItem="ProduksjonHourlyDto"
-                                     Items="_data.Hourly"
+                    <ApexPointSeries TItem="DailyPoint"
+                                     Items="_dailyPoints"
                                      Name="Plan (MWh)"
                                      SeriesType="SeriesType.Line"
-                                     XValue="h => h.TimeUtc.UtcDateTime"
-                                     YValue="h => (decimal)(h.PlanMwh ?? 0)" />
-                    <ApexPointSeries TItem="ProduksjonHourlyDto"
-                                     Items="_data.Hourly"
+                                     XValue="d => d.Date"
+                                     YValue="d => (decimal)d.PlanMwh" />
+                    <ApexPointSeries TItem="DailyPoint"
+                                     Items="_dailyPoints"
                                      Name="Faktisk (MWh)"
                                      SeriesType="SeriesType.Line"
-                                     XValue="h => h.TimeUtc.UtcDateTime"
-                                     YValue="h => (decimal)(h.ElhubMwh ?? 0)" />
-                    <ApexPointSeries TItem="ProduksjonHourlyDto"
-                                     Items="_data.Hourly"
+                                     XValue="d => d.Date"
+                                     YValue="d => (decimal)d.ElhubMwh" />
+                    <ApexPointSeries TItem="DailyPoint"
+                                     Items="_dailyPoints"
                                      Name="Spotpris (NOK/MWh)"
                                      SeriesType="SeriesType.Line"
-                                     XValue="h => h.TimeUtc.UtcDateTime"
-                                     YValue="h => (decimal)(h.SpotprisNokMwh ?? 0)" />
+                                     XValue="d => d.Date"
+                                     YValue="d => (decimal)d.SnittSpot" />
                 </ApexChart>
             </MudPaper>
         }
@@ -206,8 +206,17 @@ else if (_data is not null)
     private ProduksjonAnalyseDto? _data;
     private ProduksjonAnalyseDto? _previous;
 
-    private ApexChartOptions<ProduksjonHourlyDto> _chartOptions = new();
+    private ApexChartOptions<DailyPoint> _chartOptions = new();
     private int _chartVersion;
+    private List<DailyPoint> _dailyPoints = new();
+    private string _grafForklaring = string.Empty;
+
+    /// <summary>
+    /// Aggregert dag-punkt for grafen. Time-for-time blir for tett når perioden
+    /// er lang (672 punkter for én måned), så vi summerer Plan/Elhub og tar
+    /// snitt-spotpris per døgn. Holder grafen lesbar uten å miste signal.
+    /// </summary>
+    private sealed record DailyPoint(DateTime Date, double PlanMwh, double ElhubMwh, double SnittSpot);
 
     protected override async Task OnInitializedAsync()
     {
@@ -271,6 +280,7 @@ else if (_data is not null)
             _data = await dataTask;
             _previous = await prevTask;
 
+            BuildDailyPoints();
             _chartVersion++;
             BuildChart();
         }
@@ -290,9 +300,53 @@ else if (_data is not null)
         catch { return null; }
     }
 
+    /// <summary>
+    /// Aggregerer time-data til daglige punkter. For lange perioder gir det
+    /// en lesbar graf; kort periode (≤ 7 dager) brukes time-granulariteten direkte.
+    /// </summary>
+    private void BuildDailyPoints()
+    {
+        if (_data is null)
+        {
+            _dailyPoints = new();
+            return;
+        }
+        var dager = (_data.ToUtc - _data.FromUtc).TotalDays;
+        if (dager <= 7)
+        {
+            // For korte perioder: behold time-granularitet
+            _dailyPoints = _data.Hourly
+                .Select(h => new DailyPoint(
+                    Date: h.TimeUtc.UtcDateTime,
+                    PlanMwh: h.PlanMwh ?? 0,
+                    ElhubMwh: h.ElhubMwh ?? 0,
+                    SnittSpot: h.SpotprisNokMwh ?? 0))
+                .ToList();
+            _grafForklaring = "Time-for-time (kort periode).";
+        }
+        else
+        {
+            // Lang periode: aggreger til daglig
+            _dailyPoints = _data.Hourly
+                .GroupBy(h => h.TimeUtc.UtcDateTime.Date)
+                .OrderBy(g => g.Key)
+                .Select(g => new DailyPoint(
+                    Date: g.Key,
+                    PlanMwh: g.Sum(h => h.PlanMwh ?? 0),
+                    ElhubMwh: g.Sum(h => h.ElhubMwh ?? 0),
+                    SnittSpot: g.Where(h => h.SpotprisNokMwh.HasValue)
+                                .Select(h => h.SpotprisNokMwh!.Value)
+                                .DefaultIfEmpty(0)
+                                .Average()))
+                .ToList();
+            _grafForklaring = $"Daglig aggregert ({_dailyPoints.Count} dager). " +
+                              "Plan/Faktisk = sum MWh per dag, Spotpris = snitt for døgnet.";
+        }
+    }
+
     private void BuildChart()
     {
-        _chartOptions = new ApexChartOptions<ProduksjonHourlyDto>
+        _chartOptions = new ApexChartOptions<DailyPoint>
         {
             Stroke = new Stroke { Curve = Curve.Smooth, Width = 2 },
             Xaxis = new XAxis { Type = XAxisType.Datetime },

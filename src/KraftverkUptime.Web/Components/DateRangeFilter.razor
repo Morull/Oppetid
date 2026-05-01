@@ -7,7 +7,7 @@
 *@
 
 <MudGrid>
-    <MudItem xs="12" sm="6">
+    <MudItem xs="12" md="6">
         <MudDateRangePicker @bind-DateRange="_range"
                             Label="@Label"
                             Variant="Variant.Outlined"
@@ -15,7 +15,7 @@
                             PlaceholderStart="Fra dato"
                             PlaceholderEnd="Til dato (eks.)" />
     </MudItem>
-    <MudItem xs="12" sm="6" Class="d-flex align-center" Style="gap:4px; flex-wrap:wrap;">
+    <MudItem xs="12" md="6" Class="d-flex align-center" Style="gap:4px; flex-wrap:wrap;">
         <PeriodPresets ShowLabel="true" OnSelected="@OnPresetPickedAsync" />
     </MudItem>
 </MudGrid>
