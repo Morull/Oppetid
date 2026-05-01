@@ -46,6 +46,9 @@
                 Hent
             </MudButton>
         </MudItem>
+        <MudItem xs="12" Class="mt-1">
+            <PeriodPresets OnSelected="@OnPresetSelected" />
+        </MudItem>
     </MudGrid>
 </MudPaper>
 
@@ -220,6 +223,13 @@ else if (_response is not null)
     {
         _plantId = newPlantId;
         return Task.CompletedTask;
+    }
+
+    private async Task OnPresetSelected((DateTime From, DateTime To) range)
+    {
+        _fromDate = range.From;
+        _toDate = range.To;
+        await LoadAsync();
     }
 
     private async Task LoadAsync()

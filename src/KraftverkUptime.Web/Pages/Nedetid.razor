@@ -43,6 +43,9 @@
                 Hent
             </MudButton>
         </MudItem>
+        <MudItem xs="12" Class="mt-1">
+            <PeriodPresets OnSelected="@OnPresetSelected" />
+        </MudItem>
     </MudGrid>
 </MudPaper>
 
@@ -263,6 +266,14 @@ else if (_response is not null)
     {
         Filter.PlantId = newPlantId;
         return Task.CompletedTask;
+    }
+
+    /// <summary>Setter perioden fra preset-component og laster automatisk.</summary>
+    private async Task OnPresetSelected((DateTime From, DateTime To) range)
+    {
+        Filter.FromDate = DateTime.SpecifyKind(range.From, DateTimeKind.Unspecified);
+        Filter.ToDate = DateTime.SpecifyKind(range.To, DateTimeKind.Unspecified);
+        await LoadAsync();
     }
 
     private async Task LoadAsync()

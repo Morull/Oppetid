@@ -68,8 +68,23 @@ else
                 </MudTd>
                 <MudTd>@context.ImportedAtUtc.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</MudTd>
                 <MudTd>
-                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="MudBlazor.Color.Warning"
-                             Icon="@Icons.Material.Filled.HourglassTop">Behandles</MudChip>
+                    @{
+                        var alder = DateTimeOffset.UtcNow - context.ImportedAtUtc;
+                    }
+                    @if (alder.TotalMinutes > 5)
+                    {
+                        @* Klassifisering tar normalt < 1 minutt. Mer enn 5 minutter er
+                           sannsynligvis en feil i worker-pipelinen. *@
+                        <MudTooltip Text="@($"Importert {alder.TotalMinutes:F0} min siden — sjekk worker-loggen")">
+                            <MudChip T="string" Size="MudBlazor.Size.Small" Color="MudBlazor.Color.Error"
+                                     Icon="@Icons.Material.Filled.Warning">Mangler data</MudChip>
+                        </MudTooltip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="MudBlazor.Size.Small" Color="MudBlazor.Color.Warning"
+                                 Icon="@Icons.Material.Filled.HourglassTop">Behandles</MudChip>
+                    }
                 </MudTd>
             </RowTemplate>
         </MudTable>
