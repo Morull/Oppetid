@@ -85,6 +85,10 @@ public static class DatabaseBootstrapper
             // Erstatter den default 'haukland_main'-dammen som backfill opprettet
             // med Stølsvatn/Gjelevatn/Skårstemmevatn/Stemmevatn (terminal).
             await HauklandSignalMapSeeder.SeedAsync(services, ct).ConfigureAwait(false);
+
+            // Backfill data_imports fra eksisterende settlement_imports-historikk
+            // (SPEC-IMPORT-COMPLETENESS steg 3). Idempotent — NOT EXISTS-filter.
+            await DataImportsBackfillSeeder.SeedAsync(services, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
