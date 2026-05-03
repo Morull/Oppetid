@@ -48,6 +48,30 @@ else if (_loading)
 }
 else if (_data is not null)
 {
+    @* ---- Datakvalitets-banner (SPEC-MVP-HARDENING tiltak C) ----
+       Vis dekning og prosent god kvalitet for valgt periode. *@
+    @if (_dataQuality is not null && _dataQuality.GoodPct < 1.0)
+    {
+        <MudPaper Class="pa-2 mb-3" Elevation="0"
+                  Style="border-left: 4px solid var(--mud-palette-warning); background: rgba(243, 156, 18, 0.06);">
+            <div class="d-flex align-center" style="gap:12px; flex-wrap:wrap;">
+                <MudIcon Icon="@Icons.Material.Filled.Info" Color="MudBlazor.Color.Warning" Size="MudBlazor.Size.Small" />
+                <MudText Typo="Typo.body2">
+                    <strong>Datakvalitet:</strong>
+                    @($"{_dataQuality.GoodPct * 100:F1} %") god av @_dataQuality.TotalHours timer.
+                    @if (_dataQuality.WarningHours + _dataQuality.BadHours + _dataQuality.MissingHours > 0)
+                    {
+                        <span>(@(_dataQuality.WarningHours) advarsel, @(_dataQuality.BadHours) dårlig, @(_dataQuality.MissingHours) mangler.)</span>
+                    }
+                    @if (_dataQuality.ManglerImportHours > 0)
+                    {
+                        <span> @_dataQuality.ManglerImportHours timer er ikke importert.</span>
+                    }
+                </MudText>
+            </div>
+        </MudPaper>
+    }
+
     @if (_data.AntallTimerMedPlan == 0)
     {
         <MudAlert Severity="Severity.Info" Class="mb-4">
@@ -266,6 +290,7 @@ else if (_data is not null)
     private string? _error;
     private ProduksjonAnalyseDto? _data;
     private ProduksjonAnalyseDto? _previous;
+    private DataQualitySummaryDto? _dataQuality;
 
     private ApexChartOptions<DailyPoint> _chartOptions = new();
     private int _chartVersion;
@@ -339,6 +364,7 @@ else if (_data is not null)
         _error = null;
         _data = null;
         _previous = null;
+        _dataQuality = null;
         try
         {
             var fromUtc = _fromDate.ToUtcOffsetSafe();
@@ -354,6 +380,10 @@ else if (_data is not null)
 
             _data = await dataTask;
             _previous = await prevTask;
+
+            // Datakvalitet — informasjons-banner.
+            try { _dataQuality = await NedetidApi.GetDataQualityAsync(_plantId, fromUtc, toUtc); }
+            catch { _dataQuality = null; }
 
             BuildDailyPoints();
             _chartVersion++;

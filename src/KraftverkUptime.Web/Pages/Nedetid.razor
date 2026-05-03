@@ -46,6 +46,33 @@ else if (_loading)
 }
 else if (_response is not null)
 {
+    @* ---- Datakvalitets-banner (SPEC-MVP-HARDENING tiltak C) ----
+       Vis dekning og prosent god kvalitet for valgt periode slik at drifts-leder
+       kan vurdere hvor pålitelige nedetid-tallene er. Filter-toggle "skjul
+       dårlige timer" krever endring i backend-aggregator og kommer i neste
+       iterasjon. *@
+    @if (_dataQuality is not null && _dataQuality.GoodPct < 1.0)
+    {
+        <MudPaper Class="pa-2 mb-3" Elevation="0"
+                  Style="border-left: 4px solid var(--mud-palette-warning); background: rgba(243, 156, 18, 0.06);">
+            <div class="d-flex align-center" style="gap:12px; flex-wrap:wrap;">
+                <MudIcon Icon="@Icons.Material.Filled.Info" Color="MudBlazor.Color.Warning" Size="MudBlazor.Size.Small" />
+                <MudText Typo="Typo.body2">
+                    <strong>Datakvalitet:</strong>
+                    @($"{_dataQuality.GoodPct * 100:F1} %") god av @_dataQuality.TotalHours timer.
+                    @if (_dataQuality.WarningHours + _dataQuality.BadHours + _dataQuality.MissingHours > 0)
+                    {
+                        <span>(@(_dataQuality.WarningHours) advarsel, @(_dataQuality.BadHours) dårlig, @(_dataQuality.MissingHours) mangler.)</span>
+                    }
+                    @if (_dataQuality.ManglerImportHours > 0)
+                    {
+                        <span> @_dataQuality.ManglerImportHours timer er ikke importert.</span>
+                    }
+                </MudText>
+            </div>
+        </MudPaper>
+    }
+
     @* ---- KPI-kort ---- *@
     <MudGrid Class="mb-4">
         <MudItem xs="12" sm="6" md="3">
@@ -197,6 +224,7 @@ else if (_response is not null)
     private bool _loading;
     private string? _error;
     private NedetidResponse? _response;
+    private DataQualitySummaryDto? _dataQuality;
     private string? _csvUrl;
     private string _eventSearch = string.Empty;
 
@@ -293,6 +321,7 @@ else if (_response is not null)
         _loading = true;
         _error = null;
         _response = null;
+        _dataQuality = null;
         try
         {
             var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
@@ -301,6 +330,11 @@ else if (_response is not null)
             _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "nedetid", fromUtc, toUtc).ToString();
             Filter.StoreNedetid(_response);
             BuildCharts(_response);
+
+            // Datakvalitet — informasjons-banner. Ikke kritisk om endepunktet
+            // feiler; vi viser bare ikke banneren da.
+            try { _dataQuality = await NedetidApi.GetDataQualityAsync(Filter.PlantId, fromUtc, toUtc); }
+            catch { _dataQuality = null; }
         }
         catch (Exception ex)
         {

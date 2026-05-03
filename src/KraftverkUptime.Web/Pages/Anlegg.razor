@@ -96,6 +96,14 @@ else
         <MudProgressLinear Indeterminate="true" Class="mb-4" />
     }
 
+    @* ---- Datakvalitets-kort (SPEC-MVP-HARDENING tiltak C) ---- *@
+    @if (_dataQuality is not null)
+    {
+        <div class="mb-4">
+            <DataQualityBadge Summary="@_dataQuality" Detailed="true" />
+        </div>
+    }
+
     @* ---- Faner med detalj-data ---- *@
     <MudTabs Outlined="true" Position="Position.Top" Rounded="true" Border="true" Elevation="2"
              ApplyEffectsToContainer="true">
@@ -355,6 +363,7 @@ else
 
     // Per-fane data
     private PortfolioPlantKpi? _plantKpis;
+    private DataQualitySummaryDto? _dataQuality;
     private bool _loadingKpis;
     private List<SettlementImportSummary>? _imports;
     private NedetidResponse? _nedetid;
@@ -413,6 +422,7 @@ else
 
         _imports = null; _nedetid = null; _vaktRoi = null;
         _effektivitet = null; _captureRate = null; _plantKpis = null;
+        _dataQuality = null;
         _loadingKpis = true;
         StateHasChanged();
 
@@ -431,6 +441,7 @@ else
         var effTask = SafeTask(() => NedetidApi.GetEffektivitetAsync(PlantId, fromUtc, toUtc));
         var crTask = SafeTask(() => NedetidApi.GetCaptureRateAsync(PlantId, fromUtc, toUtc));
         var kpiTask = SafeTask(() => NedetidApi.GetPortfolioKpisAsync(fromUtc, toUtc));
+        var dqTask = TrySafeNullable(() => NedetidApi.GetDataQualityAsync(PlantId, fromUtc, toUtc));
 
         var imports = await importsTask;
         if (imports is not null)
@@ -446,12 +457,20 @@ else
         _captureRate = await crTask;
         var portfolio = await kpiTask;
         _plantKpis = portfolio?.Plants.FirstOrDefault(p => p.PlantId == PlantId);
+        _dataQuality = await dqTask;
         _loadingKpis = false;
 
         StateHasChanged();
     }
 
     private static async Task<T?> SafeTask<T>(Func<Task<T>> task) where T : class
+    {
+        try { return await task(); }
+        catch { return null; }
+    }
+
+    /// <summary>SafeTask-variant for API-er som allerede returnerer T?.</summary>
+    private static async Task<T?> TrySafeNullable<T>(Func<Task<T?>> task) where T : class
     {
         try { return await task(); }
         catch { return null; }

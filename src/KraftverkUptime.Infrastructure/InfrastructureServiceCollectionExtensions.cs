@@ -124,6 +124,10 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<KraftverkUptime.Modules.Reporting.Produksjon.IProduksjonAnalyseService,
                           KraftverkUptime.Infrastructure.Reporting.ProduksjonAnalyseQueryService>();
 
+        // --- Datakvalitet (SPEC-MVP-HARDENING tiltak C) ---
+        services.AddScoped<KraftverkUptime.Modules.Reporting.DataQuality.IDataQualityQueryService,
+                          KraftverkUptime.Infrastructure.Reporting.DataQualityQueryService>();
+
         // --- Events ---
         services.AddSingleton<IEventPublisher, InProcEventPublisher>();
         services.AddScoped<IEventHandler<SettlementImportedEvent>, ClassifyOnImportedHandler>();

@@ -119,6 +119,7 @@ else if (_rows is not null)
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByTapNok">Tap (NOK)</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByReddetNok">Reddet vakt (NOK)</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right">Reddbare</MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByDq">Datakvalitet</MudTableSortLabel></MudTh>
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd>
@@ -162,6 +163,9 @@ else if (_rows is not null)
                             }
                             else { <span>–</span> }
                         </MudTd>
+                        <MudTd Style="text-align:right">
+                            <DataQualityBadge Summary="@context.DataQuality" />
+                        </MudTd>
                     </RowTemplate>
                     <FooterContent>
                         <MudTFootRow>
@@ -179,6 +183,7 @@ else if (_rows is not null)
                             <MudTd Style="text-align:right">
                                 <strong>@_rows.Sum(r => r.AntallReddbare) / @_rows.Sum(r => r.AntallEvents)</strong>
                             </MudTd>
+                            <MudTd Style="text-align:right"><strong>@FormatPortfolioGoodPct()</strong></MudTd>
                         </MudTFootRow>
                     </FooterContent>
                 </MudTable>
@@ -219,6 +224,7 @@ else if (_rows is not null)
         double ReddetNok,
         int AntallEvents,
         int AntallReddbare,
+        DataQualitySummaryDto? DataQuality,
         IReadOnlyList<string> MissingData);
 
     protected override async Task OnInitializedAsync()
@@ -261,8 +267,16 @@ else if (_rows is not null)
 
             var portfolio = await NedetidApi.GetPortfolioKpisAsync(fromUtc, toUtc);
 
+            // Datakvalitet i én bulk-spørring (SPEC-MVP-HARDENING tiltak C) —
+            // unngår N+1 ved å hente alle anlegg på én gang.
+            IReadOnlyList<DataQualitySummaryDto> dqSummaries = Array.Empty<DataQualitySummaryDto>();
+            try { dqSummaries = await NedetidApi.GetPortfolioDataQualityAsync(fromUtc, toUtc); }
+            catch { /* DQ er informasjons-kolonne; tom lykke om endepunktet feiler */ }
+            var dqByPlant = dqSummaries.ToDictionary(d => d.PlantId, d => d, StringComparer.Ordinal);
+
             // Fan-out: vakt-ROI + nedetid for hver plant parallelt.
-            var enrichTasks = portfolio.Plants.Select(p => EnrichAsync(p, fromUtc, toUtc));
+            var enrichTasks = portfolio.Plants.Select(p =>
+                EnrichAsync(p, dqByPlant.GetValueOrDefault(p.PlantId), fromUtc, toUtc));
             var enriched = await Task.WhenAll(enrichTasks);
 
             _rows = enriched.OrderByDescending(r => r.ReddetNok).ToList();
@@ -279,7 +293,7 @@ else if (_rows is not null)
         }
     }
 
-    private async Task<Row> EnrichAsync(PortfolioPlantKpi p, DateTimeOffset fromUtc, DateTimeOffset toUtc)
+    private async Task<Row> EnrichAsync(PortfolioPlantKpi p, DataQualitySummaryDto? dq, DateTimeOffset fromUtc, DateTimeOffset toUtc)
     {
         double Kpi(string name) => p.Kpis.TryGetValue(name, out var v) && v.HasValue ? v.Value : 0;
 
@@ -316,6 +330,7 @@ else if (_rows is not null)
             ReddetNok: vakt?.TotalReddetNok ?? 0,
             AntallEvents: vakt?.AntallEventsTotalt ?? 0,
             AntallReddbare: vakt?.AntallReddbareInnenforVakt ?? 0,
+            DataQuality: dq,
             MissingData: missing);
     }
 
@@ -371,6 +386,19 @@ else if (_rows is not null)
     private static readonly Func<Row, object> SortByNedetid  = r => r.NedetidTimer;
     private static readonly Func<Row, object> SortByTapNok   = r => r.TapNok;
     private static readonly Func<Row, object> SortByReddetNok= r => r.ReddetNok;
+    private static readonly Func<Row, object> SortByDq       = r => r.DataQuality?.GoodPct ?? -1.0;
+
+    /// <summary>Vekt-snitt-good-prosent for footer (vekter på TotalHours per anlegg).</summary>
+    private string FormatPortfolioGoodPct()
+    {
+        if (_rows is null || _rows.Count == 0) return "—";
+        var withDq = _rows.Where(r => r.DataQuality is not null).Select(r => r.DataQuality!).ToList();
+        if (withDq.Count == 0) return "—";
+        var totalHours = withDq.Sum(d => d.TotalHours);
+        if (totalHours == 0) return "—";
+        var goodHours = withDq.Sum(d => d.GoodHours);
+        return $"{100.0 * goodHours / totalHours:F1} %";
+    }
 
     // -- Format-helpers --
     private static string FormatHours(double v) => v == 0 ? "–" : v.ToString("F0");

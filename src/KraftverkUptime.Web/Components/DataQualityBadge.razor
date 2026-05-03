@@ -1,0 +1,100 @@
+@using KraftverkUptime.Web.Services
+
+@*
+    DataQualityBadge — kompakt visning av data-kvalitet for et anlegg i en periode.
+
+    Brukes i to varianter:
+    - <DataQualityBadge Summary="@dq" /> kompakt (én linje, "97.3 %"-verdi + farget pille)
+      brukes på portefølje-tabellen
+    - <DataQualityBadge Summary="@dq" Detailed=true /> ekspandert (kort med fordeling
+      og topp-issues) brukes på anleggs-siden
+
+    SPEC-MVP-HARDENING tiltak C.
+*@
+
+@if (Summary is null)
+{
+    <span style="color:var(--mud-palette-text-disabled); font-size:0.85em;">—</span>
+}
+else if (Detailed)
+{
+    <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default); border-radius:6px;">
+        <div class="d-flex justify-space-between align-center mb-2">
+            <MudText Typo="Typo.subtitle2">Datakvalitet</MudText>
+            <MudChip T="string" Size="Size.Small" Color="@GetColor()" Variant="Variant.Filled">
+                @($"{Summary.GoodPct * 100:F1} %")
+            </MudChip>
+        </div>
+        <div style="font-size:0.85em; line-height:1.5;">
+            <div>Totalt: <b>@Summary.TotalHours</b> t</div>
+            <div style="color:var(--mud-palette-success);">✓ God:    <b>@Summary.GoodHours</b> t (@($"{ShareOf(Summary.GoodHours):F1} %"))</div>
+            @if (Summary.WarningHours > 0)
+            {
+                <div style="color:var(--mud-palette-warning);">⚠ Advarsel: <b>@Summary.WarningHours</b> t (@($"{ShareOf(Summary.WarningHours):F1} %"))</div>
+            }
+            @if (Summary.BadHours > 0)
+            {
+                <div style="color:var(--mud-palette-error);">✕ Dårlig:  <b>@Summary.BadHours</b> t (@($"{ShareOf(Summary.BadHours):F1} %"))</div>
+            }
+            @if (Summary.MissingHours > 0)
+            {
+                <div style="color:var(--mud-palette-info);">○ Mangler:  <b>@Summary.MissingHours</b> t (@($"{ShareOf(Summary.MissingHours):F1} %"))</div>
+            }
+            @if (Summary.ManglerImportHours > 0)
+            {
+                <div style="color:var(--mud-palette-text-disabled);">— Ingen import for <b>@Summary.ManglerImportHours</b> t (@($"{ShareOf(Summary.ManglerImportHours):F1} %"))</div>
+            }
+        </div>
+        @if (Summary.TopIssues.Count > 0)
+        {
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.caption" Class="mt-2"><b>Topp issues</b></MudText>
+            <ul style="margin:0; padding-left:16px; font-size:0.8em;">
+                @foreach (var issue in Summary.TopIssues)
+                {
+                    <li>@issue.TimeUtc.LocalDateTime.ToString("dd.MM HH:mm") — @issue.State: @issue.Reason</li>
+                }
+            </ul>
+        }
+    </MudPaper>
+}
+else
+{
+    <MudTooltip Text="@TooltipText()">
+        <span style="@($"color:{GetColorHex()}; font-weight:500;")">
+            @($"{Summary.GoodPct * 100:F1} %")
+        </span>
+    </MudTooltip>
+}
+
+@code {
+    [Parameter] public DataQualitySummaryDto? Summary { get; set; }
+    [Parameter] public bool Detailed { get; set; }
+
+    private double ShareOf(int count) => Summary is null || Summary.TotalHours == 0
+        ? 0 : 100.0 * count / Summary.TotalHours;
+
+    private Color GetColor()
+    {
+        if (Summary is null) return Color.Default;
+        if (Summary.GoodPct >= 0.99) return Color.Success;
+        if (Summary.GoodPct >= 0.95) return Color.Warning;
+        return Color.Error;
+    }
+
+    private string GetColorHex()
+    {
+        if (Summary is null) return "var(--mud-palette-text-disabled)";
+        if (Summary.GoodPct >= 0.99) return "var(--mud-palette-success)";
+        if (Summary.GoodPct >= 0.95) return "var(--mud-palette-warning-darken)";
+        return "var(--mud-palette-error)";
+    }
+
+    private string TooltipText()
+    {
+        if (Summary is null) return "Ingen data";
+        return $"{Summary.GoodHours}/{Summary.TotalHours} timer god kvalitet. "
+             + $"{Summary.WarningHours} advarsel, {Summary.BadHours} dårlig, "
+             + $"{Summary.MissingHours} mangler, {Summary.ManglerImportHours} uten import.";
+    }
+}

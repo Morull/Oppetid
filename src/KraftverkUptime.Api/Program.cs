@@ -148,6 +148,7 @@ app.MapCaptureRateV1(apiV1);
 app.MapAdminV1(apiV1);
 app.MapDamsV1(apiV1);
 app.MapProduksjonV1(apiV1);
+app.MapDataQualityV1(apiV1);
 
 app.MapGet("/", () => Results.Redirect("/openapi/v1.json"));
 

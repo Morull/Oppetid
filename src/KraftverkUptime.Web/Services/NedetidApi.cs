@@ -93,6 +93,34 @@ public sealed class NedetidApi
         return resp ?? throw new InvalidOperationException("Tom respons fra /produksjon-analyse.");
     }
 
+    /// <summary>Henter datakvalitets-summary for et anlegg (SPEC-MVP-HARDENING C).</summary>
+    public async Task<DataQualitySummaryDto?> GetDataQualityAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var url = BuildUrl(plantId, "data-quality", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        try
+        {
+            return await _http.GetFromJsonAsync<DataQualitySummaryDto>(url, JsonOptions, ct).ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null; // anlegget finnes ikke — UI kan vise "—"
+        }
+    }
+
+    /// <summary>Henter datakvalitets-summary for hele porteføljen.</summary>
+    public async Task<IReadOnlyList<DataQualitySummaryDto>> GetPortfolioDataQualityAsync(
+        DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var qs = $"from={Uri.EscapeDataString(fromUtc.UtcDateTime.ToString("o"))}"
+               + $"&to={Uri.EscapeDataString(toUtc.UtcDateTime.ToString("o"))}";
+        var resp = await _http
+            .GetFromJsonAsync<List<DataQualitySummaryDto>>(
+                $"api/v1/portfolio/data-quality?{qs}", JsonOptions, ct)
+            .ConfigureAwait(false);
+        return resp ?? new List<DataQualitySummaryDto>();
+    }
+
     /// <summary>Bygger nedlastings-URL for CSV-eksport (åpnes direkte i ny fane).</summary>
     public Uri BuildCsvUri(string plantId, string endpoint, DateTimeOffset fromUtc, DateTimeOffset toUtc)
     {
@@ -294,3 +322,25 @@ public sealed record VaktRoiResponse(
     double TotalReddetUbalanse_NOK,
     double SnittEkstraTimerPerEvent,
     IReadOnlyList<VaktRoiEventDto> Events);
+
+// --- DataQuality (SPEC-MVP-HARDENING tiltak C) -------------------------------
+
+public sealed record DataQualitySummaryDto(
+    string PlantId,
+    string PlantName,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    int TotalHours,
+    int GoodHours,
+    int WarningHours,
+    int BadHours,
+    int MissingHours,
+    int ManglerImportHours,
+    double GoodPct,
+    double DekningPct,
+    IReadOnlyList<DataQualityIssueDto> TopIssues);
+
+public sealed record DataQualityIssueDto(
+    DateTimeOffset TimeUtc,
+    string State,
+    string Reason);
