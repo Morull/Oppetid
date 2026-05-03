@@ -65,6 +65,10 @@ public static class DatabaseBootstrapper
             // Idempotent; backfill sikrer at alle eksisterende anlegg får én default-dam.
             await EnsureDamsSchemaAsync(db, logger, ct).ConfigureAwait(false);
 
+            // Data-completeness-tabeller (SPEC-IMPORT-COMPLETENESS).
+            // Idempotent; backfill seeder default-expectations for alle plants.
+            await EnsureDataCompletenessSchemaAsync(db, logger, ct).ConfigureAwait(false);
+
             // Seed default-nedetidskategorier (idempotent — hopper over hvis allerede tilstede).
             await DowntimeCategorySeeder.SeedAsync(services, ct).ConfigureAwait(false);
 
@@ -395,6 +399,99 @@ public static class DatabaseBootstrapper
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Kunne ikke kjøre dam-backfill — eksisterende plants kan mangle terminal-dam.");
+        }
+    }
+
+    /// <summary>
+    /// Idempotent skjema-bro for SPEC-IMPORT-COMPLETENESS:
+    ///   - <c>core.data_source_expectations</c>: per anlegg per kilde-type
+    ///   - <c>core.data_imports</c>: logg over faktiske importer
+    ///   - Backfill: alle eksisterende plants får settlement + hydrogrid_plan-rader
+    ///     (de to kildene som er aktive i dag for hele porteføljen). SCADA og
+    ///     operlog seedes ikke automatisk — drifts-leder aktiverer per anlegg
+    ///     via PlantAdmin når flow er på plass.
+    /// </summary>
+    private static async Task EnsureDataCompletenessSchemaAsync(
+        KraftverkDbContext db, ILogger logger, CancellationToken ct)
+    {
+        const string ddlSql = """
+            CREATE TABLE IF NOT EXISTS core.data_source_expectations (
+                plant_id varchar(64) NOT NULL,
+                source_type varchar(32) NOT NULL,
+                cadence varchar(16) NOT NULL DEFAULT 'monthly',
+                expected_lag_days integer NOT NULL DEFAULT 7,
+                is_active boolean NOT NULL DEFAULT TRUE,
+                activated_at_utc timestamptz NULL,
+                deactivated_at_utc timestamptz NULL,
+                PRIMARY KEY (plant_id, source_type)
+            );
+
+            CREATE TABLE IF NOT EXISTS core.data_imports (
+                import_id uuid PRIMARY KEY,
+                plant_id varchar(64) NOT NULL,
+                source_type varchar(32) NOT NULL,
+                period_from_utc timestamptz NOT NULL,
+                period_to_utc timestamptz NOT NULL,
+                imported_at_utc timestamptz NOT NULL DEFAULT NOW(),
+                file_name varchar(255) NULL,
+                file_hash varchar(64) NULL,
+                rows_imported integer NULL,
+                coverage_pct double precision NULL,
+                user_id varchar(128) NULL,
+                notes text NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_imports_plant_source_period
+                ON core.data_imports (plant_id, source_type, period_from_utc DESC);
+
+            CREATE INDEX IF NOT EXISTS ix_imports_imported_at
+                ON core.data_imports (imported_at_utc);
+            """;
+
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(ddlSql, ct).ConfigureAwait(false);
+            logger.LogDebug("Data-completeness-skjema sikret (data_source_expectations + data_imports).");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Kunne ikke sikre data-completeness-skjemaet — fortsetter uten det.");
+            return;
+        }
+
+        // Backfill: alle plants får settlement (lag 7 dager) + hydrogrid_plan
+        // (lag 7 dager — Hydrogrid leveres som del av KAIA-eksporten, samme
+        // SLA). SCADA og operlog seedes IKKE her — drifts-leder aktiverer
+        // per anlegg når eksport-flow er på plass.
+        // Idempotent: ON CONFLICT DO NOTHING bevarer eksisterende konfig
+        // (drifts-leder kan ha endret cadence eller is_active manuelt).
+        const string backfillSql = """
+            INSERT INTO core.data_source_expectations
+                (plant_id, source_type, cadence, expected_lag_days, is_active, activated_at_utc)
+            SELECT p.id, 'settlement', 'monthly', 7, TRUE, '2024-01-01'::timestamptz
+            FROM core.plants p
+            ON CONFLICT (plant_id, source_type) DO NOTHING;
+
+            INSERT INTO core.data_source_expectations
+                (plant_id, source_type, cadence, expected_lag_days, is_active, activated_at_utc)
+            SELECT p.id, 'hydrogrid_plan', 'monthly', 7, TRUE, '2024-01-01'::timestamptz
+            FROM core.plants p
+            ON CONFLICT (plant_id, source_type) DO NOTHING;
+            """;
+
+        try
+        {
+            var added = await db.Database.ExecuteSqlRawAsync(backfillSql, ct).ConfigureAwait(false);
+            if (added > 0)
+            {
+                logger.LogInformation(
+                    "Data-completeness backfill: {Added} expectation-rader seeded (settlement + hydrogrid_plan per plant).",
+                    added);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Kunne ikke kjøre data-completeness backfill — manglende expectations.");
         }
     }
 

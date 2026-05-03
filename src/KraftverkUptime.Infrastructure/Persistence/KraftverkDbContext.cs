@@ -29,6 +29,8 @@ public sealed class KraftverkDbContext : DbContext
     public DbSet<ClassifiedEventEntry> ClassifiedEvents => Set<ClassifiedEventEntry>();
     public DbSet<MarketPriceEntry> MarketPrices => Set<MarketPriceEntry>();
     public DbSet<DamEntry> Dams => Set<DamEntry>();
+    public DbSet<DataSourceExpectation> DataSourceExpectations => Set<DataSourceExpectation>();
+    public DbSet<DataImport> DataImports => Set<DataImport>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -190,6 +192,33 @@ public sealed class KraftverkDbContext : DbContext
             b.HasIndex(x => x.PlantId);
             // Hovedoppslag for OverflowQueryService — finn terminal-dam per plant.
             b.HasIndex(x => new { x.PlantId, x.IsTurbineIntake });
+        });
+
+        // SPEC-IMPORT-COMPLETENESS: forventede datakilder per anlegg.
+        modelBuilder.Entity<DataSourceExpectation>(b =>
+        {
+            b.ToTable("data_source_expectations");
+            b.HasKey(x => new { x.PlantId, x.SourceType });
+            b.Property(x => x.PlantId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.SourceType).HasMaxLength(32).IsRequired();
+            b.Property(x => x.Cadence).HasMaxLength(16).IsRequired();
+        });
+
+        // SPEC-IMPORT-COMPLETENESS: logg av faktiske importer.
+        modelBuilder.Entity<DataImport>(b =>
+        {
+            b.ToTable("data_imports");
+            b.HasKey(x => x.ImportId);
+            b.Property(x => x.PlantId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.SourceType).HasMaxLength(32).IsRequired();
+            b.Property(x => x.FileName).HasMaxLength(255);
+            b.Property(x => x.FileHash).HasMaxLength(64);
+            b.Property(x => x.UserId).HasMaxLength(128);
+            // Hovedoppslag: hent alle importer for et anlegg + kilde sortert
+            // på periode (matrise-build).
+            b.HasIndex(x => new { x.PlantId, x.SourceType, x.PeriodFromUtc })
+                .HasDatabaseName("ix_imports_plant_source_period");
+            b.HasIndex(x => x.ImportedAtUtc);
         });
 
         modelBuilder.ApplyOwnedEntityFilters(_queryContext);
