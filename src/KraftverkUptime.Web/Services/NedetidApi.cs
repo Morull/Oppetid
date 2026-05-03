@@ -156,6 +156,37 @@ public sealed class NedetidApi
         return resp ?? throw new InvalidOperationException("Tom respons fra /data-status/summary.");
     }
 
+    /// <summary>Lister alle expectations for et anlegg.</summary>
+    public async Task<IReadOnlyList<DataSourceExpectationDto>> ListExpectationsAsync(
+        string plantId, CancellationToken ct = default)
+    {
+        var resp = await _http
+            .GetFromJsonAsync<List<DataSourceExpectationDto>>(
+                $"api/v1/plants/{Uri.EscapeDataString(plantId)}/data-source-expectations", JsonOptions, ct)
+            .ConfigureAwait(false);
+        return resp ?? new List<DataSourceExpectationDto>();
+    }
+
+    /// <summary>Upsert expectation for et anlegg + kilde-type.</summary>
+    public async Task<DataSourceExpectationDto> UpsertExpectationAsync(
+        string plantId, string sourceType, bool isActive, int expectedLagDays,
+        string? cadence = null, CancellationToken ct = default)
+    {
+        var body = new
+        {
+            isActive,
+            expectedLagDays,
+            cadence = cadence ?? "monthly"
+        };
+        var resp = await _http.PutAsJsonAsync(
+            $"api/v1/plants/{Uri.EscapeDataString(plantId)}/data-source-expectations/{Uri.EscapeDataString(sourceType)}",
+            body, JsonOptions, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        var dto = await resp.Content.ReadFromJsonAsync<DataSourceExpectationDto>(JsonOptions, ct)
+            .ConfigureAwait(false);
+        return dto ?? throw new InvalidOperationException("Tom respons fra upsert.");
+    }
+
     /// <summary>Bygger nedlastings-URL for CSV-eksport (åpnes direkte i ny fane).</summary>
     public Uri BuildCsvUri(string plantId, string endpoint, DateTimeOffset fromUtc, DateTimeOffset toUtc)
     {
@@ -412,3 +443,12 @@ public sealed record DataCompletenessSummaryDto(
     int Pending,
     int Overdue,
     IReadOnlyList<MissingImportDto> TopOverdue);
+
+public sealed record DataSourceExpectationDto(
+    string PlantId,
+    string SourceType,
+    string Cadence,
+    int ExpectedLagDays,
+    bool IsActive,
+    DateTimeOffset? ActivatedAtUtc,
+    DateTimeOffset? DeactivatedAtUtc);

@@ -1,5 +1,6 @@
 @page "/plants/{PlantId}/admin"
 @inject ReportsApi Api
+@inject NedetidApi NedetidApi
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 
@@ -180,6 +181,74 @@ else
         </MudDialog>
     }
 
+    @* ---- Forventede datakilder (SPEC-IMPORT-COMPLETENESS) ---- *@
+    <MudPaper Class="pa-4 mt-6" Elevation="1" Style="max-width:880px;">
+        <MudText Typo="Typo.h3" Class="mb-2">Forventede datakilder</MudText>
+        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-3">
+            Toggle hvilke datakilder anlegget skal forvente, og hvor mange dager
+            etter periode-slutt vi flagger en manglende import som forfalt.
+            Endringer trer i kraft umiddelbart i <MudLink Href="/data-status">data-status</MudLink>-matrisen.
+        </MudText>
+
+        @if (_expectations is null)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else
+        {
+            <MudTable Items="_sourceTypes" Dense="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Kilde</MudTh>
+                    <MudTh Style="text-align:center">Aktiv</MudTh>
+                    <MudTh Style="text-align:right">Lag (dager)</MudTh>
+                    <MudTh>Cadence</MudTh>
+                    <MudTh>Aktivert</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    @{
+                        var current = _expectations.FirstOrDefault(e => e.SourceType == context);
+                    }
+                    <MudTd>
+                        <strong>@FormatSourceType(context)</strong>
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                            @SourceTypeDescription(context)
+                        </MudText>
+                    </MudTd>
+                    <MudTd Style="text-align:center">
+                        <MudSwitch T="bool" Value="@(current?.IsActive ?? false)"
+                                   Color="MudBlazor.Color.Success"
+                                   ValueChanged="async (bool v) => await OnToggleExpectationAsync(context, v, current)"
+                                   Disabled="@_expSaving" />
+                    </MudTd>
+                    <MudTd Style="text-align:right">
+                        <MudNumericField T="int" Value="@(current?.ExpectedLagDays ?? DefaultLagFor(context))"
+                                         ValueChanged="async (int v) => await OnLagChangedAsync(context, v, current)"
+                                         Min="0" Max="90" Step="1"
+                                         Variant="Variant.Outlined" Margin="Margin.Dense"
+                                         Style="width:80px;"
+                                         Disabled="@_expSaving" />
+                    </MudTd>
+                    <MudTd>@(current?.Cadence ?? "monthly")</MudTd>
+                    <MudTd>
+                        @if (current?.ActivatedAtUtc is { } activated)
+                        {
+                            <MudText Typo="Typo.caption">@activated.LocalDateTime.ToString("yyyy-MM-dd")</MudText>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">—</MudText>
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            @if (_expSaveError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_expSaveError</MudAlert>
+            }
+        }
+    </MudPaper>
+
     @* ---- Farezone — slett data ---- *@
     <MudPaper Class="pa-4 mt-6" Elevation="1" Style="max-width:680px; border:1px solid #E76F51;">
         <MudExpansionPanel Text="Farezone — slett data" Style="background:transparent;">
@@ -242,6 +311,15 @@ else
     private bool _damSaving;
     private string? _damSaveError;
 
+    // DataSourceExpectations-state (SPEC-IMPORT-COMPLETENESS steg 7)
+    private List<DataSourceExpectationDto>? _expectations;
+    private bool _expSaving;
+    private string? _expSaveError;
+    private static readonly string[] _sourceTypes = new[]
+    {
+        "settlement", "hydrogrid_plan", "scada", "operlog"
+    };
+
     private sealed class DamEditForm
     {
         public string Name { get; set; } = string.Empty;
@@ -273,6 +351,7 @@ else
                 };
             }
             await ReloadDamsAsync();
+            await ReloadExpectationsAsync();
         }
         catch (Exception ex)
         {
@@ -297,6 +376,90 @@ else
             _dams = new();
         }
     }
+
+    private async Task ReloadExpectationsAsync()
+    {
+        try
+        {
+            var rows = await NedetidApi.ListExpectationsAsync(PlantId);
+            _expectations = rows.ToList();
+        }
+        catch (Exception ex)
+        {
+            _expSaveError = $"Kunne ikke hente forventninger: {ex.Message}";
+            _expectations = new();
+        }
+    }
+
+    private async Task OnToggleExpectationAsync(string sourceType, bool newActive, DataSourceExpectationDto? current)
+    {
+        _expSaving = true;
+        _expSaveError = null;
+        try
+        {
+            var lag = current?.ExpectedLagDays ?? DefaultLagFor(sourceType);
+            await NedetidApi.UpsertExpectationAsync(PlantId, sourceType, newActive, lag);
+            Snackbar.Add(newActive ? $"{FormatSourceType(sourceType)} aktivert"
+                                   : $"{FormatSourceType(sourceType)} deaktivert",
+                         Severity.Success);
+            await ReloadExpectationsAsync();
+        }
+        catch (Exception ex)
+        {
+            _expSaveError = $"Kunne ikke lagre: {ex.Message}";
+        }
+        finally
+        {
+            _expSaving = false;
+        }
+    }
+
+    private async Task OnLagChangedAsync(string sourceType, int newLag, DataSourceExpectationDto? current)
+    {
+        if (current is null || current.ExpectedLagDays == newLag) return;
+        _expSaving = true;
+        _expSaveError = null;
+        try
+        {
+            await NedetidApi.UpsertExpectationAsync(PlantId, sourceType, current.IsActive, newLag);
+            await ReloadExpectationsAsync();
+        }
+        catch (Exception ex)
+        {
+            _expSaveError = $"Kunne ikke lagre: {ex.Message}";
+        }
+        finally
+        {
+            _expSaving = false;
+        }
+    }
+
+    private static int DefaultLagFor(string sourceType) => sourceType switch
+    {
+        "settlement" => 7,
+        "hydrogrid_plan" => 7,
+        "scada" => 5,
+        "operlog" => 5,
+        _ => 7,
+    };
+
+    private static string FormatSourceType(string sourceType) => sourceType switch
+    {
+        "settlement" => "Settlement (KAIA)",
+        "scada" => "SCADA",
+        "operlog" => "Operlog",
+        "hydrogrid_plan" => "Hydrogrid-plan",
+        _ => sourceType,
+    };
+
+    private static string SourceTypeDescription(string sourceType) => sourceType switch
+    {
+        "settlement" => "Månedlig oppgjørs-eksport (Excel)",
+        "hydrogrid_plan" => "Plan-kolonne i settlement-fila",
+        "scada" => "SCADA master-CSV (tidsserier)",
+        "operlog" => "SCADA operatorlog (events)",
+        _ => "",
+    };
 
     private Task OpenEditDamAsync(DamDto dam)
     {

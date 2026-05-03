@@ -150,6 +150,7 @@ app.MapDamsV1(apiV1);
 app.MapProduksjonV1(apiV1);
 app.MapDataQualityV1(apiV1);
 app.MapDataStatusV1(apiV1);
+app.MapDataSourceExpectationsV1(apiV1);
 
 app.MapGet("/", () => Results.Redirect("/openapi/v1.json"));
 
