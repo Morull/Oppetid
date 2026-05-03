@@ -74,7 +74,12 @@ public sealed class HotFolderDetector
         // 3. Content-sniff fallback hvis filnavn ikke ga svar
         if (plantId is null)
         {
-            if (sourceType == SourceType.ScadaTrends)
+            if (sourceType == SourceType.Settlement)
+            {
+                // Single-plant settlement: les plant-navn fra fane-navn / R1 i xlsx
+                plantId = DetectPlantFromXlsxContent(file);
+            }
+            else if (sourceType == SourceType.ScadaTrends)
             {
                 // SCADA-trends: tag-prefiks (Cluster1.PREFIKS_) i header
                 plantId = DetectPlantFromCsvContent(file);
@@ -95,10 +100,72 @@ public sealed class HotFolderDetector
         {
             return DetectionResult.Unknown(
                 $"Klarte ikke identifisere anlegg for fil '{name}'. " +
-                $"Forventer plant-navn i filnavnet eller SCADA-tag-prefiks i header.");
+                $"Forventer plant-navn i filnavnet, fane-navn i workbook, eller SCADA-tag-prefiks i header.");
         }
 
         return DetectionResult.Ok(plantId, sourceType.Value);
+    }
+
+    /// <summary>
+    /// For single-plant xlsx: les plant-navn fra første ikke-aggregat-fane.
+    /// Format-konvensjonen i KAIA-eksporten har en fane per anlegg, og
+    /// fane-navnet er ASCII-strippet plant-navn (eks. "Drivdal", "Logjen").
+    /// Slugifiserer til kanonisk plant-id via samme tabell som filnavn-regex.
+    /// </summary>
+    private string? DetectPlantFromXlsxContent(FileInfo file)
+    {
+        try
+        {
+            using var workbook = new ClosedXML.Excel.XLWorkbook(file.FullName);
+
+            // Prøv hver synlig ikke-aggregat-fane
+            foreach (var ws in workbook.Worksheets.Where(w =>
+                w.Visibility == ClosedXML.Excel.XLWorksheetVisibility.Visible
+                && !IsAggregateSheetName(w.Name)))
+            {
+                // 1. Selve fane-navnet
+                var fromSheetName = SlugifyPlantName(ws.Name);
+                if (fromSheetName is not null) return fromSheetName;
+
+                // 2. Cell A1 / B1 / C1 — KAIA-eksport har gjerne plant-navn med
+                //    norske tegn i en av disse cellene
+                for (var col = 1; col <= 5; col++)
+                {
+                    var raw = ws.Cell(1, col).GetString().Trim();
+                    if (string.IsNullOrEmpty(raw)) continue;
+                    var slug = SlugifyPlantName(raw);
+                    if (slug is not null) return slug;
+                }
+            }
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Map plant-navn (med eller uten norske tegn) til kanonisk plant-id.
+    /// </summary>
+    private static string? SlugifyPlantName(string raw)
+    {
+        var lower = raw.Trim().ToLowerInvariant();
+        return lower switch
+        {
+            "drivdal" => "drivdal",
+            "lindland" => "lindland",
+            "haukland" => "haukland",
+            "honnefoss" => "honnefoss",
+            "liavatn" => "liavatn",
+            "løgjen" or "logjen" => "logjen",
+            "grødemfoss" or "grodemfoss" => "grodemfoss",
+            "øgreyfoss" or "ogreyfoss" => "ogreyfoss",
+            "ørsdalen" or "orsdalen" => "orsdalen",
+            "vikeså" or "vikesa" => "vikesa",
+            "stølskraft" or "stolskraft" => "stolskraft",
+            _ => null,
+        };
     }
 
     /// <summary>

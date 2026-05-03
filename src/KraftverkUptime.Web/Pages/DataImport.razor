@@ -175,28 +175,33 @@
                 <MudProgressCircular Indeterminate="true" />
                 <MudText Class="ml-2 d-inline">Henter status…</MudText>
             }
-            else if (_matrix is not null && _summary is not null)
+            else if (_matrix is not null)
             {
-                @* Sammendrag-kort *@
+                @* Sammendrag-kort — beregnes fra matrise-cellene slik at
+                   tallene alltid matcher det brukeren ser i tabellen. *@
+                var completeCount = _matrix.Cells.Count(c => c.Status == "COMPLETE");
+                var partialCount = _matrix.Cells.Count(c => c.Status == "PARTIAL");
+                var overdueCount = _matrix.Cells.Count(c => c.Status == "OVERDUE");
+                var totalCount = _matrix.Cells.Count;
                 <MudGrid Class="mb-3">
                     <MudItem xs="12" sm="4">
                         <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid var(--mud-palette-success);">
                             <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Komplette</MudText>
-                            <MudText Typo="Typo.h3">@_summary.Complete</MudText>
-                            <MudText Typo="Typo.caption">av @_summary.TotalExpected forventede</MudText>
+                            <MudText Typo="Typo.h3">@completeCount</MudText>
+                            <MudText Typo="Typo.caption">av @totalCount forventede</MudText>
                         </MudPaper>
                     </MudItem>
                     <MudItem xs="6" sm="4">
                         <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid var(--mud-palette-warning);">
                             <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Delvise</MudText>
-                            <MudText Typo="Typo.h3">@_summary.Partial</MudText>
+                            <MudText Typo="Typo.h3">@partialCount</MudText>
                             <MudText Typo="Typo.caption">&lt; 95 % dekning</MudText>
                         </MudPaper>
                     </MudItem>
                     <MudItem xs="6" sm="4">
                         <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid var(--mud-palette-error);">
                             <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Forfalt</MudText>
-                            <MudText Typo="Typo.h3">@_summary.Overdue</MudText>
+                            <MudText Typo="Typo.h3">@overdueCount</MudText>
                             <MudText Typo="Typo.caption">venter handling</MudText>
                         </MudPaper>
                     </MudItem>
@@ -292,7 +297,7 @@
                 }
 
                 @* Topp-overdue *@
-                @if (_summary.TopOverdue.Count > 0)
+                @if (_summary is not null && _summary.TopOverdue.Count > 0)
                 {
                     <MudPaper Class="pa-3 mt-4" Elevation="1">
                         <MudText Typo="Typo.h5" Class="mb-2">Topp 5 forfalte importer</MudText>
@@ -674,11 +679,11 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Vis alt — drifts-leder vil heller se hele bildet enn å filtrere
-        // periode. Default-vindu = 24 mnd bakover + denne måneden.
+        // Default-vindu = 6 mnd bakover + denne måneden. Drifts-leder
+        // bekreftet at eldre historikk ikke er relevant for status-bildet.
         var today = DateTime.Today;
         var firstThis = new DateTime(today.Year, today.Month, 1);
-        _fromDate = firstThis.AddMonths(-24);
+        _fromDate = firstThis.AddMonths(-6);
         _toDate = firstThis.AddMonths(1);
 
         if (string.Equals(InitialTab, "manuell", StringComparison.OrdinalIgnoreCase)) _activeTab = 1;
