@@ -1,181 +1,21 @@
 @page "/upload"
-@inject ReportsApi Api
 @inject NavigationManager Nav
 
-<PageTitle>Last opp avregning</PageTitle>
-
-<MudText Typo="Typo.h1" Class="mb-4">Last opp avregning</MudText>
-
-<MudText Typo="Typo.body1" Class="mb-4" Color="MudBlazor.Color.Secondary">
-    Velg anlegg og en Excel-fil (<code>.xlsx</code>) eksportert fra portalen.
-    Filen lagres, parses og klassifiseres i bakgrunnen.
-    Når prosesseringen er fullført kan rapporten åpnes fra
-    <MudLink Href="reports">Rapporter</MudLink>.
-</MudText>
-
-<MudCard Elevation="2" Style="max-width: 640px;">
-    <MudCardContent>
-        @if (_error is not null)
-        {
-            <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
-        }
-
-        @if (_lastUpload is not null)
-        {
-            <MudAlert Severity="Severity.Success" Class="mb-3">
-                <MudText Typo="Typo.body1"><strong>Opplasting mottatt.</strong></MudText>
-                <MudText Typo="Typo.body2">
-                    IdempotencyKey: <code>@_lastUpload.IdempotencyKey[..16]…</code>
-                </MudText>
-                <MudButton Class="mt-2" Color="MudBlazor.Color.Primary" Variant="Variant.Filled"
-                           Size="MudBlazor.Size.Small"
-                           Href="@($"reports/{_lastUpload.PlantId}/{_lastUpload.IdempotencyKey}")">
-                    Gå til rapport
-                </MudButton>
-            </MudAlert>
-        }
-
-        <MudStack Spacing="3">
-            @if (_plants is null)
-            {
-                <MudSkeleton Height="56px" Width="100%" />
-            }
-            else if (_plants.Count == 0)
-            {
-                <MudAlert Severity="Severity.Warning">Ingen anlegg registrert. Se Anlegg-siden.</MudAlert>
-            }
-            else
-            {
-                <MudSelect T="string" Value="_selectedPlantId" ValueChanged="OnPlantChanged"
-                           Label="Anlegg" Variant="Variant.Outlined"
-                           AdornmentIcon="@Icons.Material.Filled.Factory"
-                           Adornment="Adornment.Start"
-                           Disabled="@_isUploading">
-                    @foreach (var p in _plants)
-                    {
-                        <MudSelectItem Value="@p.Id">@p.Name (@p.Id)</MudSelectItem>
-                    }
-                </MudSelect>
-            }
-
-            <MudFileUpload T="IBrowserFile" FilesChanged="OnFilesChanged" Accept=".xlsx" MaximumFileCount="1"
-                           Disabled="@_isUploading">
-                <ActivatorContent>
-                    <MudButton HtmlTag="label" Variant="Variant.Outlined"
-                               Color="MudBlazor.Color.Primary" FullWidth="true"
-                               StartIcon="@Icons.Material.Filled.CloudUpload"
-                               Disabled="@_isUploading">
-                        @(_selectedFile is null ? "Velg Excel-fil" : _selectedFile.Name)
-                    </MudButton>
-                </ActivatorContent>
-            </MudFileUpload>
-
-            @if (_selectedFile is not null)
-            {
-                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
-                    @_selectedFile.Name · @(_selectedFile.Size / 1024) KB · @_selectedFile.ContentType
-                </MudText>
-            }
-
-            @if (_isUploading)
-            {
-                <MudProgressLinear Color="MudBlazor.Color.Primary" Indeterminate="true" />
-                <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">Laster opp…</MudText>
-            }
-
-            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Send"
-                       OnClick="SubmitAsync"
-                       Disabled="@(!CanSubmit)" FullWidth="true" Size="MudBlazor.Size.Large">
-                @(_isUploading ? "Sender…" : "Last opp")
-            </MudButton>
-        </MudStack>
-    </MudCardContent>
-</MudCard>
+@*
+    Tidligere standalone opplastnings-side. Konsolidert til /data-import
+    for å samle all import + status på én plass (per brukerinput 2026-05-03).
+    Beholder ruten som tilbakekompabilitet — redirect til /data-import med
+    eventuell ?plant=-parameter intakt.
+*@
 
 @code {
     [SupplyParameterFromQuery(Name = "plant")] public string? PreselectedPlantId { get; set; }
 
-    private const long MaxUploadBytes = 26_214_400; // 25 MB
-    private const string XlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-
-    private IReadOnlyList<PlantDto>? _plants;
-    private string _selectedPlantId = string.Empty;
-    private IBrowserFile? _selectedFile;
-    private bool _isUploading;
-    private string? _error;
-    private SettlementUploadResponse? _lastUpload;
-
-    private bool CanSubmit =>
-        !_isUploading
-        && !string.IsNullOrWhiteSpace(_selectedPlantId)
-        && _selectedFile is not null;
-
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        try
-        {
-            _plants = await Api.ListPlantsAsync();
-            if (!string.IsNullOrWhiteSpace(PreselectedPlantId)
-                && _plants.Any(p => p.Id == PreselectedPlantId))
-            {
-                _selectedPlantId = PreselectedPlantId;
-            }
-            else if (_plants.Count == 1)
-            {
-                _selectedPlantId = _plants[0].Id;
-            }
-        }
-        catch (Exception ex)
-        {
-            _error = $"Kunne ikke hente anleggsliste: {ex.Message}";
-            _plants = Array.Empty<PlantDto>();
-        }
-    }
-
-    private void OnPlantChanged(string newValue)
-    {
-        _selectedPlantId = newValue ?? string.Empty;
-        _error = null;
-    }
-
-    private void OnFilesChanged(IBrowserFile? file)
-    {
-        _selectedFile = file;
-        _error = null;
-        _lastUpload = null;
-    }
-
-    private async Task SubmitAsync()
-    {
-        if (!CanSubmit) return;
-
-        _error = null;
-        _lastUpload = null;
-        _isUploading = true;
-
-        try
-        {
-            await using var stream = _selectedFile!.OpenReadStream(MaxUploadBytes);
-            var contentType = string.IsNullOrWhiteSpace(_selectedFile.ContentType)
-                ? XlsxContentType
-                : _selectedFile.ContentType;
-
-            _lastUpload = await Api.UploadSettlementAsync(
-                _selectedPlantId, stream, _selectedFile.Name, contentType);
-            _selectedFile = null;
-        }
-        catch (HttpRequestException ex)
-        {
-            _error = $"Opplasting feilet: {ex.Message}";
-        }
-        catch (Exception ex)
-        {
-            _error = $"Uventet feil: {ex.Message}";
-        }
-        finally
-        {
-            _isUploading = false;
-        }
+        var target = string.IsNullOrEmpty(PreselectedPlantId)
+            ? "data-import?tab=manuell"
+            : $"data-import?tab=manuell&plant={Uri.EscapeDataString(PreselectedPlantId)}";
+        Nav.NavigateTo(target, replace: true);
     }
 }

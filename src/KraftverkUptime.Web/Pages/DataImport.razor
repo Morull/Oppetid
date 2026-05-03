@@ -1,0 +1,932 @@
+@page "/data-import"
+@inject ReportsApi ReportsApi
+@inject NedetidApi NedetidApi
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+@*
+    Samlet import-side. Erstatter /upload og /data-status, og absorberer
+    multi-plant drop-zonene fra /plants.
+
+    Tre tabs:
+      1. Status — auto-import-banner, sammendrag, matrise, topp-overdue
+      2. Manuell opplasting — single-plant + multi-plant + multi-operlog
+      3. Historikk — siste importer (data_imports-tabellen)
+*@
+
+<PageTitle>Data-import</PageTitle>
+
+<MudGrid Class="mb-4">
+    <MudItem xs="12">
+        <MudText Typo="Typo.h1">Data-import</MudText>
+        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+            Følg med på automatiske importer, last opp manuelt og se historikk —
+            alt på én side.
+        </MudText>
+    </MudItem>
+</MudGrid>
+
+@* ---- Auto-import-banner (alltid synlig på toppen) ---- *@
+@if (_recent is not null && _summary is not null)
+{
+    var imported24h = _recent.Count;
+    var oldestStillProcessing = _recent.FirstOrDefault(); // kan utvides med job-queue-status senere
+    <MudPaper Class="pa-3 mb-3" Elevation="0"
+              Style="border-left: 4px solid var(--mud-palette-primary); background: rgba(30, 95, 142, 0.06);">
+        <div class="d-flex align-center flex-wrap" style="gap:24px;">
+            <div>
+                <MudIcon Icon="@Icons.Material.Filled.Sync" Color="MudBlazor.Color.Primary" />
+                <strong>Siste 24 t:</strong>
+                @imported24h @(imported24h == 1 ? "import" : "importer") mottatt
+                @if (oldestStillProcessing is not null)
+                {
+                    <span style="color:var(--mud-palette-text-secondary);">
+                        — sist <strong>@oldestStillProcessing.PlantId</strong> @FormatSource(oldestStillProcessing.SourceType) for @oldestStillProcessing.PeriodFromUtc.LocalDateTime.ToString("MMM yyyy")
+                        (@RelativeTime(oldestStillProcessing.ImportedAtUtc))
+                    </span>
+                }
+            </div>
+            <MudSpacer />
+            <div style="display:flex; gap:16px;">
+                <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Success" Variant="Variant.Outlined">
+                    @_summary.Complete komplett
+                </MudChip>
+                @if (_summary.Partial > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Warning" Variant="Variant.Outlined">
+                        @_summary.Partial delvis
+                    </MudChip>
+                }
+                @if (_summary.Pending > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Info" Variant="Variant.Outlined">
+                        @_summary.Pending venter
+                    </MudChip>
+                }
+                @if (_summary.Overdue > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Error" Variant="Variant.Filled">
+                        @_summary.Overdue forfalt
+                    </MudChip>
+                }
+            </div>
+            <MudTooltip Text="Oppdater">
+                <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                               Size="Size.Small"
+                               OnClick="LoadStatusAsync"
+                               aria-label="Oppdater" />
+            </MudTooltip>
+        </div>
+    </MudPaper>
+}
+
+@* ---- Tabs ---- *@
+<MudTabs Outlined="true" Position="Position.Top" Rounded="true" Border="true" Elevation="2"
+         ApplyEffectsToContainer="true" @bind-ActivePanelIndex="_activeTab">
+
+    @* ===== TAB 1: STATUS ===== *@
+    <MudTabPanel Icon="@Icons.Material.Filled.GridOn" Text="Status">
+        <MudPaper Class="pa-4" Elevation="0">
+            @* Periode-velger for matrisen *@
+            <MudGrid Class="mb-3">
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker Label="Fra" @bind-Date="_fromDate" PickerVariant="PickerVariant.Dialog" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker Label="Til" @bind-Date="_toDate" PickerVariant="PickerVariant.Dialog" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                               OnClick="LoadStatusAsync" StartIcon="@Icons.Material.Filled.Refresh">
+                        Oppdater
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+
+            @if (_statusError is not null)
+            {
+                <MudAlert Severity="Severity.Error">@_statusError</MudAlert>
+            }
+            else if (_statusLoading)
+            {
+                <MudProgressCircular Indeterminate="true" />
+                <MudText Class="ml-2 d-inline">Henter status…</MudText>
+            }
+            else if (_matrix is not null && _summary is not null)
+            {
+                @* Sammendrag-kort *@
+                <MudGrid Class="mb-3">
+                    <MudItem xs="6" sm="3">
+                        <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid var(--mud-palette-success);">
+                            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Komplette</MudText>
+                            <MudText Typo="Typo.h3">@_summary.Complete</MudText>
+                            <MudText Typo="Typo.caption">av @_summary.TotalExpected forventede</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid var(--mud-palette-warning);">
+                            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Delvise</MudText>
+                            <MudText Typo="Typo.h3">@_summary.Partial</MudText>
+                            <MudText Typo="Typo.caption">&lt; 95 % dekning</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid var(--mud-palette-info);">
+                            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Venter</MudText>
+                            <MudText Typo="Typo.h3">@_summary.Pending</MudText>
+                            <MudText Typo="Typo.caption">innenfor lag-vindu</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid var(--mud-palette-error);">
+                            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Forfalt</MudText>
+                            <MudText Typo="Typo.h3">@_summary.Overdue</MudText>
+                            <MudText Typo="Typo.caption">venter handling</MudText>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+
+                @* Filter *@
+                <MudPaper Class="pa-3 mb-3" Elevation="1">
+                    <div class="d-flex align-center flex-wrap" style="gap:12px;">
+                        <MudSwitch T="bool" @bind-Value="_onlyOverdue" Color="MudBlazor.Color.Error" Label="Vis kun forfalte" />
+                        <MudSelect T="string" @bind-Value="_filterSource" Label="Kildetype" Dense="true" Margin="Margin.Dense" Style="min-width: 180px;">
+                            <MudSelectItem Value="@string.Empty">Alle</MudSelectItem>
+                            @foreach (var s in _matrix.SourceTypes)
+                            {
+                                <MudSelectItem Value="@s">@FormatSource(s)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </div>
+                </MudPaper>
+
+                @* Matrise *@
+                @if (_matrix.PlantIds.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info">Ingen aktive forventninger registrert.</MudAlert>
+                }
+                else
+                {
+                    <div style="overflow-x: auto;">
+                        <table class="data-status-matrix">
+                            <thead>
+                                <tr>
+                                    <th class="plant-col">Anlegg</th>
+                                    @foreach (var period in _matrix.Periods)
+                                    {
+                                        <th class="period-col" colspan="@_matrix.SourceTypes.Count">
+                                            @period.LocalDateTime.ToString("MMM yyyy")
+                                        </th>
+                                    }
+                                </tr>
+                                <tr class="source-row">
+                                    <th></th>
+                                    @foreach (var _ in _matrix.Periods)
+                                    {
+                                        @foreach (var s in _matrix.SourceTypes)
+                                        {
+                                            <th class="source-col">
+                                                <MudTooltip Text="@FormatSource(s)">
+                                                    <span>@SourceShort(s)</span>
+                                                </MudTooltip>
+                                            </th>
+                                        }
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var plantId in _matrix.PlantIds)
+                                {
+                                    <tr>
+                                        <td class="plant-col">@plantId</td>
+                                        @foreach (var period in _matrix.Periods)
+                                        {
+                                            @foreach (var source in _matrix.SourceTypes)
+                                            {
+                                                var cell = FindCell(plantId, source, period);
+                                                var visible = !ShouldHide(cell);
+                                                <td class="cell" style="@(visible ? "" : "opacity:0.3")">
+                                                    @if (cell is null)
+                                                    {
+                                                        <span class="cell-symbol cell-na" title="Ikke aktiv kilde">.</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <MudTooltip Text="@CellTooltip(cell)">
+                                                            <span class="cell-symbol @CellClass(cell.Status)">
+                                                                @CellSymbol(cell.Status)
+                                                            </span>
+                                                        </MudTooltip>
+                                                    }
+                                                </td>
+                                            }
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mt-3" style="font-size:0.85em;">
+                        <strong>Symbol:</strong>
+                        <span class="cell-symbol cell-complete ml-2">█</span> Komplett
+                        <span class="cell-symbol cell-partial ml-2">░</span> Delvis
+                        <span class="cell-symbol cell-pending ml-2">o</span> Venter
+                        <span class="cell-symbol cell-overdue ml-2">!</span> Forfalt
+                        <span class="cell-symbol cell-na ml-2">.</span> Ikke aktiv
+                    </div>
+                }
+
+                @* Topp-overdue *@
+                @if (_summary.TopOverdue.Count > 0)
+                {
+                    <MudPaper Class="pa-3 mt-4" Elevation="1">
+                        <MudText Typo="Typo.h5" Class="mb-2">Topp 5 forfalte importer</MudText>
+                        <MudTable Items="_summary.TopOverdue" Dense="true" Elevation="0">
+                            <HeaderContent>
+                                <MudTh>Anlegg</MudTh>
+                                <MudTh>Kilde</MudTh>
+                                <MudTh>Periode</MudTh>
+                                <MudTh Style="text-align:right">Dager forfalt</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.PlantId</MudTd>
+                                <MudTd>@FormatSource(context.SourceType)</MudTd>
+                                <MudTd>@context.PeriodFromUtc.LocalDateTime.ToString("MMM yyyy")</MudTd>
+                                <MudTd Style="text-align:right; color: var(--mud-palette-error); font-weight:500;">
+                                    @context.DaysOverdue
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudPaper>
+                }
+            }
+        </MudPaper>
+    </MudTabPanel>
+
+    @* ===== TAB 2: MANUELL OPPLASTING ===== *@
+    <MudTabPanel Icon="@Icons.Material.Filled.CloudUpload" Text="Manuell opplasting">
+        <MudPaper Class="pa-4" Elevation="0">
+            <MudGrid>
+                @* Single-plant settlement *@
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="2">
+                        <MudText Typo="Typo.h4" Class="mb-2">Enkelt-anleggs-avregning</MudText>
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mb-3">
+                            KAIA-eksport (.xlsx) for ett anlegg.
+                        </MudText>
+
+                        @if (_singleError is not null)
+                        {
+                            <MudAlert Severity="Severity.Error" Class="mb-3">@_singleError</MudAlert>
+                        }
+                        @if (_singleSuccess is not null)
+                        {
+                            <MudAlert Severity="Severity.Success" Class="mb-3">@_singleSuccess</MudAlert>
+                        }
+
+                        <MudStack Spacing="3">
+                            @if (_plants is null)
+                            {
+                                <MudSkeleton Height="56px" Width="100%" />
+                            }
+                            else
+                            {
+                                <MudSelect T="string" Value="_selectedPlantId" ValueChanged="OnSinglePlantChanged"
+                                           Label="Anlegg" Variant="Variant.Outlined"
+                                           AdornmentIcon="@Icons.Material.Filled.Factory"
+                                           Adornment="Adornment.Start"
+                                           Disabled="@_singleUploading">
+                                    @foreach (var p in _plants)
+                                    {
+                                        <MudSelectItem Value="@p.Id">@p.Name (@p.Id)</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            }
+
+                            <MudFileUpload T="IBrowserFile" FilesChanged="OnSingleFileChanged" Accept=".xlsx" MaximumFileCount="1"
+                                           Disabled="@_singleUploading">
+                                <ActivatorContent>
+                                    <MudButton HtmlTag="label" Variant="Variant.Outlined"
+                                               Color="MudBlazor.Color.Primary" FullWidth="true"
+                                               StartIcon="@Icons.Material.Filled.CloudUpload"
+                                               Disabled="@_singleUploading">
+                                        @(_singleFile is null ? "Velg Excel-fil" : _singleFile.Name)
+                                    </MudButton>
+                                </ActivatorContent>
+                            </MudFileUpload>
+
+                            @if (_singleUploading)
+                            {
+                                <MudProgressLinear Color="MudBlazor.Color.Primary" Indeterminate="true" />
+                            }
+
+                            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                                       StartIcon="@Icons.Material.Filled.Send"
+                                       OnClick="SubmitSingleAsync"
+                                       Disabled="@(!CanSubmitSingle)" FullWidth="true">
+                                @(_singleUploading ? "Sender…" : "Last opp")
+                            </MudButton>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+
+                @* Multi-plant settlement *@
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="2">
+                        <MudText Typo="Typo.h4" Class="mb-2">Multi-anleggs-eksport</MudText>
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mb-3">
+                            Én .xlsx med ≥ 2 anleggs-faner blir én import per anlegg.
+                            Nye anlegg auto-opprettes.
+                        </MudText>
+
+                        <MudFileUpload T="IBrowserFile" Accept=".xlsx" MaximumFileCount="1"
+                                       FilesChanged="@OnMultiPlantDroppedAsync"
+                                       Class="@(_multiState.IsUploading ? "dk-multi-dropzone dk-multi-dropzone--busy" : "dk-multi-dropzone")">
+                            <ActivatorContent>
+                                <MudButton HtmlTag="label" Variant="Variant.Outlined"
+                                           Color="MudBlazor.Color.Primary" FullWidth="true"
+                                           StartIcon="@Icons.Material.Filled.LibraryBooks"
+                                           Disabled="@_multiState.IsUploading">
+                                    @(_multiState.IsUploading ? "Laster opp…" : "Velg / dra multi-plant .xlsx")
+                                </MudButton>
+                            </ActivatorContent>
+                        </MudFileUpload>
+
+                        @if (_multiState.LastSuccessMessage is not null)
+                        {
+                            <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3">@_multiState.LastSuccessMessage</MudAlert>
+                        }
+                        else if (_multiState.Error is not null)
+                        {
+                            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">@_multiState.Error</MudAlert>
+                        }
+                    </MudPaper>
+                </MudItem>
+
+                @* Multi-plant operlog *@
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="2">
+                        <MudText Typo="Typo.h4" Class="mb-2">Multi-anleggs operlog</MudText>
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mb-3">
+                            Én .csv med events fra alle stasjoner — splittes på <code>station</code>-feltet
+                            og rutes til riktig anlegg via slug-matching.
+                        </MudText>
+
+                        <MudFileUpload T="IBrowserFile" Accept=".csv" MaximumFileCount="1"
+                                       FilesChanged="@OnMultiPlantOperlogDroppedAsync"
+                                       Class="@(_multiOperlogState.IsUploading ? "dk-multi-dropzone dk-multi-dropzone--busy" : "dk-multi-dropzone")">
+                            <ActivatorContent>
+                                <MudButton HtmlTag="label" Variant="Variant.Outlined"
+                                           Color="MudBlazor.Color.Secondary" FullWidth="true"
+                                           StartIcon="@Icons.Material.Filled.Notifications"
+                                           Disabled="@_multiOperlogState.IsUploading">
+                                    @(_multiOperlogState.IsUploading ? "Laster opp…" : "Velg / dra operlog .csv")
+                                </MudButton>
+                            </ActivatorContent>
+                        </MudFileUpload>
+
+                        @if (_multiOperlogState.LastSuccessMessage is not null)
+                        {
+                            <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3">@_multiOperlogState.LastSuccessMessage</MudAlert>
+                            @if (_multiOperlogState.UnknownStations.Count > 0)
+                            {
+                                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                                    Ukjente stasjoner skippet: @string.Join(", ", _multiOperlogState.UnknownStations)
+                                </MudAlert>
+                            }
+                        }
+                        else if (_multiOperlogState.Error is not null)
+                        {
+                            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">@_multiOperlogState.Error</MudAlert>
+                        }
+                    </MudPaper>
+                </MudItem>
+
+                @* Per-anleggs SCADA / operlog (CSV) — bruker single-plant valgt over *@
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="2">
+                        <MudText Typo="Typo.h4" Class="mb-2">SCADA / operlog (per anlegg)</MudText>
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mb-3">
+                            CSV for valgt anlegg ovenfor. Filnavn med "operlog" → events.
+                            Ellers tolkes som SCADA master-CSV (tidsserier).
+                        </MudText>
+
+                        @if (string.IsNullOrEmpty(_selectedPlantId))
+                        {
+                            <MudAlert Severity="Severity.Info" Dense="true">
+                                Velg anlegg i "Enkelt-anleggs-avregning" først.
+                            </MudAlert>
+                        }
+                        else
+                        {
+                            <MudFileUpload T="IBrowserFile" Accept=".csv" MaximumFileCount="1"
+                                           FilesChanged="@OnSinglePlantCsvDroppedAsync"
+                                           Disabled="@_singleCsvUploading">
+                                <ActivatorContent>
+                                    <MudButton HtmlTag="label" Variant="Variant.Outlined"
+                                               Color="MudBlazor.Color.Tertiary" FullWidth="true"
+                                               StartIcon="@Icons.Material.Filled.AttachFile"
+                                               Disabled="@_singleCsvUploading">
+                                        @(_singleCsvUploading ? "Laster opp…" : $"Velg CSV for {_selectedPlantId}")
+                                    </MudButton>
+                                </ActivatorContent>
+                            </MudFileUpload>
+
+                            @if (_singleCsvSuccess is not null)
+                            {
+                                <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3">@_singleCsvSuccess</MudAlert>
+                            }
+                            else if (_singleCsvError is not null)
+                            {
+                                <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">@_singleCsvError</MudAlert>
+                            }
+                        }
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    </MudTabPanel>
+
+    @* ===== TAB 3: HISTORIKK ===== *@
+    <MudTabPanel Icon="@Icons.Material.Filled.History" Text="Historikk">
+        <MudPaper Class="pa-4" Elevation="0">
+            <div class="d-flex align-center mb-3" style="gap:12px;">
+                <MudText Typo="Typo.body2">Periode:</MudText>
+                <MudSelect T="int" Value="_recentHours" ValueChanged="OnRecentHoursChangedAsync" Dense="true" Margin="Margin.Dense" Style="min-width:160px;">
+                    <MudSelectItem Value="24">Siste 24 timer</MudSelectItem>
+                    <MudSelectItem Value="72">Siste 3 dager</MudSelectItem>
+                    <MudSelectItem Value="168">Siste 7 dager</MudSelectItem>
+                </MudSelect>
+                <MudSpacer />
+                <MudTooltip Text="Oppdater">
+                    <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                                   OnClick="LoadStatusAsync"
+                                   aria-label="Oppdater" />
+                </MudTooltip>
+            </div>
+
+            @if (_recent is null)
+            {
+                <MudProgressLinear Indeterminate="true" />
+            }
+            else if (_recent.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info">Ingen importer i valgt vindu.</MudAlert>
+            }
+            else
+            {
+                <MudTable Items="_recent" Dense="true" Hover="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Tidspunkt</MudTh>
+                        <MudTh>Anlegg</MudTh>
+                        <MudTh>Kilde</MudTh>
+                        <MudTh>Periode</MudTh>
+                        <MudTh>Filnavn</MudTh>
+                        <MudTh Style="text-align:right">Rader</MudTh>
+                        <MudTh Style="text-align:right">Dekning</MudTh>
+                        <MudTh>Bruker</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.ImportedAtUtc.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+                        <MudTd><strong>@context.PlantId</strong></MudTd>
+                        <MudTd>@FormatSource(context.SourceType)</MudTd>
+                        <MudTd>@context.PeriodFromUtc.LocalDateTime.ToString("MMM yyyy")</MudTd>
+                        <MudTd>@(context.FileName ?? "—")</MudTd>
+                        <MudTd Style="text-align:right">@(context.RowsImported?.ToString() ?? "—")</MudTd>
+                        <MudTd Style="text-align:right">
+                            @if (context.CoveragePct.HasValue)
+                            {
+                                <span style="@CoverageStyle(context.CoveragePct.Value)">
+                                    @($"{context.CoveragePct.Value * 100:F1} %")
+                                </span>
+                            }
+                            else { <span>—</span> }
+                        </MudTd>
+                        <MudTd>@(context.UserId ?? "system")</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudPaper>
+    </MudTabPanel>
+</MudTabs>
+
+<style>
+    .data-status-matrix {
+        border-collapse: collapse;
+        font-size: 0.85em;
+        font-family: monospace;
+    }
+    .data-status-matrix th, .data-status-matrix td {
+        border: 1px solid var(--mud-palette-lines-default);
+        padding: 4px 6px;
+        text-align: center;
+    }
+    .data-status-matrix th.plant-col, .data-status-matrix td.plant-col {
+        text-align: left;
+        font-family: inherit;
+        min-width: 100px;
+    }
+    .data-status-matrix th.period-col {
+        background: var(--mud-palette-background-grey);
+        font-size: 0.9em;
+    }
+    .data-status-matrix th.source-col {
+        font-weight: 400;
+        font-size: 0.7em;
+        color: var(--mud-palette-text-secondary);
+    }
+    .data-status-matrix td.cell {
+        width: 24px;
+    }
+    .cell-symbol {
+        font-weight: bold;
+        font-family: monospace;
+    }
+    .cell-complete { color: var(--mud-palette-success); }
+    .cell-partial  { color: var(--mud-palette-warning); }
+    .cell-pending  { color: var(--mud-palette-info); }
+    .cell-overdue  { color: var(--mud-palette-error); }
+    .cell-na       { color: var(--mud-palette-text-disabled); }
+    .dk-multi-dropzone {
+        border: 2px dashed var(--mud-palette-lines-default);
+        padding: 16px;
+        text-align: center;
+        transition: all 0.2s;
+    }
+    .dk-multi-dropzone--busy {
+        border-color: var(--mud-palette-primary);
+        background: rgba(30, 95, 142, 0.04);
+    }
+</style>
+
+@code {
+    [SupplyParameterFromQuery(Name = "plant")] public string? PreselectedPlantId { get; set; }
+    [SupplyParameterFromQuery(Name = "tab")] public string? InitialTab { get; set; }
+
+    private const long MaxUploadBytes = 26_214_400; // 25 MB
+    private const long MaxOperlogBytes = 100L * 1024 * 1024; // 100 MB
+    private const string XlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+    private int _activeTab;
+    private IReadOnlyList<PlantDto>? _plants;
+
+    // Status-tab
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+    private bool _statusLoading;
+    private string? _statusError;
+    private DataCompletenessMatrixDto? _matrix;
+    private DataCompletenessSummaryDto? _summary;
+    private bool _onlyOverdue;
+    private string _filterSource = string.Empty;
+
+    // Auto-import-banner
+    private IReadOnlyList<RecentImportDto>? _recent;
+    private int _recentHours = 24;
+
+    // Single-plant upload
+    private string _selectedPlantId = string.Empty;
+    private IBrowserFile? _singleFile;
+    private bool _singleUploading;
+    private string? _singleError;
+    private string? _singleSuccess;
+
+    // Single-plant CSV (SCADA / operlog)
+    private bool _singleCsvUploading;
+    private string? _singleCsvError;
+    private string? _singleCsvSuccess;
+
+    // Multi-plant
+    private readonly MultiPlantState _multiState = new();
+    private readonly MultiPlantOperlogState _multiOperlogState = new();
+
+    private sealed class MultiPlantState
+    {
+        public bool IsUploading { get; set; }
+        public string? Error { get; set; }
+        public string? LastSuccessMessage { get; set; }
+    }
+    private sealed class MultiPlantOperlogState
+    {
+        public bool IsUploading { get; set; }
+        public string? Error { get; set; }
+        public string? LastSuccessMessage { get; set; }
+        public List<string> UnknownStations { get; } = new();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var today = DateTime.Today;
+        var firstThis = new DateTime(today.Year, today.Month, 1);
+        _fromDate = firstThis.AddMonths(-6);
+        _toDate = firstThis.AddMonths(1);
+
+        if (string.Equals(InitialTab, "manuell", StringComparison.OrdinalIgnoreCase)) _activeTab = 1;
+        else if (string.Equals(InitialTab, "historikk", StringComparison.OrdinalIgnoreCase)) _activeTab = 2;
+
+        try
+        {
+            _plants = await ReportsApi.ListPlantsAsync();
+            if (!string.IsNullOrWhiteSpace(PreselectedPlantId)
+                && _plants.Any(p => p.Id == PreselectedPlantId))
+            {
+                _selectedPlantId = PreselectedPlantId;
+                _activeTab = 1; // åpne på manuell-fanen når plant er forvalgt
+            }
+            else if (_plants.Count == 1)
+            {
+                _selectedPlantId = _plants[0].Id;
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusError = $"Kunne ikke hente anleggs-listen: {ex.Message}";
+            _plants = Array.Empty<PlantDto>();
+        }
+
+        await LoadStatusAsync();
+    }
+
+    private async Task LoadStatusAsync()
+    {
+        if (!_fromDate.HasValue || !_toDate.HasValue) return;
+        _statusLoading = true;
+        _statusError = null;
+        StateHasChanged();
+        try
+        {
+            var fromUtc = new DateTimeOffset(_fromDate.Value, TimeSpan.Zero);
+            var toUtc = new DateTimeOffset(_toDate.Value, TimeSpan.Zero);
+
+            var matrixTask = NedetidApi.GetDataStatusMatrixAsync(fromUtc, toUtc);
+            var summaryTask = NedetidApi.GetDataStatusSummaryAsync();
+            var recentTask = NedetidApi.GetRecentImportsAsync(_recentHours);
+
+            _matrix = await matrixTask;
+            _summary = await summaryTask;
+            _recent = await recentTask;
+        }
+        catch (Exception ex)
+        {
+            _statusError = $"Kunne ikke hente status: {ex.Message}";
+        }
+        finally
+        {
+            _statusLoading = false;
+        }
+    }
+
+    private async Task OnRecentHoursChangedAsync(int hours)
+    {
+        _recentHours = hours;
+        try
+        {
+            _recent = await NedetidApi.GetRecentImportsAsync(_recentHours);
+        }
+        catch (Exception ex)
+        {
+            _statusError = $"Kunne ikke hente historikk: {ex.Message}";
+        }
+    }
+
+    // ----- Status helpers -----
+    private DataCompletenessCellDto? FindCell(string plantId, string source, DateTimeOffset period)
+        => _matrix?.Cells.FirstOrDefault(c =>
+            c.PlantId == plantId
+            && c.SourceType == source
+            && c.Period == period);
+
+    private bool ShouldHide(DataCompletenessCellDto? cell)
+    {
+        if (cell is null) return false;
+        if (_onlyOverdue && cell.Status != "OVERDUE") return true;
+        if (!string.IsNullOrEmpty(_filterSource) && cell.SourceType != _filterSource) return true;
+        return false;
+    }
+
+    private static string CellSymbol(string status) => status switch
+    {
+        "COMPLETE" => "█", "PARTIAL" => "░", "PENDING" => "o", "OVERDUE" => "!", _ => "?",
+    };
+    private static string CellClass(string status) => status switch
+    {
+        "COMPLETE" => "cell-complete", "PARTIAL" => "cell-partial",
+        "PENDING" => "cell-pending", "OVERDUE" => "cell-overdue", _ => "cell-na",
+    };
+    private static string CellTooltip(DataCompletenessCellDto cell)
+    {
+        var parts = new List<string> { $"Status: {cell.Status}" };
+        if (cell.LastImportedAt.HasValue)
+            parts.Add($"Sist importert: {cell.LastImportedAt.Value.LocalDateTime:yyyy-MM-dd HH:mm}");
+        if (cell.CoveragePct.HasValue)
+            parts.Add($"Dekning: {cell.CoveragePct.Value * 100:F1} %");
+        if (cell.ImportCount > 1)
+            parts.Add($"{cell.ImportCount} importer (siste vinner)");
+        return string.Join(" — ", parts);
+    }
+    private static string FormatSource(string source) => source switch
+    {
+        "settlement" => "Settlement (KAIA)",
+        "scada" => "SCADA",
+        "operlog" => "Operlog",
+        "hydrogrid_plan" => "Hydrogrid-plan",
+        _ => source,
+    };
+    private static string SourceShort(string source) => source switch
+    {
+        "settlement" => "S", "operlog" => "O", "hydrogrid_plan" => "H", "scada" => "Y",
+        _ => source[..1].ToUpperInvariant(),
+    };
+    private static string CoverageStyle(double pct)
+    {
+        if (pct >= 0.99) return "color: var(--mud-palette-success); font-weight:500;";
+        if (pct >= 0.95) return "color: var(--mud-palette-warning-darken);";
+        return "color: var(--mud-palette-error); font-weight:500;";
+    }
+    private static string RelativeTime(DateTimeOffset utc)
+    {
+        var diff = DateTimeOffset.UtcNow - utc;
+        if (diff.TotalMinutes < 1) return "akkurat nå";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes} min siden";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours} t siden";
+        return $"{(int)diff.TotalDays} d siden";
+    }
+
+    // ----- Single-plant upload -----
+    private bool CanSubmitSingle =>
+        !_singleUploading
+        && !string.IsNullOrWhiteSpace(_selectedPlantId)
+        && _singleFile is not null;
+
+    private void OnSinglePlantChanged(string newValue)
+    {
+        _selectedPlantId = newValue ?? string.Empty;
+        _singleError = null;
+        _singleCsvError = null;
+        _singleCsvSuccess = null;
+    }
+
+    private void OnSingleFileChanged(IBrowserFile? file)
+    {
+        _singleFile = file;
+        _singleError = null;
+        _singleSuccess = null;
+    }
+
+    private async Task SubmitSingleAsync()
+    {
+        if (!CanSubmitSingle) return;
+        _singleError = null;
+        _singleSuccess = null;
+        _singleUploading = true;
+        try
+        {
+            await using var stream = _singleFile!.OpenReadStream(MaxUploadBytes);
+            var contentType = string.IsNullOrWhiteSpace(_singleFile.ContentType)
+                ? XlsxContentType
+                : _singleFile.ContentType;
+            var resp = await ReportsApi.UploadSettlementAsync(
+                _selectedPlantId, stream, _singleFile.Name, contentType);
+            _singleSuccess = $"Mottatt — klassifisering pågår. Idempotency: {resp.IdempotencyKey[..16]}…";
+            Snackbar.Add($"{_singleFile.Name} mottatt for {_selectedPlantId}", Severity.Success);
+            _singleFile = null;
+            await LoadStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            _singleError = $"Opplasting feilet: {ex.Message}";
+        }
+        finally
+        {
+            _singleUploading = false;
+        }
+    }
+
+    // ----- Single-plant CSV (SCADA / operlog) -----
+    private async Task OnSinglePlantCsvDroppedAsync(IBrowserFile? file)
+    {
+        if (file is null || string.IsNullOrEmpty(_selectedPlantId) || _singleCsvUploading) return;
+        if (file.Size > MaxOperlogBytes)
+        {
+            _singleCsvError = $"Filen er for stor ({file.Size / 1_048_576} MB).";
+            return;
+        }
+
+        _singleCsvUploading = true;
+        _singleCsvError = null;
+        _singleCsvSuccess = null;
+        StateHasChanged();
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxOperlogBytes);
+            var isOperlog = file.Name.Contains("operlog", StringComparison.OrdinalIgnoreCase);
+            if (isOperlog)
+            {
+                var result = await ReportsApi.UploadScadaOperlogAsync(_selectedPlantId, stream, file.Name);
+                _singleCsvSuccess = $"Operlog: {result.EventsWritten} events ({result.RowsSkipped} skippet).";
+            }
+            else
+            {
+                var result = await ReportsApi.UploadScadaMasterAsync(_selectedPlantId, stream, file.Name);
+                _singleCsvSuccess = $"SCADA master: {result.SamplesWritten} samples, {result.SignalCount} signaler.";
+            }
+            Snackbar.Add(_singleCsvSuccess, Severity.Success);
+            await LoadStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            _singleCsvError = $"Opplasting feilet: {ex.Message}";
+        }
+        finally
+        {
+            _singleCsvUploading = false;
+        }
+    }
+
+    // ----- Multi-plant settlement -----
+    private async Task OnMultiPlantDroppedAsync(IBrowserFile? file)
+    {
+        if (file is null || _multiState.IsUploading) return;
+        if (!file.Name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+        {
+            _multiState.Error = $"Bare .xlsx er støttet. Fikk: {file.Name}";
+            return;
+        }
+        if (file.Size > MaxUploadBytes)
+        {
+            _multiState.Error = $"Filen er for stor ({file.Size / 1_048_576} MB). Maks 25 MB.";
+            return;
+        }
+        _multiState.IsUploading = true;
+        _multiState.Error = null;
+        _multiState.LastSuccessMessage = null;
+        StateHasChanged();
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxUploadBytes);
+            var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? XlsxContentType : file.ContentType;
+            var result = await ReportsApi.UploadMultiPlantSettlementAsync(stream, file.Name, contentType);
+            _multiState.LastSuccessMessage =
+                $"{result.ImportCount} import-rad(er) opprettet, {result.Imports.Count(i => i.PlantCreated)} nytt anlegg.";
+            Snackbar.Add(_multiState.LastSuccessMessage, Severity.Success);
+            _plants = await ReportsApi.ListPlantsAsync();
+            await LoadStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            _multiState.Error = $"Multi-plant-import feilet: {ex.Message}";
+            Snackbar.Add(_multiState.Error, Severity.Error);
+        }
+        finally
+        {
+            _multiState.IsUploading = false;
+            StateHasChanged();
+        }
+    }
+
+    // ----- Multi-plant operlog -----
+    private async Task OnMultiPlantOperlogDroppedAsync(IBrowserFile? file)
+    {
+        if (file is null || _multiOperlogState.IsUploading) return;
+        if (!file.Name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+        {
+            _multiOperlogState.Error = $"Forventer .csv. Fikk: {file.Name}";
+            return;
+        }
+        if (file.Size > MaxOperlogBytes)
+        {
+            _multiOperlogState.Error = $"Filen er for stor ({file.Size / 1_048_576} MB). Maks 100 MB.";
+            return;
+        }
+        _multiOperlogState.IsUploading = true;
+        _multiOperlogState.Error = null;
+        _multiOperlogState.LastSuccessMessage = null;
+        _multiOperlogState.UnknownStations.Clear();
+        StateHasChanged();
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxOperlogBytes);
+            var result = await ReportsApi.UploadMultiPlantOperlogAsync(stream, file.Name);
+            var totalEvents = result.PerPlant.Sum(p => p.EventsImported);
+            _multiOperlogState.LastSuccessMessage =
+                $"{totalEvents} events importert til {result.PerPlant.Count} anlegg "
+                + $"({result.TotalRowsParsed} parset, {result.TotalRowsSkipped} skip).";
+            if (result.UnknownStations > 0)
+            {
+                _multiOperlogState.UnknownStations.AddRange(result.UnknownStationNames);
+            }
+            Snackbar.Add(_multiOperlogState.LastSuccessMessage, Severity.Success);
+            await LoadStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            _multiOperlogState.Error = $"Multi-plant operlog-import feilet: {ex.Message}";
+            Snackbar.Add(_multiOperlogState.Error, Severity.Error);
+        }
+        finally
+        {
+            _multiOperlogState.IsUploading = false;
+            StateHasChanged();
+        }
+    }
+}

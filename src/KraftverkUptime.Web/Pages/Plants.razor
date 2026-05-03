@@ -1,99 +1,23 @@
 @page "/plants"
 @inject ReportsApi Api
 @inject NavigationManager Nav
-@inject ISnackbar Snackbar
+
+@*
+    Anleggs-oversikt. All opplasting er flyttet til /data-import (Steg 5
+    i SPEC-IMPORT-COMPLETENESS — drifts-leder ba om at all manuell import
+    skulle samles på én plass).
+
+    Denne siden er nå ren liste + lenker til admin/rapport per anlegg.
+*@
 
 <PageTitle>Anlegg</PageTitle>
 
 <div class="d-flex justify-space-between align-center mb-4">
     <MudText Typo="Typo.h1">Anlegg</MudText>
-    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
-        Tips: dra Excel (avregning) eller CSV (SCADA / operlog) på "Slipp fil her"-stripen i kortet,
-        eller bruk multi-anleggs-zonen under for porteføljen.
-    </MudText>
+    <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Primary"
+               StartIcon="@Icons.Material.Filled.CloudUpload"
+               Href="data-import?tab=manuell">Last opp data</MudButton>
 </div>
-
-@* ---- Multi-anleggs operlog-opplasting (én CSV med events fra alle stasjoner) ---- *@
-<MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudFileUpload T="IBrowserFile"
-                   Accept=".csv"
-                   MaximumFileCount="1"
-                   FilesChanged="@OnMultiPlantOperlogDroppedAsync"
-                   Hidden="@false"
-                   InputClass="dk-multi-dropzoneInput"
-                   InputStyle="opacity:0"
-                   Class="@(_multiOperlogState.IsUploading ? "dk-multi-dropzone dk-multi-dropzone--busy" : "dk-multi-dropzone")">
-        <ActivatorContent>
-            <div class="d-flex align-center" style="gap:16px;">
-                <MudIcon Icon="@Icons.Material.Filled.Notifications"
-                         Color="MudBlazor.Color.Secondary" Size="MudBlazor.Size.Large" />
-                <div style="flex:1;">
-                    <MudText Typo="Typo.h4">Last opp multi-anleggs operlog</MudText>
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
-                        Én .csv med events fra alle stasjoner — splittes på <code>station</code>-feltet
-                        og rutes til riktig anlegg via slug-matching.
-                    </MudText>
-                </div>
-                @if (_multiOperlogState.IsUploading)
-                {
-                    <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Small" />
-                }
-            </div>
-            @if (_multiOperlogState.LastSuccessMessage is not null)
-            {
-                <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3">@_multiOperlogState.LastSuccessMessage</MudAlert>
-                @if (_multiOperlogState.UnknownStations.Count > 0)
-                {
-                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
-                        Ukjente stasjoner skippet: @string.Join(", ", _multiOperlogState.UnknownStations)
-                    </MudAlert>
-                }
-            }
-            else if (_multiOperlogState.Error is not null)
-            {
-                <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">@_multiOperlogState.Error</MudAlert>
-            }
-        </ActivatorContent>
-    </MudFileUpload>
-</MudPaper>
-
-@* ---- Multi-anleggs-opplasting (én Excel med 9+ plant-faner) ---- *@
-<MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudFileUpload T="IBrowserFile"
-                   Accept=".xlsx"
-                   MaximumFileCount="1"
-                   FilesChanged="@OnMultiPlantDroppedAsync"
-                   Hidden="@false"
-                   InputClass="dk-multi-dropzoneInput"
-                   InputStyle="opacity:0"
-                   Class="@(_multiState.IsUploading ? "dk-multi-dropzone dk-multi-dropzone--busy" : "dk-multi-dropzone")">
-        <ActivatorContent>
-            <div class="d-flex align-center" style="gap:16px;">
-                <MudIcon Icon="@Icons.Material.Filled.LibraryBooks"
-                         Color="MudBlazor.Color.Primary" Size="MudBlazor.Size.Large" />
-                <div style="flex:1;">
-                    <MudText Typo="Typo.h4">Last opp multi-anleggs-eksport</MudText>
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
-                        Én .xlsx med ≥ 2 anleggs-faner blir til én import per anlegg.
-                        Nye anlegg auto-opprettes med InstalledCapacityMw = 0.
-                    </MudText>
-                </div>
-                @if (_multiState.IsUploading)
-                {
-                    <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Small" />
-                }
-            </div>
-            @if (_multiState.LastSuccessMessage is not null)
-            {
-                <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3">@_multiState.LastSuccessMessage</MudAlert>
-            }
-            else if (_multiState.Error is not null)
-            {
-                <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">@_multiState.Error</MudAlert>
-            }
-        </ActivatorContent>
-    </MudFileUpload>
-</MudPaper>
 
 @if (_error is not null)
 {
@@ -121,9 +45,8 @@ else
         @foreach (var p in _items)
         {
             var plantId = p.Id;
-            var state = GetState(plantId);
             <MudItem xs="12" sm="6" md="4">
-                <MudCard Elevation="2" Class="@(state.IsUploading ? "h-100 dk-plant-card dk-plant-card--busy" : "h-100 dk-plant-card")" Style="position:relative;">
+                <MudCard Elevation="2" Class="h-100 dk-plant-card" Style="position:relative;">
                     <MudCardHeader>
                         <CardHeaderAvatar>
                             <MudAvatar Color="MudBlazor.Color.Primary" Variant="Variant.Filled">
@@ -164,47 +87,8 @@ else
                                 <MudText Typo="Typo.body1">@p.TimeZone</MudText>
                             </div>
                         </MudStack>
-
-                        @* Eksplisitt drop-strip — kun her åpner click filvelger / aksepterer drag-drop *@
-                        <MudFileUpload T="IBrowserFile"
-                                       Accept=".xlsx,.xls,.csv"
-                                       MaximumFileCount="1"
-                                       FilesChanged="@(file => OnFileDroppedAsync(plantId, file))"
-                                       Hidden="@false"
-                                       InputClass="dk-plant-dropstripInput"
-                                       InputStyle="opacity:0"
-                                       Class="dk-plant-dropstrip-wrapper">
-                            <ActivatorContent>
-                                <div class="dk-plant-dropstrip">
-                                    <MudIcon Icon="@Icons.Material.Filled.UploadFile"
-                                             Size="MudBlazor.Size.Small" Class="mr-2" />
-                                    <MudText Typo="Typo.caption">Slipp fil her (Excel / CSV)</MudText>
-                                </div>
-                            </ActivatorContent>
-                        </MudFileUpload>
-
-                        @if (state.IsUploading)
-                        {
-                            <MudProgressLinear Color="MudBlazor.Color.Primary" Indeterminate="true" Class="mt-3" />
-                            <MudText Typo="Typo.caption" Class="mt-1">Laster opp @state.FileName…</MudText>
-                        }
-                        else if (state.LastSuccessMessage is not null)
-                        {
-                            <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3">
-                                @state.LastSuccessMessage
-                            </MudAlert>
-                        }
-                        else if (state.Error is not null)
-                        {
-                            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">@state.Error</MudAlert>
-                        }
                     </MudCardContent>
                     <MudCardActions>
-                        <MudButton Variant="Variant.Text" Color="MudBlazor.Color.Primary"
-                                   StartIcon="@Icons.Material.Filled.CloudUpload"
-                                   Href="@($"upload?plant={plantId}")">
-                            Last opp
-                        </MudButton>
                         <MudButton Variant="Variant.Text" Color="MudBlazor.Color.Primary"
                                    StartIcon="@Icons.Material.Filled.Assessment"
                                    Href="@($"reports?plant={plantId}")">
@@ -216,15 +100,6 @@ else
                                    Href="@($"plants/{plantId}/admin")">
                             Admin
                         </MudButton>
-                        @if (state.LastUpload is not null)
-                        {
-                            <MudSpacer />
-                            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
-                                       Size="MudBlazor.Size.Small"
-                                       Href="@($"reports/{plantId}/{state.LastUpload.IdempotencyKey}")">
-                                Åpne rapport
-                            </MudButton>
-                        }
                     </MudCardActions>
                 </MudCard>
             </MudItem>
@@ -233,20 +108,8 @@ else
 }
 
 @code {
-    private const long MaxUploadBytes = 26_214_400; // 25 MB — matcher API-konfigurasjonen
-    private const string XlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-
     private IReadOnlyList<PlantDto>? _items;
     private string? _error;
-
-    /// <summary>Per-anleggs opplasting-state. Hver kort kjører selvstendig.</summary>
-    private readonly Dictionary<string, UploadState> _uploadState = new(StringComparer.Ordinal);
-
-    /// <summary>State for multi-anleggs-opplasting (egen drop-zone øverst).</summary>
-    private readonly MultiPlantUploadState _multiState = new();
-
-    /// <summary>State for multi-anleggs operlog-opplasting.</summary>
-    private readonly MultiPlantOperlogUploadState _multiOperlogState = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -261,139 +124,6 @@ else
         }
     }
 
-    private UploadState GetState(string plantId)
-    {
-        if (!_uploadState.TryGetValue(plantId, out var s))
-        {
-            s = new UploadState();
-            _uploadState[plantId] = s;
-        }
-        return s;
-    }
-
-    private async Task OnFileDroppedAsync(string plantId, IBrowserFile? file)
-    {
-        if (file is null)
-        {
-            return;
-        }
-
-        var state = GetState(plantId);
-        if (state.IsUploading)
-        {
-            // Ignorer ekstra slipp mens den forrige fortsatt går.
-            return;
-        }
-
-        var name = file.Name;
-        var kind = DetectKind(name);
-        if (kind is null)
-        {
-            state.Error = $"Filtype ikke støttet: {name}. Aksepterer .xlsx (avregning) og .csv (SCADA / operlog).";
-            StateHasChanged();
-            return;
-        }
-        if (file.Size > MaxUploadBytes)
-        {
-            state.Error = $"Filen er for stor ({file.Size / 1_048_576} MB). Maks 25 MB.";
-            StateHasChanged();
-            return;
-        }
-
-        state.IsUploading = true;
-        state.FileName = name;
-        state.Error = null;
-        state.LastUpload = null;
-        state.LastSuccessMessage = null;
-        StateHasChanged();
-
-        try
-        {
-            await using var stream = file.OpenReadStream(MaxUploadBytes);
-
-            switch (kind)
-            {
-                case UploadKind.Settlement:
-                {
-                    var contentType = string.IsNullOrWhiteSpace(file.ContentType)
-                        ? XlsxContentType
-                        : file.ContentType;
-                    state.LastUpload = await Api.UploadSettlementAsync(plantId, stream, name, contentType);
-                    state.LastSuccessMessage = "Avregning mottatt — klassifisering pågår.";
-                    Snackbar.Add($"{name} mottatt for {plantId} — klassifisering pågår.", Severity.Success);
-                    break;
-                }
-                case UploadKind.ScadaMaster:
-                {
-                    var result = await Api.UploadScadaMasterAsync(plantId, stream, name);
-                    state.LastSuccessMessage =
-                        $"SCADA master importert: {result.SamplesWritten} samples, {result.SignalCount} signaler.";
-                    Snackbar.Add(
-                        $"{name}: {result.SamplesWritten} samples for {result.SignalCount} signaler.",
-                        Severity.Success);
-                    break;
-                }
-                case UploadKind.ScadaOperlog:
-                {
-                    var result = await Api.UploadScadaOperlogAsync(plantId, stream, name);
-                    state.LastSuccessMessage =
-                        $"Operlog importert: {result.EventsWritten} events ({result.RowsSkipped} skippet).";
-                    Snackbar.Add(
-                        $"{name}: {result.EventsWritten} operlog-events skrevet.",
-                        Severity.Success);
-                    break;
-                }
-            }
-        }
-        catch (HttpRequestException ex)
-        {
-            state.Error = $"Opplasting feilet: {ex.Message}";
-            Snackbar.Add(state.Error, Severity.Error);
-        }
-        catch (Exception ex)
-        {
-            state.Error = $"Uventet feil: {ex.Message}";
-            Snackbar.Add(state.Error, Severity.Error);
-        }
-        finally
-        {
-            state.IsUploading = false;
-            state.FileName = null;
-            StateHasChanged();
-        }
-    }
-
-    /// <summary>
-    /// Bestemmer hvilket endepunkt en fil skal sendes til ut fra navnet:
-    /// <list type="bullet">
-    ///   <item>.xlsx/.xls → settlement (avregning)</item>
-    ///   <item>.csv med "operlog" i filnavnet → SCADA operlog</item>
-    ///   <item>annen .csv → SCADA master (tidsserier)</item>
-    /// </list>
-    /// </summary>
-    private static UploadKind? DetectKind(string fileName)
-    {
-        if (fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)
-            || fileName.EndsWith(".xls", StringComparison.OrdinalIgnoreCase))
-        {
-            return UploadKind.Settlement;
-        }
-        if (fileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
-        {
-            return fileName.Contains("operlog", StringComparison.OrdinalIgnoreCase)
-                ? UploadKind.ScadaOperlog
-                : UploadKind.ScadaMaster;
-        }
-        return null;
-    }
-
-    private enum UploadKind
-    {
-        Settlement,
-        ScadaMaster,
-        ScadaOperlog,
-    }
-
     private static MudBlazor.Color TypeColor(string type) => type switch
     {
         "Regulated" => MudBlazor.Color.Primary,
@@ -402,134 +132,4 @@ else
         "Solar" => MudBlazor.Color.Warning,
         _ => MudBlazor.Color.Default,
     };
-
-    private sealed class UploadState
-    {
-        public bool IsUploading { get; set; }
-        public string? FileName { get; set; }
-        public string? Error { get; set; }
-        public SettlementUploadResponse? LastUpload { get; set; }
-        /// <summary>Vises i kortet etter siste vellykkede opplasting (uavhengig av type).</summary>
-        public string? LastSuccessMessage { get; set; }
-    }
-
-    private sealed class MultiPlantUploadState
-    {
-        public bool IsUploading { get; set; }
-        public string? Error { get; set; }
-        public string? LastSuccessMessage { get; set; }
-    }
-
-    private sealed class MultiPlantOperlogUploadState
-    {
-        public bool IsUploading { get; set; }
-        public string? Error { get; set; }
-        public string? LastSuccessMessage { get; set; }
-        public List<string> UnknownStations { get; } = new();
-    }
-
-    private async Task OnMultiPlantOperlogDroppedAsync(IBrowserFile? file)
-    {
-        if (file is null || _multiOperlogState.IsUploading) return;
-
-        if (!file.Name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
-        {
-            _multiOperlogState.Error = $"Forventer .csv. Fikk: {file.Name}";
-            return;
-        }
-        // Operlog-CSV kan være 50+ MB for full Q1 — egen grense via API filter.
-        const long maxBytes = 100L * 1024 * 1024;
-        if (file.Size > maxBytes)
-        {
-            _multiOperlogState.Error = $"Filen er for stor ({file.Size / 1_048_576} MB). Maks 100 MB.";
-            return;
-        }
-
-        _multiOperlogState.IsUploading = true;
-        _multiOperlogState.Error = null;
-        _multiOperlogState.LastSuccessMessage = null;
-        _multiOperlogState.UnknownStations.Clear();
-        StateHasChanged();
-
-        try
-        {
-            await using var stream = file.OpenReadStream(maxBytes);
-            var result = await Api.UploadMultiPlantOperlogAsync(stream, file.Name);
-
-            var totalEvents = result.PerPlant.Sum(p => p.EventsImported);
-            _multiOperlogState.LastSuccessMessage =
-                $"{totalEvents} operlog-events importert til {result.PerPlant.Count} anlegg "
-                + $"({result.TotalRowsParsed} parset, {result.TotalRowsSkipped} skip).";
-            if (result.UnknownStations > 0)
-            {
-                _multiOperlogState.UnknownStations.AddRange(result.UnknownStationNames);
-            }
-            Snackbar.Add(_multiOperlogState.LastSuccessMessage, Severity.Success);
-        }
-        catch (HttpRequestException ex)
-        {
-            _multiOperlogState.Error = $"Multi-plant operlog-import feilet: {ex.Message}";
-            Snackbar.Add(_multiOperlogState.Error, Severity.Error);
-        }
-        catch (Exception ex)
-        {
-            _multiOperlogState.Error = $"Uventet feil: {ex.Message}";
-            Snackbar.Add(_multiOperlogState.Error, Severity.Error);
-        }
-        finally
-        {
-            _multiOperlogState.IsUploading = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task OnMultiPlantDroppedAsync(IBrowserFile? file)
-    {
-        if (file is null || _multiState.IsUploading) return;
-
-        if (!file.Name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
-        {
-            _multiState.Error = $"Bare .xlsx er støttet. Fikk: {file.Name}";
-            return;
-        }
-        if (file.Size > MaxUploadBytes)
-        {
-            _multiState.Error = $"Filen er for stor ({file.Size / 1_048_576} MB). Maks 25 MB.";
-            return;
-        }
-
-        _multiState.IsUploading = true;
-        _multiState.Error = null;
-        _multiState.LastSuccessMessage = null;
-        StateHasChanged();
-
-        try
-        {
-            await using var stream = file.OpenReadStream(MaxUploadBytes);
-            var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? XlsxContentType : file.ContentType;
-            var result = await Api.UploadMultiPlantSettlementAsync(stream, file.Name, contentType);
-
-            _multiState.LastSuccessMessage =
-                $"{result.ImportCount} import-rad(er) opprettet, {result.Imports.Count(i => i.PlantCreated)} nytt anlegg.";
-            Snackbar.Add(_multiState.LastSuccessMessage, Severity.Success);
-
-            // Re-hent anleggs-listen slik at nye anlegg dukker opp i UI
-            _items = await Api.ListPlantsAsync();
-        }
-        catch (HttpRequestException ex)
-        {
-            _multiState.Error = $"Multi-plant-import feilet: {ex.Message}";
-            Snackbar.Add(_multiState.Error, Severity.Error);
-        }
-        catch (Exception ex)
-        {
-            _multiState.Error = $"Uventet feil: {ex.Message}";
-            Snackbar.Add(_multiState.Error, Severity.Error);
-        }
-        finally
-        {
-            _multiState.IsUploading = false;
-            StateHasChanged();
-        }
-    }
 }

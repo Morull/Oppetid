@@ -79,16 +79,16 @@
     <MudItem xs="12" sm="6" md="4" Class="dk-fade-in">
         <MudPaper Class="pa-5 dk-card dk-action" Elevation="0"
                   Style="--dk-accent: #1E5F8E;"
-                  @onclick="@(() => Nav.NavigateTo("upload"))">
+                  @onclick="@(() => Nav.NavigateTo("data-import"))">
             <div class="dk-action-icon">
-                <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Medium" />
+                <MudIcon Icon="@Icons.Material.Filled.CloudSync" Size="Size.Medium" />
             </div>
-            <MudText Typo="Typo.h5" Class="mb-1">Last opp fil</MudText>
+            <MudText Typo="Typo.h5" Class="mb-1">Data-import</MudText>
             <MudText Typo="Typo.body2" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
-                KAIA-avregning (.xlsx) for et anlegg.
+                Status, opplasting og historikk — alt på én side.
             </MudText>
             <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                       DropShadow="false" Href="upload" EndIcon="@Icons.Material.Filled.ArrowForward">Åpne</MudButton>
+                       DropShadow="false" Href="data-import" EndIcon="@Icons.Material.Filled.ArrowForward">Åpne</MudButton>
         </MudPaper>
     </MudItem>
 
