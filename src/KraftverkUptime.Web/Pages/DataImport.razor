@@ -166,22 +166,6 @@
     @* ===== TAB 1: STATUS ===== *@
     <MudTabPanel Icon="@Icons.Material.Filled.GridOn" Text="Status">
         <MudPaper Class="pa-4" Elevation="0">
-            @* Periode-velger for matrisen *@
-            <MudGrid Class="mb-3">
-                <MudItem xs="12" sm="6">
-                    <MudDatePicker Label="Fra" @bind-Date="_fromDate" PickerVariant="PickerVariant.Dialog" />
-                </MudItem>
-                <MudItem xs="12" sm="6">
-                    <MudDatePicker Label="Til" @bind-Date="_toDate" PickerVariant="PickerVariant.Dialog" />
-                </MudItem>
-                <MudItem xs="12">
-                    <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
-                               OnClick="LoadStatusAsync" StartIcon="@Icons.Material.Filled.Refresh">
-                        Oppdater
-                    </MudButton>
-                </MudItem>
-            </MudGrid>
-
             @if (_statusError is not null)
             {
                 <MudAlert Severity="Severity.Error">@_statusError</MudAlert>
@@ -690,9 +674,11 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Vis alt — drifts-leder vil heller se hele bildet enn å filtrere
+        // periode. Default-vindu = 24 mnd bakover + denne måneden.
         var today = DateTime.Today;
         var firstThis = new DateTime(today.Year, today.Month, 1);
-        _fromDate = firstThis.AddMonths(-6);
+        _fromDate = firstThis.AddMonths(-24);
         _toDate = firstThis.AddMonths(1);
 
         if (string.Equals(InitialTab, "manuell", StringComparison.OrdinalIgnoreCase)) _activeTab = 1;

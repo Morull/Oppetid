@@ -79,27 +79,37 @@ public sealed class ScadaImportService : IScadaImportService
             plantId, result.SignalCount, result.RowsParsed, result.RowsSkipped, written);
 
         // Logg til data_imports — utleder periode fra samples min/max time.
-        // SCADA-master-CSV har gjerne én eksport per måned; periode-grensene
-        // hentes fra dataen istedenfor å gjette.
+        // SCADA-eksporter er ikke nødvendigvis månedlige: de er ofte snapshots
+        // av siste N timer/dager. Coverage beregnes mot det faktiske data-
+        // spennet (min→max), ikke mot hele måneden — slik at en komplett
+        // SCADA-fil for én dag rapporteres som 100 % uavhengig av om dataen
+        // dekker resten av måneden.
+        //
+        // Periode-grensene rundes til måneds-grenser for konsistent matrise-
+        // binning — alle samples i samme måned grupperes som én celle.
         if (result.Samples.Count > 0)
         {
             var minTime = result.Samples.Min(s => s.TimeUtc);
             var maxTime = result.Samples.Max(s => s.TimeUtc);
-            // Trekk perioden ut til måneds-grenser for konsekvent matrise-binning.
+
+            // Coverage: unike timer / antall timer i data-spennet (NB: ikke måned)
+            var minHourly = new DateTimeOffset(minTime.Year, minTime.Month, minTime.Day,
+                minTime.Hour, 0, 0, TimeSpan.Zero);
+            var maxHourly = new DateTimeOffset(maxTime.Year, maxTime.Month, maxTime.Day,
+                maxTime.Hour, 0, 0, TimeSpan.Zero);
+            var actualSpanHours = (int)((maxHourly - minHourly).TotalHours) + 1;
+            var uniqueHours = result.Samples.Select(s => s.TimeUtc).Distinct().Count();
+            var coverage = actualSpanHours > 0
+                ? Math.Min(1.0, uniqueHours / (double)actualSpanHours)
+                : 1.0;
+
+            // Måneds-binning for matrisen
             var periodFrom = new DateTimeOffset(minTime.Year, minTime.Month, 1, 0, 0, 0, TimeSpan.Zero);
             var periodTo = periodFrom.AddMonths(1);
-            // Hvis fila spenner flere måneder, bruk maxTime + 1 t.
             if (maxTime >= periodTo)
             {
                 periodTo = new DateTimeOffset(maxTime.Year, maxTime.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1);
             }
-            var expectedHours = (int)Math.Round((periodTo - periodFrom).TotalHours);
-            // SCADA er kontinuerlig, men vi telle ulike timer (per signal kan
-            // det være flere samples per time). Bruker antall unike time-slots.
-            var uniqueHours = result.Samples.Select(s => s.TimeUtc).Distinct().Count();
-            var coverage = expectedHours > 0
-                ? Math.Min(1.0, uniqueHours / (double)expectedHours)
-                : 1.0;
 
             try
             {
@@ -113,7 +123,7 @@ public sealed class ScadaImportService : IScadaImportService
                     RowsImported: written,
                     CoveragePct: coverage,
                     UserId: "system",
-                    Notes: $"{result.SignalCount} signaler, {uniqueHours} unike timer"
+                    Notes: $"{result.SignalCount} signaler, {uniqueHours} unike timer i {actualSpanHours} t-spenn ({minHourly:yyyy-MM-dd HH}–{maxHourly:yyyy-MM-dd HH})"
                 ), ct).ConfigureAwait(false);
             }
             catch (Exception ex)
