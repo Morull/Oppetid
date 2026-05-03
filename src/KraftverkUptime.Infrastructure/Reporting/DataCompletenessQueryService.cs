@@ -86,8 +86,16 @@ public sealed class DataCompletenessQueryService : IDataCompletenessQueryService
         // Splitt hver import til alle månedene den dekker, og aggreger per
         // (plant, source, måned). "Siste import vinner" hvis flere imports
         // dekker samme måned.
+        //
+        // Per-måned dekning: hvis en import ikke dekker hele måneden (eks.
+        // eksport fra Jan 15 til Mai 15), beregner vi overlap-andel av
+        // måneden og ganger med import.coverage_pct. Da:
+        //   Jan (15.-31.) = 16/31 = 0.52 × import.coverage = 0.52 × 1.0 = 0.52 → PARTIAL
+        //   Feb-Apr (full) = 1.0 × 1.0 = 1.0 → COMPLETE
+        //   Mai (1.-15.)  = 15/31 = 0.48 × 1.0 = 0.48 → PARTIAL
+        // Brukeren får mer presist bilde av hvor data faktisk dekker.
         var importsByKey = new Dictionary<DataCompletenessKey,
-            (DataImport Last, int Count)>();
+            (DataImport Last, double MonthCoverage, int Count)>();
         foreach (var import in imports)
         {
             var startMonth = TruncToMonth(import.PeriodFromUtc);
@@ -95,27 +103,51 @@ public sealed class DataCompletenessQueryService : IDataCompletenessQueryService
             // siste måned som faktisk har data.
             var lastDataPoint = import.PeriodToUtc.AddTicks(-1);
             var endMonth = TruncToMonth(lastDataPoint);
+            var rawCoverage = import.CoveragePct ?? 1.0;
 
             for (var m = startMonth; m <= endMonth; m = m.AddMonths(1))
             {
                 if (m >= toMonth) break;
                 if (m < fromMonth) continue;
 
+                // Beregn hvor stor del av denne måneden som er innenfor importens spenn
+                var monthEnd = m.AddMonths(1);
+                var overlapStart = import.PeriodFromUtc > m ? import.PeriodFromUtc : m;
+                var overlapEnd = import.PeriodToUtc < monthEnd ? import.PeriodToUtc : monthEnd;
+                var overlapHours = (overlapEnd - overlapStart).TotalHours;
+                var monthHours = (monthEnd - m).TotalHours;
+                var monthOverlapFraction = monthHours > 0
+                    ? Math.Clamp(overlapHours / monthHours, 0.0, 1.0)
+                    : 1.0;
+                var monthCoverage = Math.Clamp(rawCoverage * monthOverlapFraction, 0.0, 1.0);
+
                 var key = new DataCompletenessKey(import.PlantId, import.SourceType, m);
                 if (importsByKey.TryGetValue(key, out var existing))
                 {
-                    if (import.ImportedAtUtc > existing.Last.ImportedAtUtc)
+                    // Siste import vinner. Hvis to imports dekker samme måned
+                    // (eks. én januar-snapshot + én jan-mai-eksport), ta den
+                    // med høyest dekning — gir mest realistisk bilde.
+                    var keepNew = import.ImportedAtUtc > existing.Last.ImportedAtUtc
+                                  && monthCoverage >= existing.MonthCoverage * 0.9;
+                    if (keepNew)
                     {
-                        importsByKey[key] = (import, existing.Count + 1);
+                        importsByKey[key] = (import, monthCoverage, existing.Count + 1);
+                    }
+                    else if (monthCoverage > existing.MonthCoverage)
+                    {
+                        // Ny import har bedre dekning men er eldre — bruk dens
+                        // dekning men behold den eldres "Last"-metadata for
+                        // konsistens (timestamp i tooltip viser når dataen kom inn).
+                        importsByKey[key] = (existing.Last, monthCoverage, existing.Count + 1);
                     }
                     else
                     {
-                        importsByKey[key] = (existing.Last, existing.Count + 1);
+                        importsByKey[key] = (existing.Last, existing.MonthCoverage, existing.Count + 1);
                     }
                 }
                 else
                 {
-                    importsByKey[key] = (import, 1);
+                    importsByKey[key] = (import, monthCoverage, 1);
                 }
             }
         }
@@ -139,9 +171,11 @@ public sealed class DataCompletenessQueryService : IDataCompletenessQueryService
                 DataCompletenessCell cell;
                 if (importsByKey.TryGetValue(key, out var hit))
                 {
-                    var coverage = hit.Last.CoveragePct ?? 1.0;
-                    // Per-(plant, source)-konfigurerbar terskel — drifts-leder
-                    // kan sette mildere krav for SCADA enn settlement.
+                    // Bruk per-måned-beregnet dekning (justert for hvor stor del
+                    // av måneden som er dekket av import-spennet) i stedet for
+                    // import-rådekning. Gir mer realistisk bilde for offset-
+                    // perioder (eks. eksport fra 15. januar har bare halv januar).
+                    var coverage = hit.MonthCoverage;
                     var threshold = exp.CompletionThresholdPct > 0
                         ? exp.CompletionThresholdPct
                         : CompleteCoverageThreshold;
