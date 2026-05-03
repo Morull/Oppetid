@@ -1,3 +1,4 @@
+using KraftverkUptime.Core.DataCompleteness;
 using KraftverkUptime.Core.Events;
 using KraftverkUptime.Core.Jobs;
 using KraftverkUptime.Core.Security;
@@ -29,6 +30,7 @@ public sealed class ParseSettlementJobHandler : IJobHandler<ParseSettlementJob>
     private readonly ISettlementImportRecorder _importRecorder;
     private readonly IEventPublisher _events;
     private readonly IAuditLogger _audit;
+    private readonly IDataImportLogger _dataImportLogger;
     private readonly ILogger<ParseSettlementJobHandler> _logger;
 
     public ParseSettlementJobHandler(
@@ -38,6 +40,7 @@ public sealed class ParseSettlementJobHandler : IJobHandler<ParseSettlementJob>
         ISettlementImportRecorder importRecorder,
         IEventPublisher events,
         IAuditLogger audit,
+        IDataImportLogger dataImportLogger,
         ILogger<ParseSettlementJobHandler> logger)
     {
         _parser = parser ?? throw new ArgumentNullException(nameof(parser));
@@ -46,6 +49,7 @@ public sealed class ParseSettlementJobHandler : IJobHandler<ParseSettlementJob>
         _importRecorder = importRecorder ?? throw new ArgumentNullException(nameof(importRecorder));
         _events = events ?? throw new ArgumentNullException(nameof(events));
         _audit = audit ?? throw new ArgumentNullException(nameof(audit));
+        _dataImportLogger = dataImportLogger ?? throw new ArgumentNullException(nameof(dataImportLogger));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -95,6 +99,53 @@ public sealed class ParseSettlementJobHandler : IJobHandler<ParseSettlementJob>
             },
             ct).ConfigureAwait(false);
 
+        // Logg til data_imports for completeness-matrisen.
+        // Dekning = mottatte timer / forventede timer i perioden. Hvis
+        // periode-spennet er null/negativt brukes 1.0 (best effort).
+        // Logger BÅDE settlement og hydrogrid_plan — Hydrogrid-planen kommer
+        // som en kolonne i samme settlement-fila og er per definisjon
+        // tilgjengelig så snart settlement er importert.
+        var expectedHours = ComputeExpectedHours(parsed.PeriodStartUtc, parsed.PeriodEndUtc);
+        var coverage = expectedHours > 0
+            ? Math.Min(1.0, parsed.Hourly.Count / (double)expectedHours)
+            : 1.0;
+
+        await _dataImportLogger.LogAsync(new DataImportLogEntry(
+            PlantId: job.PlantId,
+            SourceType: "settlement",
+            PeriodFromUtc: parsed.PeriodStartUtc,
+            PeriodToUtc: parsed.PeriodEndUtc,
+            FileName: System.IO.Path.GetFileName(job.BlobPath),
+            FileHash: job.IdempotencyKey,
+            RowsImported: parsed.Hourly.Count,
+            CoveragePct: coverage,
+            UserId: "system",
+            Notes: parsed.Issues.Count > 0 ? $"{parsed.Issues.Count} avvik ved parsing" : null
+        ), ct).ConfigureAwait(false);
+
+        // Hydrogrid-plan: hvis settlement-fila inneholder ProduksjonplanMwh
+        // i én eller flere rader, regnes Hydrogrid-planen som "levert" for
+        // perioden. Dekning = andel av timer med ikke-null plan.
+        var planRows = parsed.Hourly.Count(r => r.ProduksjonplanMwh.HasValue);
+        if (planRows > 0)
+        {
+            var planCoverage = expectedHours > 0
+                ? Math.Min(1.0, planRows / (double)expectedHours)
+                : 1.0;
+            await _dataImportLogger.LogAsync(new DataImportLogEntry(
+                PlantId: job.PlantId,
+                SourceType: "hydrogrid_plan",
+                PeriodFromUtc: parsed.PeriodStartUtc,
+                PeriodToUtc: parsed.PeriodEndUtc,
+                FileName: System.IO.Path.GetFileName(job.BlobPath),
+                FileHash: job.IdempotencyKey,
+                RowsImported: planRows,
+                CoveragePct: planCoverage,
+                UserId: "system",
+                Notes: $"Plan-kolonne i settlement: {planRows}/{parsed.Hourly.Count} timer"
+            ), ct).ConfigureAwait(false);
+        }
+
         await _events.PublishAsync(new SettlementImportedEvent
         {
             PlantId = job.PlantId,
@@ -111,5 +162,18 @@ public sealed class ParseSettlementJobHandler : IJobHandler<ParseSettlementJob>
         _logger.LogInformation(
             "Settlement-import fullført: {Hours} timer, {Issues} avvik",
             parsed.Hourly.Count, parsed.Issues.Count);
+    }
+
+    /// <summary>
+    /// Forventet antall timer i perioden — DST-naïv (regner kalender-timer).
+    /// Tilstrekkelig presist for completeness-rapporten; dekning rapporteres
+    /// som ratio og 1 t-DST-avvik gir 0.999 i stedet for 1.000 for et
+    /// månedsdekkende oppgjør.
+    /// </summary>
+    private static int ComputeExpectedHours(DateTimeOffset fromUtc, DateTimeOffset toUtc)
+    {
+        var span = toUtc - fromUtc;
+        var hours = (int)Math.Round(span.TotalHours);
+        return hours > 0 ? hours : 0;
     }
 }

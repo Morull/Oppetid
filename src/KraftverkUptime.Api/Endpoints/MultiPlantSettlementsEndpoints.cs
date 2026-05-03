@@ -5,6 +5,7 @@ using System.Text;
 using Asp.Versioning;
 using Asp.Versioning.Builder;
 using KraftverkUptime.Api.Options;
+using KraftverkUptime.Core.DataCompleteness;
 using KraftverkUptime.Core.Events;
 using KraftverkUptime.Core.Security;
 using KraftverkUptime.Core.Storage;
@@ -79,6 +80,7 @@ public static class MultiPlantSettlementsEndpoints
         ISettlementImportRecorder importRecorder,
         IEventPublisher events,
         IAuditLogger audit,
+        IDataImportLogger dataImportLogger,
         DataQualityReportBuilder qualityBuilder,
         KraftverkDbContext db,
         ICurrentUser currentUser,
@@ -119,7 +121,7 @@ public static class MultiPlantSettlementsEndpoints
 
                 return await ProcessFileAsync(
                     section.Body, fileName, ownerOrgId, parser, fileStorage,
-                    importRecorder, events, audit, qualityBuilder, db, clock, logger, ct).ConfigureAwait(false);
+                    importRecorder, events, audit, dataImportLogger, qualityBuilder, db, clock, logger, ct).ConfigureAwait(false);
             }
 
             try
@@ -145,6 +147,7 @@ public static class MultiPlantSettlementsEndpoints
         ISettlementImportRecorder importRecorder,
         IEventPublisher events,
         IAuditLogger audit,
+        IDataImportLogger dataImportLogger,
         DataQualityReportBuilder qualityBuilder,
         KraftverkDbContext db,
         TimeProvider clock,
@@ -240,6 +243,54 @@ public static class MultiPlantSettlementsEndpoints
                     quality.HoursRejected,
                 },
                 ct).ConfigureAwait(false);
+
+            // SPEC-IMPORT-COMPLETENESS: logg per-plant til data_imports.
+            // Settlement-rad + Hydrogrid-plan-rad (sistnevnte hvis fila har plan-data).
+            var expectedHours = (int)Math.Round((parsed.PeriodEndUtc - parsed.PeriodStartUtc).TotalHours);
+            var settlementCoverage = expectedHours > 0
+                ? Math.Min(1.0, parsed.Hourly.Count / (double)expectedHours)
+                : 1.0;
+            try
+            {
+                await dataImportLogger.LogAsync(new DataImportLogEntry(
+                    PlantId: parsed.PlantId,
+                    SourceType: "settlement",
+                    PeriodFromUtc: parsed.PeriodStartUtc,
+                    PeriodToUtc: parsed.PeriodEndUtc,
+                    FileName: fileName,
+                    FileHash: perPlantKey,
+                    RowsImported: parsed.Hourly.Count,
+                    CoveragePct: settlementCoverage,
+                    UserId: "system",
+                    Notes: parsed.Issues.Count > 0 ? $"{parsed.Issues.Count} avvik" : null
+                ), ct).ConfigureAwait(false);
+
+                var planRows = parsed.Hourly.Count(r => r.ProduksjonplanMwh.HasValue);
+                if (planRows > 0)
+                {
+                    var planCoverage = expectedHours > 0
+                        ? Math.Min(1.0, planRows / (double)expectedHours)
+                        : 1.0;
+                    await dataImportLogger.LogAsync(new DataImportLogEntry(
+                        PlantId: parsed.PlantId,
+                        SourceType: "hydrogrid_plan",
+                        PeriodFromUtc: parsed.PeriodStartUtc,
+                        PeriodToUtc: parsed.PeriodEndUtc,
+                        FileName: fileName,
+                        FileHash: perPlantKey,
+                        RowsImported: planRows,
+                        CoveragePct: planCoverage,
+                        UserId: "system",
+                        Notes: $"Plan-kolonne i settlement: {planRows}/{parsed.Hourly.Count} timer"
+                    ), ct).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "data_imports-logging feilet for {Plant} i multi-plant-import. Selve importen er på plass.",
+                    parsed.PlantId);
+            }
 
             await events.PublishAsync(new SettlementImportedEvent
             {

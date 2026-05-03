@@ -128,6 +128,10 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<KraftverkUptime.Modules.Reporting.DataQuality.IDataQualityQueryService,
                           KraftverkUptime.Infrastructure.Reporting.DataQualityQueryService>();
 
+        // --- Data-completeness (SPEC-IMPORT-COMPLETENESS) ---
+        services.AddScoped<KraftverkUptime.Core.DataCompleteness.IDataImportLogger,
+                          KraftverkUptime.Infrastructure.Reporting.DbDataImportLogger>();
+
         // --- Events ---
         services.AddSingleton<IEventPublisher, InProcEventPublisher>();
         services.AddScoped<IEventHandler<SettlementImportedEvent>, ClassifyOnImportedHandler>();

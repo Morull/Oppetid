@@ -1,4 +1,5 @@
 using System.Text;
+using KraftverkUptime.Core.DataCompleteness;
 using KraftverkUptime.Modules.Scada.Import;
 using KraftverkUptime.Modules.Scada.Repositories;
 using Microsoft.Extensions.Logging;
@@ -17,6 +18,7 @@ public sealed class ScadaImportService : IScadaImportService
 {
     private readonly IScadaSampleRepository _sampleRepo;
     private readonly IClassifiedEventRepository _eventRepo;
+    private readonly IDataImportLogger _dataImportLogger;
     private readonly ILogger<ScadaImportService> _logger;
 
     private static readonly TimeZoneInfo DefaultPlantTimeZone =
@@ -25,10 +27,12 @@ public sealed class ScadaImportService : IScadaImportService
     public ScadaImportService(
         IScadaSampleRepository sampleRepo,
         IClassifiedEventRepository eventRepo,
+        IDataImportLogger dataImportLogger,
         ILogger<ScadaImportService> logger)
     {
         _sampleRepo = sampleRepo;
         _eventRepo = eventRepo;
+        _dataImportLogger = dataImportLogger;
         _logger = logger;
     }
 
@@ -74,6 +78,52 @@ public sealed class ScadaImportService : IScadaImportService
             "SCADA-import for {PlantId}: {Signals} signaler, {Parsed} timer, {Skipped} skip, {Written} samples skrevet.",
             plantId, result.SignalCount, result.RowsParsed, result.RowsSkipped, written);
 
+        // Logg til data_imports — utleder periode fra samples min/max time.
+        // SCADA-master-CSV har gjerne én eksport per måned; periode-grensene
+        // hentes fra dataen istedenfor å gjette.
+        if (result.Samples.Count > 0)
+        {
+            var minTime = result.Samples.Min(s => s.TimeUtc);
+            var maxTime = result.Samples.Max(s => s.TimeUtc);
+            // Trekk perioden ut til måneds-grenser for konsekvent matrise-binning.
+            var periodFrom = new DateTimeOffset(minTime.Year, minTime.Month, 1, 0, 0, 0, TimeSpan.Zero);
+            var periodTo = periodFrom.AddMonths(1);
+            // Hvis fila spenner flere måneder, bruk maxTime + 1 t.
+            if (maxTime >= periodTo)
+            {
+                periodTo = new DateTimeOffset(maxTime.Year, maxTime.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1);
+            }
+            var expectedHours = (int)Math.Round((periodTo - periodFrom).TotalHours);
+            // SCADA er kontinuerlig, men vi telle ulike timer (per signal kan
+            // det være flere samples per time). Bruker antall unike time-slots.
+            var uniqueHours = result.Samples.Select(s => s.TimeUtc).Distinct().Count();
+            var coverage = expectedHours > 0
+                ? Math.Min(1.0, uniqueHours / (double)expectedHours)
+                : 1.0;
+
+            try
+            {
+                await _dataImportLogger.LogAsync(new DataImportLogEntry(
+                    PlantId: plantId,
+                    SourceType: "scada",
+                    PeriodFromUtc: periodFrom,
+                    PeriodToUtc: periodTo,
+                    FileName: null,
+                    FileHash: null,
+                    RowsImported: written,
+                    CoveragePct: coverage,
+                    UserId: "system",
+                    Notes: $"{result.SignalCount} signaler, {uniqueHours} unike timer"
+                ), ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "data_imports-logging feilet for SCADA {PlantId}, men selve importen er på plass.",
+                    plantId);
+            }
+        }
+
         return new ScadaImportResult(
             PlantId: plantId,
             SignalCount: result.SignalCount,
@@ -110,6 +160,14 @@ public sealed class ScadaImportService : IScadaImportService
             "Operlog-import for {PlantId}: {Parsed} events parsed, {Skipped} skip, {Written} skrevet.",
             plantId, result.RowsParsed, result.RowsSkipped, result.Events.Count);
 
+        // Logg til data_imports. Operlog dekker varierende perioder — vi
+        // henter periode fra event-tidspunkter. Hvis fila er tom, hopper
+        // vi over loggingen (ingen meningsfull periode å rapportere).
+        if (result.Events.Count > 0)
+        {
+            await LogOperlogImportAsync(plantId, result.Events, ct).ConfigureAwait(false);
+        }
+
         return new OperlogImportResult(
             PlantId: plantId,
             RowsParsed: result.RowsParsed,
@@ -145,6 +203,11 @@ public sealed class ScadaImportService : IScadaImportService
         {
             await _eventRepo.UpsertManyAsync(events, ct).ConfigureAwait(false);
             perPlant.Add(new PlantOperlogResult(plantId, events.Count));
+
+            if (events.Count > 0)
+            {
+                await LogOperlogImportAsync(plantId, events, ct).ConfigureAwait(false);
+            }
         }
 
         _logger.LogInformation(
@@ -158,6 +221,46 @@ public sealed class ScadaImportService : IScadaImportService
             UnknownStations: result.UnknownStations,
             UnknownStationNames: result.UnknownStationNames,
             PerPlant: perPlant);
+    }
+
+    /// <summary>
+    /// Logger én rad til <c>data_imports</c> for en operlog-batch. Periode
+    /// utledes fra event-tidsstemplene (rundet til kalender-måneds-grenser).
+    /// Coverage settes alltid til 1.0 for operlog fordi fila per definisjon
+    /// inneholder kun events som faktisk skjedde — det finnes ingen
+    /// "forventet antall events" å normalisere mot.
+    /// </summary>
+    private async Task LogOperlogImportAsync(
+        string plantId,
+        IReadOnlyCollection<KraftverkUptime.Core.Domain.ClassifiedEvent> events,
+        CancellationToken ct)
+    {
+        var minTime = events.Min(e => e.StartUtc);
+        var maxTime = events.Max(e => e.StartUtc);
+        var periodFrom = new DateTimeOffset(minTime.Year, minTime.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        var periodTo = new DateTimeOffset(maxTime.Year, maxTime.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1);
+
+        try
+        {
+            await _dataImportLogger.LogAsync(new DataImportLogEntry(
+                PlantId: plantId,
+                SourceType: "operlog",
+                PeriodFromUtc: periodFrom,
+                PeriodToUtc: periodTo,
+                FileName: null,
+                FileHash: null,
+                RowsImported: events.Count,
+                CoveragePct: 1.0,
+                UserId: "system",
+                Notes: $"{events.Count} events"
+            ), ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "data_imports-logging feilet for operlog {PlantId}, men selve importen er på plass.",
+                plantId);
+        }
     }
 
     private static TimeZoneInfo? TryFindTz(string id)
