@@ -1,4 +1,5 @@
 using KraftverkUptime.Infrastructure.Persistence;
+using KraftverkUptime.Infrastructure.Persistence.Entities;
 using KraftverkUptime.Modules.Reporting.DataCompleteness;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -74,27 +75,50 @@ public sealed class DataCompletenessQueryService : IDataCompletenessQueryService
             return EmptyMatrix(fromMonth, toMonth);
         }
 
-        // Hent alle relevante imports i ett kall, deretter aggreger per
-        // (plant, source, period). Vi bruker "siste import vinner" — én rad
-        // per periode med max(imported_at_utc) og siste coverage_pct.
+        // Hent alle imports som overlapper [fromMonth, toMonth). En import
+        // kan spenne flere måneder (eks. SCADA-fil for jan-mai), så vi må
+        // generere én celle per (plant, source, måned-i-import-spennet).
         var imports = await _db.DataImports
             .AsNoTracking()
-            .Where(i => i.PeriodFromUtc >= fromMonth && i.PeriodFromUtc < toMonth)
+            .Where(i => i.PeriodFromUtc < toMonth && i.PeriodToUtc > fromMonth)
             .ToListAsync(ct).ConfigureAwait(false);
 
-        var importsByKey = imports
-            .GroupBy(i => new DataCompletenessKey(i.PlantId, i.SourceType, TruncToMonth(i.PeriodFromUtc)))
-            .ToDictionary(
-                g => g.Key,
-                g =>
+        // Splitt hver import til alle månedene den dekker, og aggreger per
+        // (plant, source, måned). "Siste import vinner" hvis flere imports
+        // dekker samme måned.
+        var importsByKey = new Dictionary<DataCompletenessKey,
+            (DataImport Last, int Count)>();
+        foreach (var import in imports)
+        {
+            var startMonth = TruncToMonth(import.PeriodFromUtc);
+            // PeriodToUtc er eksklusiv. Trekk fra ett tick for å finne
+            // siste måned som faktisk har data.
+            var lastDataPoint = import.PeriodToUtc.AddTicks(-1);
+            var endMonth = TruncToMonth(lastDataPoint);
+
+            for (var m = startMonth; m <= endMonth; m = m.AddMonths(1))
+            {
+                if (m >= toMonth) break;
+                if (m < fromMonth) continue;
+
+                var key = new DataCompletenessKey(import.PlantId, import.SourceType, m);
+                if (importsByKey.TryGetValue(key, out var existing))
                 {
-                    var ordered = g.OrderByDescending(i => i.ImportedAtUtc).ToList();
-                    return new
+                    if (import.ImportedAtUtc > existing.Last.ImportedAtUtc)
                     {
-                        Last = ordered[0],
-                        Count = ordered.Count,
-                    };
-                });
+                        importsByKey[key] = (import, existing.Count + 1);
+                    }
+                    else
+                    {
+                        importsByKey[key] = (existing.Last, existing.Count + 1);
+                    }
+                }
+                else
+                {
+                    importsByKey[key] = (import, 1);
+                }
+            }
+        }
 
         var cells = new Dictionary<DataCompletenessKey, DataCompletenessCell>();
         foreach (var exp in expectations)
