@@ -317,7 +317,7 @@ else
     private string? _expSaveError;
     private static readonly string[] _sourceTypes = new[]
     {
-        "settlement", "hydrogrid_plan", "scada", "operlog"
+        "settlement", "scada", "operlog"
     };
 
     private sealed class DamEditForm
@@ -437,7 +437,6 @@ else
     private static int DefaultLagFor(string sourceType) => sourceType switch
     {
         "settlement" => 7,
-        "hydrogrid_plan" => 7,
         "scada" => 5,
         "operlog" => 5,
         _ => 7,
@@ -446,18 +445,16 @@ else
     private static string FormatSourceType(string sourceType) => sourceType switch
     {
         "settlement" => "Settlement (KAIA)",
-        "scada" => "SCADA",
-        "operlog" => "Operlog",
-        "hydrogrid_plan" => "Hydrogrid-plan",
+        "scada" => "SCADA trender",
+        "operlog" => "SCADA alarmer",
         _ => sourceType,
     };
 
     private static string SourceTypeDescription(string sourceType) => sourceType switch
     {
-        "settlement" => "Månedlig oppgjørs-eksport (Excel)",
-        "hydrogrid_plan" => "Plan-kolonne i settlement-fila",
+        "settlement" => "KAIA-eksport (.xlsx) — inkluderer Hydrogrid-plan",
         "scada" => "SCADA master-CSV (tidsserier)",
-        "operlog" => "SCADA operatorlog (events)",
+        "operlog" => "SCADA operator-log (alarmer / events)",
         _ => "",
     };
 

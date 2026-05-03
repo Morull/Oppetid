@@ -22,7 +22,7 @@ public interface IDataImportLogger
 /// </summary>
 public sealed record DataImportLogEntry(
     string PlantId,
-    string SourceType,                   // "settlement", "scada", "operlog", "hydrogrid_plan"
+    string SourceType,                   // "settlement" (KAIA), "scada" (trender), "operlog" (alarmer)
     DateTimeOffset PeriodFromUtc,
     DateTimeOffset PeriodToUtc,
     string? FileName,

@@ -134,6 +134,24 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<KraftverkUptime.Modules.Reporting.DataCompleteness.IDataCompletenessQueryService,
                           KraftverkUptime.Infrastructure.Reporting.DataCompletenessQueryService>();
 
+        // --- Hot-folder watcher (SPEC-AUTO-IMPORT-FOLDER) ---
+        services.Configure<KraftverkUptime.Infrastructure.HotFolder.HotFolderOptions>(
+            configuration.GetSection(KraftverkUptime.Infrastructure.HotFolder.HotFolderOptions.SectionName));
+        services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<
+            KraftverkUptime.Infrastructure.HotFolder.HotFolderOptions>>().Value);
+        services.AddSingleton<KraftverkUptime.Infrastructure.HotFolder.HotFolderQueue>();
+        services.AddSingleton<KraftverkUptime.Infrastructure.HotFolder.HotFolderDetector>();
+        services.AddHostedService<KraftverkUptime.Infrastructure.HotFolder.HotFolderWatcher>();
+        // HttpClient for å POSTE settlement-filer mot lokal Api (samme prosess).
+        // Base-URL settes i Program.cs via configure-callback der den kjenner kestrel-port.
+        services.AddHttpClient("HotFolderUpload", c =>
+        {
+            // Default localhost:5080 — overstyres via miljøvariabel HotFolder:UploadBaseUrl
+            var baseUrl = configuration["HotFolder:UploadBaseUrl"] ?? "http://localhost:5080/";
+            c.BaseAddress = new Uri(baseUrl);
+            c.Timeout = TimeSpan.FromMinutes(5);
+        });
+
         // --- Events ---
         services.AddSingleton<IEventPublisher, InProcEventPublisher>();
         services.AddScoped<IEventHandler<SettlementImportedEvent>, ClassifyOnImportedHandler>();

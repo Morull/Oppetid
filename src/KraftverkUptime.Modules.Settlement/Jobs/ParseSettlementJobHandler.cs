@@ -102,13 +102,17 @@ public sealed class ParseSettlementJobHandler : IJobHandler<ParseSettlementJob>
         // Logg til data_imports for completeness-matrisen.
         // Dekning = mottatte timer / forventede timer i perioden. Hvis
         // periode-spennet er null/negativt brukes 1.0 (best effort).
-        // Logger BÅDE settlement og hydrogrid_plan — Hydrogrid-planen kommer
-        // som en kolonne i samme settlement-fila og er per definisjon
-        // tilgjengelig så snart settlement er importert.
+        // Hydrogrid-plan er en kolonne i samme settlement-fila og spores
+        // ikke som egen kilde-type (drifts-leders 2026-05-03-bekreftelse).
         var expectedHours = ComputeExpectedHours(parsed.PeriodStartUtc, parsed.PeriodEndUtc);
         var coverage = expectedHours > 0
             ? Math.Min(1.0, parsed.Hourly.Count / (double)expectedHours)
             : 1.0;
+
+        var planRows = parsed.Hourly.Count(r => r.ProduksjonplanMwh.HasValue);
+        var notes = parsed.Issues.Count > 0
+            ? $"{parsed.Issues.Count} avvik ved parsing"
+            : (planRows > 0 ? $"Hydrogrid-plan: {planRows}/{parsed.Hourly.Count} timer" : null);
 
         await _dataImportLogger.LogAsync(new DataImportLogEntry(
             PlantId: job.PlantId,
@@ -120,31 +124,8 @@ public sealed class ParseSettlementJobHandler : IJobHandler<ParseSettlementJob>
             RowsImported: parsed.Hourly.Count,
             CoveragePct: coverage,
             UserId: "system",
-            Notes: parsed.Issues.Count > 0 ? $"{parsed.Issues.Count} avvik ved parsing" : null
+            Notes: notes
         ), ct).ConfigureAwait(false);
-
-        // Hydrogrid-plan: hvis settlement-fila inneholder ProduksjonplanMwh
-        // i én eller flere rader, regnes Hydrogrid-planen som "levert" for
-        // perioden. Dekning = andel av timer med ikke-null plan.
-        var planRows = parsed.Hourly.Count(r => r.ProduksjonplanMwh.HasValue);
-        if (planRows > 0)
-        {
-            var planCoverage = expectedHours > 0
-                ? Math.Min(1.0, planRows / (double)expectedHours)
-                : 1.0;
-            await _dataImportLogger.LogAsync(new DataImportLogEntry(
-                PlantId: job.PlantId,
-                SourceType: "hydrogrid_plan",
-                PeriodFromUtc: parsed.PeriodStartUtc,
-                PeriodToUtc: parsed.PeriodEndUtc,
-                FileName: System.IO.Path.GetFileName(job.BlobPath),
-                FileHash: job.IdempotencyKey,
-                RowsImported: planRows,
-                CoveragePct: planCoverage,
-                UserId: "system",
-                Notes: $"Plan-kolonne i settlement: {planRows}/{parsed.Hourly.Count} timer"
-            ), ct).ConfigureAwait(false);
-        }
 
         await _events.PublishAsync(new SettlementImportedEvent
         {

@@ -126,12 +126,23 @@ public sealed class DataCompletenessQueryService : IDataCompletenessQueryService
                 else
                 {
                     var lagCutoff = periodEnd.AddDays(exp.ExpectedLagDays);
-                    var status = now > lagCutoff ? "OVERDUE" : "PENDING";
-                    cell = new DataCompletenessCell(
-                        Status: status,
-                        LastImportedAt: null,
-                        CoveragePct: null,
-                        ImportCount: 0);
+                    if (now > lagCutoff)
+                    {
+                        cell = new DataCompletenessCell(
+                            Status: "OVERDUE",
+                            LastImportedAt: null,
+                            CoveragePct: null,
+                            ImportCount: 0);
+                    }
+                    else
+                    {
+                        // PENDING (innenfor lag-vindu) er irrelevant for
+                        // drifts-leder per 2026-05-03-bekreftelse — vi
+                        // hopper helt over disse cellene i matrisen og i
+                        // sammendraget. Cellen er fortsatt forventet, men
+                        // ikke noe brukeren skal handle på.
+                        continue;
+                    }
                 }
                 cells[key] = cell;
             }

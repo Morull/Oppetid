@@ -156,6 +156,22 @@ public sealed class NedetidApi
         return resp ?? throw new InvalidOperationException("Tom respons fra /data-status/summary.");
     }
 
+    /// <summary>Henter status for hot-folder-watcheren (kø + siste prosesserte filer).</summary>
+    public async Task<HotFolderStatusDto?> GetHotFolderStatusAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            return await _http
+                .GetFromJsonAsync<HotFolderStatusDto>(
+                    "api/v1/hot-folder/queue", JsonOptions, ct)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            return null; // hot-folder kanskje ikke aktiv — banneren skjuler seg
+        }
+    }
+
     /// <summary>Lister nylige importer (default siste 24 timer) — brukt av auto-import-infobar.</summary>
     public async Task<IReadOnlyList<RecentImportDto>> GetRecentImportsAsync(
         int hours = 24, int limit = 50, CancellationToken ct = default)
@@ -475,3 +491,26 @@ public sealed record RecentImportDto(
     int? RowsImported,
     double? CoveragePct,
     string? UserId);
+
+// --- HotFolder (SPEC-AUTO-IMPORT-FOLDER) ----------------------------------
+
+public sealed record HotFolderStatusDto(
+    bool Enabled,
+    string RootPath,
+    IReadOnlyList<HotFolderQueueEntryDto> Waiting,
+    IReadOnlyList<HotFolderRecentEntryDto> Recent);
+
+public sealed record HotFolderQueueEntryDto(
+    string FilePath,
+    string FileName,
+    long FileSize,
+    DateTimeOffset DetectedAtUtc,
+    string Status); // WAITING / PROCESSING
+
+public sealed record HotFolderRecentEntryDto(
+    string FileName,
+    string? PlantId,
+    string? SourceType,
+    string Status, // OK / QUARANTINE / DUPLICATE
+    DateTimeOffset ProcessedAtUtc,
+    string? Notes);

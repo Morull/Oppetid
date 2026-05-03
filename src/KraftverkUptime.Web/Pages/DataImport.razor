@@ -30,7 +30,10 @@
 @if (_recent is not null && _summary is not null)
 {
     var imported24h = _recent.Count;
-    var oldestStillProcessing = _recent.FirstOrDefault(); // kan utvides med job-queue-status senere
+    var newest = _recent.FirstOrDefault();
+    var waitingCount = _hotFolder?.Waiting.Count(w => w.Status == "WAITING") ?? 0;
+    var processingCount = _hotFolder?.Waiting.Count(w => w.Status == "PROCESSING") ?? 0;
+
     <MudPaper Class="pa-3 mb-3" Elevation="0"
               Style="border-left: 4px solid var(--mud-palette-primary); background: rgba(30, 95, 142, 0.06);">
         <div class="d-flex align-center flex-wrap" style="gap:24px;">
@@ -38,16 +41,30 @@
                 <MudIcon Icon="@Icons.Material.Filled.Sync" Color="MudBlazor.Color.Primary" />
                 <strong>Siste 24 t:</strong>
                 @imported24h @(imported24h == 1 ? "import" : "importer") mottatt
-                @if (oldestStillProcessing is not null)
+                @if (newest is not null)
                 {
                     <span style="color:var(--mud-palette-text-secondary);">
-                        — sist <strong>@oldestStillProcessing.PlantId</strong> @FormatSource(oldestStillProcessing.SourceType) for @oldestStillProcessing.PeriodFromUtc.LocalDateTime.ToString("MMM yyyy")
-                        (@RelativeTime(oldestStillProcessing.ImportedAtUtc))
+                        — sist <strong>@newest.PlantId</strong> @FormatSource(newest.SourceType) for @newest.PeriodFromUtc.LocalDateTime.ToString("MMM yyyy")
+                        (@RelativeTime(newest.ImportedAtUtc))
                     </span>
                 }
             </div>
             <MudSpacer />
-            <div style="display:flex; gap:16px;">
+            <div style="display:flex; gap:16px; flex-wrap:wrap;">
+                @if (processingCount > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Info" Variant="Variant.Filled"
+                             Icon="@Icons.Material.Filled.HourglassTop">
+                        @processingCount auto-importerer nå
+                    </MudChip>
+                }
+                @if (waitingCount > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Default" Variant="Variant.Outlined"
+                             Icon="@Icons.Material.Filled.Inbox">
+                        @waitingCount filer venter
+                    </MudChip>
+                }
                 <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Success" Variant="Variant.Outlined">
                     @_summary.Complete komplett
                 </MudChip>
@@ -55,12 +72,6 @@
                 {
                     <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Warning" Variant="Variant.Outlined">
                         @_summary.Partial delvis
-                    </MudChip>
-                }
-                @if (_summary.Pending > 0)
-                {
-                    <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Info" Variant="Variant.Outlined">
-                        @_summary.Pending venter
                     </MudChip>
                 }
                 @if (_summary.Overdue > 0)
@@ -77,6 +88,57 @@
                                aria-label="Oppdater" />
             </MudTooltip>
         </div>
+        @if (_hotFolder is { Enabled: true } && (waitingCount > 0 || processingCount > 0 || _hotFolder.Recent.Any(r => r.Status == "QUARANTINE")))
+        {
+            <MudExpansionPanels Class="mt-2" Elevation="0">
+                <MudExpansionPanel Text="@($"Auto-import-mappe: {_hotFolder.RootPath}")" Dense="true">
+                    @if (_hotFolder.Waiting.Count > 0)
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mt-1">I kø</MudText>
+                        <MudSimpleTable Dense="true" Style="background:transparent;">
+                            <thead><tr><th>Filnavn</th><th>Status</th><th>Detektert</th><th>Størrelse</th></tr></thead>
+                            <tbody>
+                            @foreach (var w in _hotFolder.Waiting)
+                            {
+                                <tr>
+                                    <td>@w.FileName</td>
+                                    <td>
+                                        @if (w.Status == "PROCESSING")
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Info">Prosesserer</MudChip>
+                                        }
+                                        else
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Default" Variant="Variant.Outlined">Venter</MudChip>
+                                        }
+                                    </td>
+                                    <td>@RelativeTime(w.DetectedAtUtc)</td>
+                                    <td>@(w.FileSize / 1024) KB</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+                    @if (_hotFolder.Recent.Any(r => r.Status == "QUARANTINE"))
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mt-3">Filer i karantene (krever oppmerksomhet)</MudText>
+                        <MudSimpleTable Dense="true" Style="background:transparent;">
+                            <thead><tr><th>Filnavn</th><th>Tidspunkt</th><th>Notat</th></tr></thead>
+                            <tbody>
+                            @foreach (var r in _hotFolder.Recent.Where(r => r.Status == "QUARANTINE"))
+                            {
+                                <tr>
+                                    <td>@r.FileName</td>
+                                    <td>@RelativeTime(r.ProcessedAtUtc)</td>
+                                    <td style="font-size:0.85em; color:var(--mud-palette-error);">@r.Notes</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
     </MudPaper>
 }
 
@@ -116,28 +178,21 @@
             {
                 @* Sammendrag-kort *@
                 <MudGrid Class="mb-3">
-                    <MudItem xs="6" sm="3">
+                    <MudItem xs="12" sm="4">
                         <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid var(--mud-palette-success);">
                             <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Komplette</MudText>
                             <MudText Typo="Typo.h3">@_summary.Complete</MudText>
                             <MudText Typo="Typo.caption">av @_summary.TotalExpected forventede</MudText>
                         </MudPaper>
                     </MudItem>
-                    <MudItem xs="6" sm="3">
+                    <MudItem xs="6" sm="4">
                         <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid var(--mud-palette-warning);">
                             <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Delvise</MudText>
                             <MudText Typo="Typo.h3">@_summary.Partial</MudText>
                             <MudText Typo="Typo.caption">&lt; 95 % dekning</MudText>
                         </MudPaper>
                     </MudItem>
-                    <MudItem xs="6" sm="3">
-                        <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid var(--mud-palette-info);">
-                            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Venter</MudText>
-                            <MudText Typo="Typo.h3">@_summary.Pending</MudText>
-                            <MudText Typo="Typo.caption">innenfor lag-vindu</MudText>
-                        </MudPaper>
-                    </MudItem>
-                    <MudItem xs="6" sm="3">
+                    <MudItem xs="6" sm="4">
                         <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid var(--mud-palette-error);">
                             <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Forfalt</MudText>
                             <MudText Typo="Typo.h3">@_summary.Overdue</MudText>
@@ -230,9 +285,8 @@
                         <strong>Symbol:</strong>
                         <span class="cell-symbol cell-complete ml-2">█</span> Komplett
                         <span class="cell-symbol cell-partial ml-2">░</span> Delvis
-                        <span class="cell-symbol cell-pending ml-2">o</span> Venter
                         <span class="cell-symbol cell-overdue ml-2">!</span> Forfalt
-                        <span class="cell-symbol cell-na ml-2">.</span> Ikke aktiv
+                        <span class="cell-symbol cell-na ml-2">.</span> Ingen forventning
                     </div>
                 }
 
@@ -583,6 +637,7 @@
     // Auto-import-banner
     private IReadOnlyList<RecentImportDto>? _recent;
     private int _recentHours = 24;
+    private HotFolderStatusDto? _hotFolder;
 
     // Single-plant upload
     private string _selectedPlantId = string.Empty;
@@ -661,10 +716,12 @@
             var matrixTask = NedetidApi.GetDataStatusMatrixAsync(fromUtc, toUtc);
             var summaryTask = NedetidApi.GetDataStatusSummaryAsync();
             var recentTask = NedetidApi.GetRecentImportsAsync(_recentHours);
+            var hotFolderTask = NedetidApi.GetHotFolderStatusAsync();
 
             _matrix = await matrixTask;
             _summary = await summaryTask;
             _recent = await recentTask;
+            _hotFolder = await hotFolderTask;
         }
         catch (Exception ex)
         {
@@ -727,14 +784,13 @@
     private static string FormatSource(string source) => source switch
     {
         "settlement" => "Settlement (KAIA)",
-        "scada" => "SCADA",
-        "operlog" => "Operlog",
-        "hydrogrid_plan" => "Hydrogrid-plan",
+        "scada" => "SCADA trender",
+        "operlog" => "SCADA alarmer",
         _ => source,
     };
     private static string SourceShort(string source) => source switch
     {
-        "settlement" => "S", "operlog" => "O", "hydrogrid_plan" => "H", "scada" => "Y",
+        "settlement" => "S", "scada" => "T", "operlog" => "A",
         _ => source[..1].ToUpperInvariant(),
     };
     private static string CoverageStyle(double pct)

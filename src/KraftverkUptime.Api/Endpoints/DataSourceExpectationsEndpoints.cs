@@ -157,7 +157,7 @@ public static class DataSourceExpectationsEndpoints
     }
 
     private static bool IsKnownSourceType(string sourceType) =>
-        sourceType is "settlement" or "scada" or "operlog" or "hydrogrid_plan";
+        sourceType is "settlement" or "scada" or "operlog";
 
     private static DataSourceExpectationDto ToDto(DataSourceExpectation e) => new(
         e.PlantId, e.SourceType, e.Cadence, e.ExpectedLagDays,

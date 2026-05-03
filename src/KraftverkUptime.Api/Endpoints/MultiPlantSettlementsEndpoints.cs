@@ -245,11 +245,17 @@ public static class MultiPlantSettlementsEndpoints
                 ct).ConfigureAwait(false);
 
             // SPEC-IMPORT-COMPLETENESS: logg per-plant til data_imports.
-            // Settlement-rad + Hydrogrid-plan-rad (sistnevnte hvis fila har plan-data).
+            // Settlement-rad inkluderer Hydrogrid-plan-status i Notes
+            // (drifts-leders 2026-05-03-bekreftelse: kun 3 source types).
             var expectedHours = (int)Math.Round((parsed.PeriodEndUtc - parsed.PeriodStartUtc).TotalHours);
             var settlementCoverage = expectedHours > 0
                 ? Math.Min(1.0, parsed.Hourly.Count / (double)expectedHours)
                 : 1.0;
+            var planRows = parsed.Hourly.Count(r => r.ProduksjonplanMwh.HasValue);
+            var notes = parsed.Issues.Count > 0
+                ? $"{parsed.Issues.Count} avvik"
+                : (planRows > 0 ? $"Hydrogrid-plan: {planRows}/{parsed.Hourly.Count} timer" : null);
+
             try
             {
                 await dataImportLogger.LogAsync(new DataImportLogEntry(
@@ -262,28 +268,8 @@ public static class MultiPlantSettlementsEndpoints
                     RowsImported: parsed.Hourly.Count,
                     CoveragePct: settlementCoverage,
                     UserId: "system",
-                    Notes: parsed.Issues.Count > 0 ? $"{parsed.Issues.Count} avvik" : null
+                    Notes: notes
                 ), ct).ConfigureAwait(false);
-
-                var planRows = parsed.Hourly.Count(r => r.ProduksjonplanMwh.HasValue);
-                if (planRows > 0)
-                {
-                    var planCoverage = expectedHours > 0
-                        ? Math.Min(1.0, planRows / (double)expectedHours)
-                        : 1.0;
-                    await dataImportLogger.LogAsync(new DataImportLogEntry(
-                        PlantId: parsed.PlantId,
-                        SourceType: "hydrogrid_plan",
-                        PeriodFromUtc: parsed.PeriodStartUtc,
-                        PeriodToUtc: parsed.PeriodEndUtc,
-                        FileName: fileName,
-                        FileHash: perPlantKey,
-                        RowsImported: planRows,
-                        CoveragePct: planCoverage,
-                        UserId: "system",
-                        Notes: $"Plan-kolonne i settlement: {planRows}/{parsed.Hourly.Count} timer"
-                    ), ct).ConfigureAwait(false);
-                }
             }
             catch (Exception ex)
             {

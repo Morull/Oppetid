@@ -463,12 +463,15 @@ public static class DatabaseBootstrapper
             return;
         }
 
-        // Backfill: alle plants får settlement (lag 7 dager) + hydrogrid_plan
-        // (lag 7 dager — Hydrogrid leveres som del av KAIA-eksporten, samme
-        // SLA). SCADA og operlog seedes IKKE her — drifts-leder aktiverer
-        // per anlegg når eksport-flow er på plass.
-        // Idempotent: ON CONFLICT DO NOTHING bevarer eksisterende konfig
-        // (drifts-leder kan ha endret cadence eller is_active manuelt).
+        // Backfill: alle plants får settlement (KAIA-eksport, lag 7 dager).
+        // Settlement-fila inneholder også Hydrogrid-plan-kolonnen, så vi
+        // sporer ikke det som egen kilde-type. SCADA-trender og SCADA-alarmer
+        // seedes IKKE her — drifts-leder aktiverer per anlegg via PlantAdmin
+        // når eksport-flow er på plass.
+        //
+        // Drifts-leders bekreftelse 2026-05-03: kun 3 datakilder eksisterer
+        // — settlement (KAIA), scada_trends (master-CSV), scada_alarms (operlog).
+        // Idempotent: ON CONFLICT DO NOTHING bevarer eksisterende konfig.
         const string backfillSql = """
             INSERT INTO core.data_source_expectations
                 (plant_id, source_type, cadence, expected_lag_days, is_active, activated_at_utc)
@@ -476,11 +479,11 @@ public static class DatabaseBootstrapper
             FROM core.plants p
             ON CONFLICT (plant_id, source_type) DO NOTHING;
 
-            INSERT INTO core.data_source_expectations
-                (plant_id, source_type, cadence, expected_lag_days, is_active, activated_at_utc)
-            SELECT p.id, 'hydrogrid_plan', 'monthly', 7, TRUE, '2024-01-01'::timestamptz
-            FROM core.plants p
-            ON CONFLICT (plant_id, source_type) DO NOTHING;
+            -- Rydd bort tidligere seedet hydrogrid_plan-rader (de er nå
+            -- konsolidert inn i settlement). Idempotent — ingen-op hvis
+            -- ingen slike rader eksisterer.
+            DELETE FROM core.data_source_expectations
+            WHERE source_type = 'hydrogrid_plan';
             """;
 
         try

@@ -4,6 +4,7 @@ using KraftverkUptime.Core.Security;
 using KraftverkUptime.Infrastructure.Persistence;
 using KraftverkUptime.Infrastructure.Persistence.Entities;
 using KraftverkUptime.Infrastructure.Reporting;
+using KraftverkUptime.Modules.Reporting.DataCompleteness;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -111,9 +112,11 @@ public class DataCompletenessQueryServiceTests
         cell.Status.Should().Be("PARTIAL");
     }
 
-    [Fact(DisplayName = "Ingen import + innenfor lag-vindu → PENDING")]
-    public async Task NoImport_WithinLagWindow_StatusPending()
+    [Fact(DisplayName = "Ingen import + innenfor lag-vindu → cellen er ikke med i matrisen")]
+    public async Task NoImport_WithinLagWindow_NotInMatrix()
     {
+        // Drifts-leders 2026-05-03-bekreftelse: PENDING-celler er irrelevante
+        // og fjernes fra matrisen. Bare COMPLETE/PARTIAL/OVERDUE telles.
         var apr2026 = new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero);
         // Now = 3 dager etter periode-slutt (apr-slutt = 1. mai). Lag = 7 → ikke OVERDUE ennå.
         var now = new DateTimeOffset(2026, 5, 4, 0, 0, 0, TimeSpan.Zero);
@@ -124,7 +127,8 @@ public class DataCompletenessQueryServiceTests
         var svc = NewService(db, now);
         var matrix = await svc.GetMatrixAsync(apr2026, apr2026.AddMonths(1), default);
 
-        matrix.Cells[new("drivdal", "settlement", apr2026)].Status.Should().Be("PENDING");
+        matrix.Cells.Keys.Should().NotContain(new DataCompletenessKey("drivdal", "settlement", apr2026),
+            "PENDING-celler skal ikke være med i matrisen");
     }
 
     [Fact(DisplayName = "Ingen import + lag overskredet → OVERDUE")]
@@ -179,15 +183,14 @@ public class DataCompletenessQueryServiceTests
         var summary = await svc.GetWeeklySummaryAsync(default);
 
         // GetWeeklySummaryAsync vinduet er forrige + denne måneden — apr og mai 2026.
-        // 2 expectations × 2 perioder = 4 celler.
+        // 2 expectations × 2 perioder = 4 forventede celler, men PENDING droppes.
         // - drivdal+apr: COMPLETE (vi seedet med coverage 1.0)
         // - honnefoss+apr: PARTIAL (vi seedet med 0.80)
-        // - drivdal+mai: PENDING (mai-end + 7d = 2026-06-08, now = 2026-05-10 → ikke overdue)
-        // - honnefoss+mai: PENDING
-        summary.TotalExpected.Should().Be(4);
+        // - drivdal+mai + honnefoss+mai: PENDING → skjult (drifts-leders 2026-05-03-bekreftelse)
+        summary.TotalExpected.Should().Be(2, "kun COMPLETE + PARTIAL er igjen i vinduet");
         summary.Complete.Should().Be(1);
         summary.Partial.Should().Be(1);
-        summary.Pending.Should().Be(2);
+        summary.Pending.Should().Be(0, "PENDING droppes fra matrisen");
         summary.Overdue.Should().Be(0);
     }
 

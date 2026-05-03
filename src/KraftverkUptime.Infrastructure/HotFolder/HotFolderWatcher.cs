@@ -1,0 +1,255 @@
+using KraftverkUptime.Modules.Scada.Import;
+using KraftverkUptime.Modules.Settlement.Persistence;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
+namespace KraftverkUptime.Infrastructure.HotFolder;
+
+/// <summary>
+/// BackgroundService som overvåker en mappe for nye .xlsx/.csv-filer og
+/// auto-importerer dem (SPEC-AUTO-IMPORT-FOLDER).
+///
+/// Strategi: polling hvert N sekunder + fil-stabilitets-sjekk for å unngå
+/// å lese filer som fortsatt blir kopiert. Filer flyttes til
+/// <c>done/&lt;YYYY-MM&gt;/</c> ved suksess, eller <c>quarantine/&lt;YYYY-MM-DD&gt;/</c>
+/// ved feil med .error.txt-vedlegg.
+///
+/// Kjører kun hvis <c>HotFolder:Enabled = true</c> og rot-mappa eksisterer.
+/// </summary>
+public sealed class HotFolderWatcher : BackgroundService
+{
+    private readonly IServiceProvider _services;
+    private readonly HotFolderQueue _queue;
+    private readonly HotFolderDetector _detector;
+    private readonly HotFolderOptions _options;
+    private readonly ILogger<HotFolderWatcher> _log;
+
+    private readonly Dictionary<string, DateTime> _seenFiles = new(StringComparer.OrdinalIgnoreCase);
+
+    public HotFolderWatcher(
+        IServiceProvider services,
+        HotFolderQueue queue,
+        HotFolderDetector detector,
+        IOptions<HotFolderOptions> options,
+        ILogger<HotFolderWatcher> log)
+    {
+        _services = services;
+        _queue = queue;
+        _detector = detector;
+        _options = options.Value;
+        _log = log;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var ct = stoppingToken;
+        if (!_options.Enabled)
+        {
+            _log.LogInformation("HotFolder disabled — skipper watcher.");
+            return;
+        }
+
+        var rootPath = _options.RootPath;
+        if (!Directory.Exists(rootPath))
+        {
+            _log.LogWarning("HotFolder rot-mappe finnes ikke: {Root}. Watcher kjører uten å gjøre noe.", rootPath);
+            return;
+        }
+
+        _log.LogInformation("HotFolder watcher startet. Overvåker {Root} hvert {Sec} sekund.",
+            rootPath, _options.PollIntervalSeconds);
+
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await ScanOnceAsync(ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "HotFolder scan feilet.");
+            }
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(_options.PollIntervalSeconds), ct).ConfigureAwait(false);
+            }
+            catch (TaskCanceledException) { break; }
+        }
+    }
+
+    private async Task ScanOnceAsync(CancellationToken ct)
+    {
+        var root = new DirectoryInfo(_options.RootPath);
+        if (!root.Exists) return;
+
+        // Bare topp-nivå (ikke done/, quarantine/, processing/-undermapper)
+        var files = root.EnumerateFiles("*.*", SearchOption.TopDirectoryOnly)
+            .Where(f =>
+                f.Extension.Equals(".xlsx", StringComparison.OrdinalIgnoreCase)
+                || f.Extension.Equals(".xls", StringComparison.OrdinalIgnoreCase)
+                || f.Extension.Equals(".csv", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (files.Count == 0) return;
+
+        var stabilityWait = TimeSpan.FromSeconds(_options.FileStabilitySeconds);
+        var now = DateTime.UtcNow;
+
+        foreach (var file in files)
+        {
+            if (ct.IsCancellationRequested) return;
+
+            // Fil-stabilitets-sjekk: vent til last-write-time har vært
+            // uendret i FileStabilitySeconds. Hindrer at vi prosesserer
+            // en fil mens den fortsatt blir kopiert.
+            if (now - file.LastWriteTimeUtc < stabilityWait)
+            {
+                _queue.EnqueueDetected(file.FullName, file.Length, file.LastWriteTimeUtc);
+                continue;
+            }
+
+            // Idempotens — ikke prosesser samme fil flere ganger basert på
+            // last-write-time + path.
+            if (_seenFiles.TryGetValue(file.FullName, out var lastSeen)
+                && lastSeen >= file.LastWriteTimeUtc)
+            {
+                continue;
+            }
+            _seenFiles[file.FullName] = file.LastWriteTimeUtc;
+
+            _queue.EnqueueDetected(file.FullName, file.Length, file.LastWriteTimeUtc);
+            await ProcessFileAsync(file, ct).ConfigureAwait(false);
+        }
+    }
+
+    private async Task ProcessFileAsync(FileInfo file, CancellationToken ct)
+    {
+        _queue.MarkProcessing(file.FullName);
+        _log.LogInformation("HotFolder: prosesserer {File}", file.Name);
+
+        // Detect type + plant
+        var detection = _detector.Detect(file);
+        if (!detection.Success)
+        {
+            await QuarantineAsync(file, detection.ErrorMessage ?? "Ukjent fil-type/anlegg", ct);
+            _queue.Complete(file.FullName, "QUARANTINE", null, null,
+                detection.ErrorMessage, DateTimeOffset.UtcNow);
+            return;
+        }
+
+        // Rute til riktig importør via DI scope
+        try
+        {
+            using var scope = _services.CreateScope();
+            await RouteAndImportAsync(scope, file, detection.PlantId!, detection.SourceType!.Value, ct);
+
+            await MoveToDoneAsync(file, detection.PlantId!, detection.SourceType.Value.ToSourceTypeKey(), ct);
+            _queue.Complete(file.FullName, "OK",
+                detection.PlantId, detection.SourceType.Value.ToSourceTypeKey(),
+                "Auto-import ok", DateTimeOffset.UtcNow);
+            _log.LogInformation("HotFolder OK: {File} → {Plant}/{Source}",
+                file.Name, detection.PlantId, detection.SourceType);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "HotFolder import feilet for {File}", file.Name);
+            await QuarantineAsync(file, ex.ToString(), ct);
+            _queue.Complete(file.FullName, "QUARANTINE",
+                detection.PlantId, detection.SourceType?.ToSourceTypeKey(),
+                $"Feil: {ex.Message}", DateTimeOffset.UtcNow);
+        }
+    }
+
+    private static async Task RouteAndImportAsync(
+        IServiceScope scope, FileInfo file, string plantId, SourceType type, CancellationToken ct)
+    {
+        await using var stream = file.OpenRead();
+
+        switch (type)
+        {
+            case SourceType.Settlement:
+                {
+                    // For settlement går vi via SettlementUploadHandler (ligger
+                    // i Api-prosjektet som Scoped service — vi kan ikke direkte
+                    // referere det fra Infrastructure uten sirkularitet).
+                    // Pragmatisk: kall SettlementImportRecorder direkte etter
+                    // parsing for å logge at fila er mottatt — den synkrone
+                    // klassifikasjonen kan gjøres som en oppfølging via API.
+                    //
+                    // I praksis: kopier fila til en blob-sti som ParseSettlementJob
+                    // kan plukke opp — eller send via HTTP til /api/v1/plants/{id}/settlements.
+                    // For v1 av hot-folder: bruk HTTP-kallet via en HttpClient som
+                    // peker mot localhost. Dette holder oss frikoblet fra Api-prosjektet.
+                    var httpClient = scope.ServiceProvider.GetRequiredService<IHttpClientFactory>()
+                        .CreateClient("HotFolderUpload");
+                    using var content = new MultipartFormDataContent();
+                    using var fileContent = new StreamContent(stream);
+                    fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+                    content.Add(fileContent, "file", file.Name);
+
+                    var requestUri = new Uri(
+                        $"api/v1/plants/{Uri.EscapeDataString(plantId)}/settlements", UriKind.Relative);
+                    var resp = await httpClient.PostAsync(requestUri, content, ct);
+                    resp.EnsureSuccessStatusCode();
+                    break;
+                }
+            case SourceType.ScadaTrends:
+                {
+                    var scadaSvc = scope.ServiceProvider.GetRequiredService<IScadaImportService>();
+                    var ownerOrg = "dev-org"; // TODO: hent fra plant-config når multi-tenant aktiveres
+                    await scadaSvc.ImportMasterCsvAsync(plantId, ownerOrg, stream, ct);
+                    break;
+                }
+            case SourceType.ScadaAlarms:
+                {
+                    var scadaSvc = scope.ServiceProvider.GetRequiredService<IScadaImportService>();
+                    var ownerOrg = "dev-org";
+                    await scadaSvc.ImportOperlogCsvAsync(plantId, ownerOrg, stream, ct);
+                    break;
+                }
+        }
+    }
+
+    private async Task MoveToDoneAsync(FileInfo file, string plantId, string sourceKey, CancellationToken ct)
+    {
+        var doneRoot = Path.Combine(_options.RootPath, _options.DoneFolderName);
+        var monthBucket = DateTime.UtcNow.ToString("yyyy-MM");
+        var targetDir = Path.Combine(doneRoot, monthBucket);
+        Directory.CreateDirectory(targetDir);
+
+        var stamped = $"{plantId}_{sourceKey}_{DateTime.UtcNow:yyyyMMddTHHmmssfff}_{file.Name}";
+        var targetPath = Path.Combine(targetDir, stamped);
+        File.Move(file.FullName, targetPath, overwrite: false);
+        await Task.CompletedTask;
+    }
+
+    private async Task QuarantineAsync(FileInfo file, string errorMessage, CancellationToken ct)
+    {
+        try
+        {
+            var quarantineRoot = Path.Combine(_options.RootPath, _options.QuarantineFolderName);
+            var dayBucket = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            var targetDir = Path.Combine(quarantineRoot, dayBucket);
+            Directory.CreateDirectory(targetDir);
+
+            var targetPath = Path.Combine(targetDir, file.Name);
+            // Hvis fil med samme navn finnes, legg til timestamp-suffiks
+            if (File.Exists(targetPath))
+            {
+                var stem = Path.GetFileNameWithoutExtension(file.Name);
+                var ext = Path.GetExtension(file.Name);
+                targetPath = Path.Combine(targetDir, $"{stem}_{DateTime.UtcNow:HHmmss}{ext}");
+            }
+            File.Move(file.FullName, targetPath);
+            await File.WriteAllTextAsync(targetPath + ".error.txt", errorMessage, ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Klarte ikke flytte til quarantine: {File}", file.Name);
+        }
+    }
+}

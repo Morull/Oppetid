@@ -85,58 +85,25 @@ public static class DataImportsBackfillSeeder
                 "Data-imports backfill feilet — completeness-matrisen vil bygge seg opp fremover når nye importer går.");
         }
 
-        // Hydrogrid-plan-backfill: hver settlement vi har historikk for inneholder
-        // som regel også Hydrogrid-plan i ProduksjonplanMwh-kolonnen. Vi kan ikke
-        // måle plan-dekning fra DB-tabellen alene (den ligger i blob), så vi
-        // markerer hver historisk settlement-import som "antakelig hadde plan"
-        // med en konservativ coverage_pct = 0.95 og notes-flag.
-        //
-        // Brukeren får dermed grønt ikon for historiske perioder uten å måtte
-        // re-parse alle blob-filer. Hvis det viser seg å være feil (perioder
-        // før Hydrogrid ble tatt i bruk), kan rader slettes manuelt eller
-        // markeres som inaktive via PlantAdmin (deactivated_at_utc).
-        const string hydrogridBackfillSql = """
-            INSERT INTO core.data_imports
-                (import_id, plant_id, source_type, period_from_utc, period_to_utc,
-                 imported_at_utc, file_name, file_hash, rows_imported, coverage_pct, user_id, notes)
-            SELECT
-                gen_random_uuid(),
-                si.plant_id,
-                'hydrogrid_plan',
-                si.period_start_utc,
-                si.period_end_utc,
-                si.imported_at_utc,
-                NULL,
-                si.idempotency_key,
-                si.hour_count,
-                0.95,
-                'system-backfill',
-                'Backfilled (antar Hydrogrid-plan i settlement-fila)'
-            FROM core.settlement_imports si
-            WHERE si.deleted_at IS NULL
-              AND si.plant_id IS NOT NULL
-              AND NOT EXISTS (
-                  SELECT 1 FROM core.data_imports di
-                  WHERE di.plant_id = si.plant_id
-                    AND di.source_type = 'hydrogrid_plan'
-                    AND di.period_from_utc = si.period_start_utc
-                    AND di.imported_at_utc = si.imported_at_utc
-              );
-            """;
-
+        // Rydd bort tidligere seedet hydrogrid_plan-rader. Drifts-leders
+        // 2026-05-03-bekreftelse: kun 3 source types (settlement, scada,
+        // operlog). Hydrogrid-plan er en kolonne i settlement-fila og
+        // spores ikke separat. Idempotent — DELETE WHERE source_type = 'hydrogrid_plan'.
         try
         {
-            var rows = await db.Database.ExecuteSqlRawAsync(hydrogridBackfillSql, ct).ConfigureAwait(false);
-            if (rows > 0)
+            var deleted = await db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM core.data_imports WHERE source_type = 'hydrogrid_plan';", ct)
+                .ConfigureAwait(false);
+            if (deleted > 0)
             {
                 logger.LogInformation(
-                    "Hydrogrid-plan-backfill: {Rows} rader seeded med konservativ coverage = 0.95.",
-                    rows);
+                    "Ryddet bort {Deleted} hydrogrid_plan-rader fra data_imports (konsolidert i settlement).",
+                    deleted);
             }
         }
         catch (Exception ex)
         {
-            logger.LogDebug(ex, "Hydrogrid-plan-backfill: hoppet over.");
+            logger.LogDebug(ex, "hydrogrid_plan-cleanup: hoppet over.");
         }
     }
 
