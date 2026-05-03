@@ -121,6 +121,41 @@ public sealed class NedetidApi
         return resp ?? new List<DataQualitySummaryDto>();
     }
 
+    /// <summary>Henter import-completeness-matrisen (SPEC-IMPORT-COMPLETENESS).</summary>
+    public async Task<DataCompletenessMatrixDto> GetDataStatusMatrixAsync(
+        DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var qs = $"from={Uri.EscapeDataString(fromUtc.UtcDateTime.ToString("o"))}"
+               + $"&to={Uri.EscapeDataString(toUtc.UtcDateTime.ToString("o"))}";
+        var resp = await _http
+            .GetFromJsonAsync<DataCompletenessMatrixDto>(
+                $"api/v1/data-status/matrix?{qs}", JsonOptions, ct)
+            .ConfigureAwait(false);
+        return resp ?? throw new InvalidOperationException("Tom respons fra /data-status/matrix.");
+    }
+
+    /// <summary>Henter overdue-listen.</summary>
+    public async Task<IReadOnlyList<MissingImportDto>> GetDataStatusOverdueAsync(
+        CancellationToken ct = default)
+    {
+        var resp = await _http
+            .GetFromJsonAsync<List<MissingImportDto>>(
+                "api/v1/data-status/overdue", JsonOptions, ct)
+            .ConfigureAwait(false);
+        return resp ?? new List<MissingImportDto>();
+    }
+
+    /// <summary>Henter ukentlig sammendrag — brukes på dashboard-toppen.</summary>
+    public async Task<DataCompletenessSummaryDto> GetDataStatusSummaryAsync(
+        CancellationToken ct = default)
+    {
+        var resp = await _http
+            .GetFromJsonAsync<DataCompletenessSummaryDto>(
+                "api/v1/data-status/summary", JsonOptions, ct)
+            .ConfigureAwait(false);
+        return resp ?? throw new InvalidOperationException("Tom respons fra /data-status/summary.");
+    }
+
     /// <summary>Bygger nedlastings-URL for CSV-eksport (åpnes direkte i ny fane).</summary>
     public Uri BuildCsvUri(string plantId, string endpoint, DateTimeOffset fromUtc, DateTimeOffset toUtc)
     {
@@ -344,3 +379,36 @@ public sealed record DataQualityIssueDto(
     DateTimeOffset TimeUtc,
     string State,
     string Reason);
+
+// --- DataCompleteness (SPEC-IMPORT-COMPLETENESS) ----------------------------
+
+public sealed record DataCompletenessMatrixDto(
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    IReadOnlyList<string> PlantIds,
+    IReadOnlyList<string> SourceTypes,
+    IReadOnlyList<DateTimeOffset> Periods,
+    IReadOnlyList<DataCompletenessCellDto> Cells);
+
+public sealed record DataCompletenessCellDto(
+    string PlantId,
+    string SourceType,
+    DateTimeOffset Period,
+    string Status,
+    DateTimeOffset? LastImportedAt,
+    double? CoveragePct,
+    int ImportCount);
+
+public sealed record MissingImportDto(
+    string PlantId,
+    string SourceType,
+    DateTimeOffset PeriodFromUtc,
+    int DaysOverdue);
+
+public sealed record DataCompletenessSummaryDto(
+    int TotalExpected,
+    int Complete,
+    int Partial,
+    int Pending,
+    int Overdue,
+    IReadOnlyList<MissingImportDto> TopOverdue);

@@ -1,0 +1,350 @@
+@page "/data-status"
+@inject NedetidApi NedetidApi
+
+<PageTitle>Data-status</PageTitle>
+
+<MudGrid Class="mb-4">
+    <MudItem xs="12">
+        <MudText Typo="Typo.h1">Data-status</MudText>
+        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+            Oversikt over hvilke datakilder som er importert per anlegg per måned.
+            Gjør det enkelt å se hva som mangler — særlig viktig med 11 anlegg
+            og 4 datakilder per anlegg.
+        </MudText>
+    </MudItem>
+</MudGrid>
+
+@* ---- Periode-velger ---- *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="6">
+            <MudDatePicker Label="Fra" @bind-Date="_fromDate" PickerVariant="PickerVariant.Dialog" />
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudDatePicker Label="Til" @bind-Date="_toDate" PickerVariant="PickerVariant.Dialog" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                       OnClick="LoadAsync" StartIcon="@Icons.Material.Filled.Refresh">
+                Oppdater
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+    <MudText Class="ml-2 d-inline">Henter data-status…</MudText>
+}
+else if (_matrix is not null && _summary is not null)
+{
+    @* ---- Sammendrag-kort øverst ---- *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid var(--mud-palette-success);">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Komplette</MudText>
+                <MudText Typo="Typo.h3">@_summary.Complete</MudText>
+                <MudText Typo="Typo.caption">av @_summary.TotalExpected forventede</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid var(--mud-palette-warning);">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Delvise</MudText>
+                <MudText Typo="Typo.h3">@_summary.Partial</MudText>
+                <MudText Typo="Typo.caption">&lt; 95 % dekning</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid var(--mud-palette-info);">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Venter</MudText>
+                <MudText Typo="Typo.h3">@_summary.Pending</MudText>
+                <MudText Typo="Typo.caption">innenfor lag-vindu</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid var(--mud-palette-error);">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Forfalt</MudText>
+                <MudText Typo="Typo.h3">@_summary.Overdue</MudText>
+                <MudText Typo="Typo.caption">venter handling</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* ---- Filter ---- *@
+    <MudPaper Class="pa-3 mb-3" Elevation="1">
+        <div class="d-flex align-center flex-wrap" style="gap:12px;">
+            <MudSwitch T="bool" @bind-Value="_onlyOverdue" Color="MudBlazor.Color.Error" Label="Vis kun forfalte" />
+            <MudSelect T="string" @bind-Value="_filterSource" Label="Kildetype" Dense="true" Margin="Margin.Dense" Style="min-width: 180px;">
+                <MudSelectItem Value="@string.Empty">Alle</MudSelectItem>
+                @foreach (var s in _matrix.SourceTypes)
+                {
+                    <MudSelectItem Value="@s">@FormatSource(s)</MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+    </MudPaper>
+
+    @* ---- Matrise ---- *@
+    <MudPaper Class="pa-3 mb-4" Elevation="1">
+        @if (_matrix.PlantIds.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info">Ingen aktive forventninger registrert.</MudAlert>
+        }
+        else
+        {
+            <div style="overflow-x: auto;">
+                <table class="data-status-matrix">
+                    <thead>
+                        <tr>
+                            <th class="plant-col">Anlegg</th>
+                            @foreach (var period in _matrix.Periods)
+                            {
+                                <th class="period-col" colspan="@_matrix.SourceTypes.Count">
+                                    @period.LocalDateTime.ToString("MMM yyyy")
+                                </th>
+                            }
+                        </tr>
+                        <tr class="source-row">
+                            <th></th>
+                            @foreach (var _ in _matrix.Periods)
+                            {
+                                @foreach (var s in _matrix.SourceTypes)
+                                {
+                                    <th class="source-col">
+                                        <MudTooltip Text="@FormatSource(s)">
+                                            <span>@SourceShort(s)</span>
+                                        </MudTooltip>
+                                    </th>
+                                }
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var plantId in _matrix.PlantIds)
+                        {
+                            <tr>
+                                <td class="plant-col">@plantId</td>
+                                @foreach (var period in _matrix.Periods)
+                                {
+                                    @foreach (var source in _matrix.SourceTypes)
+                                    {
+                                        var cell = FindCell(plantId, source, period);
+                                        var visible = !ShouldHide(cell);
+                                        <td class="cell" style="@(visible ? "" : "opacity:0.3")">
+                                            @if (cell is null)
+                                            {
+                                                <span class="cell-symbol cell-na" title="Ikke aktiv kilde">.</span>
+                                            }
+                                            else
+                                            {
+                                                <MudTooltip Text="@CellTooltip(cell)">
+                                                    <span class="cell-symbol @CellClass(cell.Status)">
+                                                        @CellSymbol(cell.Status)
+                                                    </span>
+                                                </MudTooltip>
+                                            }
+                                        </td>
+                                    }
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-3" style="font-size:0.85em;">
+                <strong>Symbol:</strong>
+                <span class="cell-symbol cell-complete ml-2">█</span> Komplett (≥ 95 % dekning)
+                <span class="cell-symbol cell-partial ml-2">░</span> Delvis (&lt; 95 %)
+                <span class="cell-symbol cell-pending ml-2">o</span> Venter (innenfor lag)
+                <span class="cell-symbol cell-overdue ml-2">!</span> Forfalt
+                <span class="cell-symbol cell-na ml-2">.</span> Ikke aktiv kilde
+            </div>
+        }
+    </MudPaper>
+
+    @* ---- Topp-overdue ---- *@
+    @if (_summary.TopOverdue.Count > 0)
+    {
+        <MudPaper Class="pa-3 mb-4" Elevation="1">
+            <MudText Typo="Typo.h5" Class="mb-2">Topp 5 forfalte importer</MudText>
+            <MudTable Items="_summary.TopOverdue" Dense="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Anlegg</MudTh>
+                    <MudTh>Kilde</MudTh>
+                    <MudTh>Periode</MudTh>
+                    <MudTh Style="text-align:right">Dager forfalt</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.PlantId</MudTd>
+                    <MudTd>@FormatSource(context.SourceType)</MudTd>
+                    <MudTd>@context.PeriodFromUtc.LocalDateTime.ToString("MMM yyyy")</MudTd>
+                    <MudTd Style="text-align:right; color: var(--mud-palette-error); font-weight:500;">
+                        @context.DaysOverdue
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+}
+
+<style>
+    .data-status-matrix {
+        border-collapse: collapse;
+        font-size: 0.85em;
+        font-family: monospace;
+    }
+    .data-status-matrix th, .data-status-matrix td {
+        border: 1px solid var(--mud-palette-lines-default);
+        padding: 4px 6px;
+        text-align: center;
+    }
+    .data-status-matrix th.plant-col, .data-status-matrix td.plant-col {
+        text-align: left;
+        font-family: inherit;
+        min-width: 100px;
+    }
+    .data-status-matrix th.period-col {
+        background: var(--mud-palette-background-grey);
+        font-size: 0.9em;
+    }
+    .data-status-matrix th.source-col {
+        font-weight: 400;
+        font-size: 0.7em;
+        color: var(--mud-palette-text-secondary);
+    }
+    .data-status-matrix td.cell {
+        width: 24px;
+    }
+    .cell-symbol {
+        font-weight: bold;
+        font-family: monospace;
+    }
+    .cell-complete { color: var(--mud-palette-success); }
+    .cell-partial  { color: var(--mud-palette-warning); }
+    .cell-pending  { color: var(--mud-palette-info); }
+    .cell-overdue  { color: var(--mud-palette-error); }
+    .cell-na       { color: var(--mud-palette-text-disabled); }
+</style>
+
+@code {
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+    private bool _loading;
+    private string? _error;
+    private DataCompletenessMatrixDto? _matrix;
+    private DataCompletenessSummaryDto? _summary;
+    private bool _onlyOverdue;
+    private string _filterSource = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var today = DateTime.Today;
+        var firstThisMonth = new DateTime(today.Year, today.Month, 1);
+        // Default-vindu: 6 måneder bakover + denne måneden
+        _fromDate = firstThisMonth.AddMonths(-6);
+        _toDate = firstThisMonth.AddMonths(1);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (!_fromDate.HasValue || !_toDate.HasValue) return;
+        _loading = true;
+        _error = null;
+        _matrix = null;
+        _summary = null;
+        StateHasChanged();
+        try
+        {
+            var fromUtc = new DateTimeOffset(_fromDate.Value, TimeSpan.Zero);
+            var toUtc = new DateTimeOffset(_toDate.Value, TimeSpan.Zero);
+
+            var matrixTask = NedetidApi.GetDataStatusMatrixAsync(fromUtc, toUtc);
+            var summaryTask = NedetidApi.GetDataStatusSummaryAsync();
+
+            _matrix = await matrixTask;
+            _summary = await summaryTask;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente data-status: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private DataCompletenessCellDto? FindCell(string plantId, string source, DateTimeOffset period)
+        => _matrix?.Cells.FirstOrDefault(c =>
+            c.PlantId == plantId
+            && c.SourceType == source
+            && c.Period == period);
+
+    private bool ShouldHide(DataCompletenessCellDto? cell)
+    {
+        if (cell is null) return false; // Ikke aktiv kilde — alltid vist (som ".")
+        if (_onlyOverdue && cell.Status != "OVERDUE") return true;
+        if (!string.IsNullOrEmpty(_filterSource) && cell.SourceType != _filterSource) return true;
+        return false;
+    }
+
+    private static string CellSymbol(string status) => status switch
+    {
+        "COMPLETE" => "█",
+        "PARTIAL" => "░",
+        "PENDING" => "o",
+        "OVERDUE" => "!",
+        _ => "?",
+    };
+
+    private static string CellClass(string status) => status switch
+    {
+        "COMPLETE" => "cell-complete",
+        "PARTIAL" => "cell-partial",
+        "PENDING" => "cell-pending",
+        "OVERDUE" => "cell-overdue",
+        _ => "cell-na",
+    };
+
+    private static string CellTooltip(DataCompletenessCellDto cell)
+    {
+        var parts = new List<string> { $"Status: {cell.Status}" };
+        if (cell.LastImportedAt.HasValue)
+        {
+            parts.Add($"Sist importert: {cell.LastImportedAt.Value.LocalDateTime:yyyy-MM-dd HH:mm}");
+        }
+        if (cell.CoveragePct.HasValue)
+        {
+            parts.Add($"Dekning: {cell.CoveragePct.Value * 100:F1} %");
+        }
+        if (cell.ImportCount > 1)
+        {
+            parts.Add($"{cell.ImportCount} importer (siste vinner)");
+        }
+        return string.Join(" — ", parts);
+    }
+
+    private static string FormatSource(string source) => source switch
+    {
+        "settlement" => "Settlement (KAIA)",
+        "scada" => "SCADA",
+        "operlog" => "Operlog",
+        "hydrogrid_plan" => "Hydrogrid-plan",
+        _ => source,
+    };
+
+    private static string SourceShort(string source) => source switch
+    {
+        "settlement" => "S",
+        "operlog" => "O",
+        "hydrogrid_plan" => "H",
+        "scada" => "Y",
+        _ => source[..1].ToUpperInvariant(),
+    };
+}
