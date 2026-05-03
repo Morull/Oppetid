@@ -43,6 +43,15 @@ services:
       Storage__ConnectionString: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
       Storage__ContainerName: "kraftverkuptime"
       Observability__ExportToConsole: "true"
+      # Auto-import-mappe — Windows-host mountet inn på /imports
+      HotFolder__Enabled: "true"
+      HotFolder__RootPath: "/imports"
+      HotFolder__UploadBaseUrl: "http://localhost:8080/"
+    volumes:
+      # Mount Windows-mappa "CSV Eksporter" inn i containeren som /imports.
+      # Watcher ser nye filer her og auto-importer. Sti kan overstyres via
+      # HOT_FOLDER_HOST_PATH-miljøvariabel hvis du vil bruke en annen mappe.
+      - "${HOT_FOLDER_HOST_PATH:-./CSV Eksporter}:/imports"
     ports:
       - "${API_PORT:-5080}:8080"
 
