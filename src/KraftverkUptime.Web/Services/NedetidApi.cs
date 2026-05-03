@@ -172,6 +172,23 @@ public sealed class NedetidApi
         }
     }
 
+    /// <summary>Trigger manuell scan av hot-folder-mappa ("Skann nå"-knapp).</summary>
+    public async Task<HotFolderScanResultDto?> TriggerHotFolderScanAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await _http.PostAsync(
+                new Uri("api/v1/hot-folder/scan-now", UriKind.Relative), content: null, ct).ConfigureAwait(false);
+            resp.EnsureSuccessStatusCode();
+            return await resp.Content.ReadFromJsonAsync<HotFolderScanResultDto>(JsonOptions, ct)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>Lister nylige importer (default siste 24 timer) — brukt av auto-import-infobar.</summary>
     public async Task<IReadOnlyList<RecentImportDto>> GetRecentImportsAsync(
         int hours = 24, int limit = 50, CancellationToken ct = default)
@@ -514,3 +531,8 @@ public sealed record HotFolderRecentEntryDto(
     string Status, // OK / QUARANTINE / DUPLICATE
     DateTimeOffset ProcessedAtUtc,
     string? Notes);
+
+public sealed record HotFolderScanResultDto(
+    bool Triggered,
+    string Message,
+    int WaitingBefore);

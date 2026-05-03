@@ -17,9 +17,14 @@ namespace KraftverkUptime.Infrastructure.HotFolder;
 /// ved feil med .error.txt-vedlegg.
 ///
 /// Kjører kun hvis <c>HotFolder:Enabled = true</c> og rot-mappa eksisterer.
+/// Hvis <c>HotFolder:ManualOnly = true</c> hopper den over polling-loopen
+/// og scanner kun når <see cref="TriggerScanAsync"/> kalles fra API-en.
 /// </summary>
 public sealed class HotFolderWatcher : BackgroundService
 {
+    /// <summary>Singleton-instansen for ekstern triggering (manuell scan).</summary>
+    public static HotFolderWatcher? Current { get; private set; }
+
     private readonly IServiceProvider _services;
     private readonly HotFolderQueue _queue;
     private readonly HotFolderDetector _detector;
@@ -40,7 +45,16 @@ public sealed class HotFolderWatcher : BackgroundService
         _detector = detector;
         _options = options.Value;
         _log = log;
+        Current = this;
     }
+
+    /// <summary>
+    /// Eksternt-triggert scan (brukes av "Skann nå"-knappen i UI eller
+    /// <c>POST /api/v1/hot-folder/scan-now</c>). Trygt å kalle parallelt
+    /// med polling-loopen — duplikat-deteksjon i <c>_seenFiles</c> hindrer
+    /// dobbel-prosessering.
+    /// </summary>
+    public Task TriggerScanAsync(CancellationToken ct = default) => ScanOnceAsync(ct);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -55,6 +69,17 @@ public sealed class HotFolderWatcher : BackgroundService
         if (!Directory.Exists(rootPath))
         {
             _log.LogWarning("HotFolder rot-mappe finnes ikke: {Root}. Watcher kjører uten å gjøre noe.", rootPath);
+            return;
+        }
+
+        if (_options.ManualOnly)
+        {
+            _log.LogInformation(
+                "HotFolder watcher i manuell modus. Klar til å scanne {Root} på etterspørsel " +
+                "(POST /api/v1/hot-folder/scan-now).", rootPath);
+            // Hold tjenesten i live så TriggerScanAsync kan kalles.
+            try { await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false); }
+            catch (TaskCanceledException) { }
             return;
         }
 

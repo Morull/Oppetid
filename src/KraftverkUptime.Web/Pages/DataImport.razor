@@ -81,7 +81,15 @@
                     </MudChip>
                 }
             </div>
-            <MudTooltip Text="Oppdater">
+            <MudTooltip Text="Skann auto-import-mappa nå">
+                <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.FolderOpen"
+                           OnClick="TriggerScanAsync"
+                           Disabled="@_scanning">
+                    @(_scanning ? "Skanner…" : "Skann nå")
+                </MudButton>
+            </MudTooltip>
+            <MudTooltip Text="Oppdater visning">
                 <MudIconButton Icon="@Icons.Material.Filled.Refresh"
                                Size="Size.Small"
                                OnClick="LoadStatusAsync"
@@ -638,6 +646,7 @@
     private IReadOnlyList<RecentImportDto>? _recent;
     private int _recentHours = 24;
     private HotFolderStatusDto? _hotFolder;
+    private bool _scanning;
 
     // Single-plant upload
     private string _selectedPlantId = string.Empty;
@@ -743,6 +752,40 @@
         catch (Exception ex)
         {
             _statusError = $"Kunne ikke hente historikk: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Trigger manuell scan av auto-import-mappa. Re-loader status etter
+    /// 2 sekunder slik at brukeren ser eventuelle nye filer i køen.
+    /// </summary>
+    private async Task TriggerScanAsync()
+    {
+        _scanning = true;
+        StateHasChanged();
+        try
+        {
+            var result = await NedetidApi.TriggerHotFolderScanAsync();
+            if (result is null)
+            {
+                Snackbar.Add("Kunne ikke trigge scan. Sjekk at API-en kjører.", Severity.Warning);
+            }
+            else if (!result.Triggered)
+            {
+                Snackbar.Add(result.Message, Severity.Info);
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Success);
+            }
+            // Vent litt for at watcher skal rekke å fullføre, så reload status.
+            await Task.Delay(1500);
+            await LoadStatusAsync();
+        }
+        finally
+        {
+            _scanning = false;
+            StateHasChanged();
         }
     }
 

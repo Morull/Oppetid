@@ -22,9 +22,18 @@ public sealed class HotFolderOptions
 
     /// <summary>
     /// Hvor ofte mappa skannes. Bruker polling i stedet for FileSystemWatcher
-    /// fordi sistnevnte kan miste hendelser ved nettverksshare.
+    /// fordi sistnevnte kan miste hendelser ved nettverksshare. Kost på
+    /// lokal disk: ~1-10 ms per scan = forsvinnende lite.
+    /// Sett til 0 (eller bruk <see cref="ManualOnly"/>) for å skru av auto-polling.
     /// </summary>
     public int PollIntervalSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Skru av automatisk polling. Watcher-en kjører fortsatt og er klar
+    /// til å scanne, men den scanner kun når brukeren trigger via
+    /// <c>POST /api/v1/hot-folder/scan-now</c> (Skann nå-knappen i UI).
+    /// </summary>
+    public bool ManualOnly { get; set; }
 
     /// <summary>
     /// Hvor lenge en fil må være "stabil" (uendret last-write-time) før
