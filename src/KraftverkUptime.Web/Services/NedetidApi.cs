@@ -189,6 +189,23 @@ public sealed class NedetidApi
         }
     }
 
+    /// <summary>Flytt karantene-filer tilbake til hot-folder for ny prosessering.</summary>
+    public async Task<HotFolderRetryResultDto?> RetryQuarantineAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await _http.PostAsync(
+                new Uri("api/v1/hot-folder/retry-quarantine", UriKind.Relative), content: null, ct).ConfigureAwait(false);
+            resp.EnsureSuccessStatusCode();
+            return await resp.Content.ReadFromJsonAsync<HotFolderRetryResultDto>(JsonOptions, ct)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>Lister nylige importer (default siste 24 timer) — brukt av auto-import-infobar.</summary>
     public async Task<IReadOnlyList<RecentImportDto>> GetRecentImportsAsync(
         int hours = 24, int limit = 50, CancellationToken ct = default)
@@ -536,3 +553,7 @@ public sealed record HotFolderScanResultDto(
     bool Triggered,
     string Message,
     int WaitingBefore);
+
+public sealed record HotFolderRetryResultDto(
+    int FilesMoved,
+    string Message);

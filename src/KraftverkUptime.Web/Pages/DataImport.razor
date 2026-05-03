@@ -129,7 +129,16 @@
                     }
                     @if (_hotFolder.Recent.Any(r => r.Status == "QUARANTINE"))
                     {
-                        <MudText Typo="Typo.subtitle2" Class="mt-3">Filer i karantene (krever oppmerksomhet)</MudText>
+                        <div class="d-flex justify-space-between align-center mt-3">
+                            <MudText Typo="Typo.subtitle2">Filer i karantene (krever oppmerksomhet)</MudText>
+                            <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Warning"
+                                       Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.Replay"
+                                       OnClick="RetryQuarantineAsync"
+                                       Disabled="@_retryingQuarantine">
+                                @(_retryingQuarantine ? "Prøver…" : "Prøv på nytt")
+                            </MudButton>
+                        </div>
                         <MudSimpleTable Dense="true" Style="background:transparent;">
                             <thead><tr><th>Filnavn</th><th>Tidspunkt</th><th>Notat</th></tr></thead>
                             <tbody>
@@ -647,6 +656,7 @@
     private int _recentHours = 24;
     private HotFolderStatusDto? _hotFolder;
     private bool _scanning;
+    private bool _retryingQuarantine;
 
     // Single-plant upload
     private string _selectedPlantId = string.Empty;
@@ -752,6 +762,33 @@
         catch (Exception ex)
         {
             _statusError = $"Kunne ikke hente historikk: {ex.Message}";
+        }
+    }
+
+    /// <summary>Flytt karantene-filer tilbake til hot-folder for ny prosessering.</summary>
+    private async Task RetryQuarantineAsync()
+    {
+        _retryingQuarantine = true;
+        StateHasChanged();
+        try
+        {
+            var result = await NedetidApi.RetryQuarantineAsync();
+            if (result is null)
+            {
+                Snackbar.Add("Kunne ikke flytte karantene-filer.", Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add(result.Message,
+                    result.FilesMoved > 0 ? Severity.Success : Severity.Info);
+            }
+            await Task.Delay(2000);
+            await LoadStatusAsync();
+        }
+        finally
+        {
+            _retryingQuarantine = false;
+            StateHasChanged();
         }
     }
 

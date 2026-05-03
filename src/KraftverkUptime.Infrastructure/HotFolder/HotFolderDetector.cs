@@ -71,10 +71,24 @@ public sealed class HotFolderDetector
         // 2b. Plant — filnavn-regex først
         var plantId = DetectPlantFromFilename(name);
 
-        // 3. Hvis filnavn ikke ga svar: content-sniff for SCADA
-        if (plantId is null && sourceType == SourceType.ScadaTrends)
+        // 3. Content-sniff fallback hvis filnavn ikke ga svar
+        if (plantId is null)
         {
-            plantId = DetectPlantFromCsvContent(file);
+            if (sourceType == SourceType.ScadaTrends)
+            {
+                // SCADA-trends: tag-prefiks (Cluster1.PREFIKS_) i header
+                plantId = DetectPlantFromCsvContent(file);
+            }
+            else if (sourceType == SourceType.ScadaAlarms)
+            {
+                // Operlog: 'station'-kolonnen i hver rad — kan være multi-plant
+                var stationResult = DetectPlantsFromOperlog(file);
+                if (stationResult.IsMultiPlant)
+                {
+                    return DetectionResult.Ok("_multi_", SourceType.ScadaAlarmsMultiPlant);
+                }
+                plantId = stationResult.DominantPlant;
+            }
         }
 
         if (plantId is null)
@@ -85,6 +99,115 @@ public sealed class HotFolderDetector
         }
 
         return DetectionResult.Ok(plantId, sourceType.Value);
+    }
+
+    /// <summary>
+    /// Operlog-CSV har 'station'-kolonnen som inneholder anleggsnavn per rad.
+    /// Vi leser de første 200 radene og teller stasjoner. Hvis 2+ unike
+    /// stasjoner med signifikant volum (≥ 10 % hver) → multi-plant.
+    /// </summary>
+    private OperlogPlantDetectResult DetectPlantsFromOperlog(FileInfo file)
+    {
+        try
+        {
+            using var reader = new StreamReader(file.FullName);
+            var headerLine = reader.ReadLine();
+            if (headerLine is null) return OperlogPlantDetectResult.None;
+
+            // Finn station-kolonneindeks. Standard operlog-format:
+            // timestamp;station;username;tag;text;value;operatorType;...
+            var headers = headerLine.Split(';');
+            var stationIdx = -1;
+            for (var i = 0; i < headers.Length; i++)
+            {
+                if (headers[i].Trim().Equals("station", StringComparison.OrdinalIgnoreCase))
+                {
+                    stationIdx = i;
+                    break;
+                }
+            }
+            if (stationIdx < 0) return OperlogPlantDetectResult.None;
+
+            var stationCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < 500; i++)
+            {
+                var line = reader.ReadLine();
+                if (line is null) break;
+                var parts = line.Split(';');
+                if (parts.Length <= stationIdx) continue;
+                var station = parts[stationIdx].Trim();
+                if (string.IsNullOrEmpty(station)) continue;
+                stationCounts[station] = stationCounts.GetValueOrDefault(station) + 1;
+            }
+            if (stationCounts.Count == 0) return OperlogPlantDetectResult.None;
+
+            // Map station-navn til plant-id via slug + PlantPrefixMap
+            var totalRows = stationCounts.Values.Sum();
+            var plantsBySlug = stationCounts
+                .Select(kv => (Plant: SlugifyStation(kv.Key), Count: kv.Value))
+                .Where(t => t.Plant is not null)
+                .GroupBy(t => t.Plant!)
+                .Select(g => (Plant: g.Key, Total: g.Sum(t => t.Count)))
+                .ToList();
+
+            if (plantsBySlug.Count == 0) return OperlogPlantDetectResult.None;
+            if (plantsBySlug.Count == 1)
+            {
+                return new OperlogPlantDetectResult(
+                    DominantPlant: plantsBySlug[0].Plant,
+                    IsMultiPlant: false);
+            }
+
+            // Multi-plant hvis ≥ 2 plants har > 10 % av radene
+            var significantPlants = plantsBySlug.Count(p => p.Total >= totalRows * 0.10);
+            if (significantPlants >= 2)
+            {
+                return new OperlogPlantDetectResult(DominantPlant: null, IsMultiPlant: true);
+            }
+
+            // Bare én plant er signifikant — bruk den
+            var top = plantsBySlug.OrderByDescending(p => p.Total).First();
+            return new OperlogPlantDetectResult(DominantPlant: top.Plant, IsMultiPlant: false);
+        }
+        catch
+        {
+            return OperlogPlantDetectResult.None;
+        }
+    }
+
+    /// <summary>
+    /// Mapper station-navn fra operlog (eks. "Haukland", "Drivdal") til
+    /// kanonisk plant-id. Bruker case-insensitive direkte-match først,
+    /// så slug-konvertering for norske tegn.
+    /// </summary>
+    private string? SlugifyStation(string station)
+    {
+        var lower = station.Trim().ToLowerInvariant();
+        var slug = lower switch
+        {
+            "drivdal" => "drivdal",
+            "lindland" => "lindland",
+            "haukland" => "haukland",
+            "honnefoss" => "honnefoss",
+            "liavatn" => "liavatn",
+            "løgjen" or "logjen" => "logjen",
+            "grødemfoss" or "grodemfoss" => "grodemfoss",
+            "øgreyfoss" or "ogreyfoss" => "ogreyfoss",
+            "ørsdalen" or "orsdalen" => "orsdalen",
+            "vikeså" or "vikesa" => "vikesa",
+            "stølskraft" or "stolskraft" => "stolskraft",
+            _ => null,
+        };
+        if (slug is not null) return slug;
+
+        // Fallback: prøv PlantPrefixMap (eks. "HONNE" → "honnefoss")
+        return _options.PlantPrefixMap.TryGetValue(station.Trim().ToUpperInvariant(), out var mapped)
+            ? mapped : null;
+    }
+
+    private sealed record OperlogPlantDetectResult(string? DominantPlant, bool IsMultiPlant)
+    {
+        public static OperlogPlantDetectResult None => new(null, false);
     }
 
     /// <summary>
@@ -208,9 +331,10 @@ public sealed class HotFolderDetector
 public enum SourceType
 {
     Settlement,
-    SettlementMultiPlant,  // én xlsx med flere plant-faner — rutes til /settlements/multi-plant
-    ScadaTrends,           // master-CSV (tidsserier)
-    ScadaAlarms,           // operlog (events)
+    SettlementMultiPlant,    // én xlsx med flere plant-faner — rutes til /settlements/multi-plant
+    ScadaTrends,             // master-CSV (tidsserier)
+    ScadaAlarms,             // operlog (events) for ett anlegg
+    ScadaAlarmsMultiPlant,   // operlog med events fra flere stations — rutes til /operlog/multi-plant
 }
 
 public static class SourceTypeExtensions
@@ -221,6 +345,7 @@ public static class SourceTypeExtensions
         SourceType.SettlementMultiPlant => "settlement",
         SourceType.ScadaTrends => "scada",
         SourceType.ScadaAlarms => "operlog",
+        SourceType.ScadaAlarmsMultiPlant => "operlog",
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
     };
 }

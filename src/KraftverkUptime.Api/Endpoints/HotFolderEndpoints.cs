@@ -31,7 +31,71 @@ public static class HotFolderEndpoints
             .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
             .Produces<HotFolderScanResult>(StatusCodes.Status200OK);
 
+        group.MapPost("/retry-quarantine", RetryQuarantineAsync)
+            .WithName("HotFolderRetryQuarantine")
+            .WithSummary("Flytt alle karantene-filer tilbake til hot-folder for ny prosessering.")
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
+            .Produces<HotFolderRetryResult>(StatusCodes.Status200OK);
+
         return endpoints;
+    }
+
+    private static async Task<IResult> RetryQuarantineAsync(
+        HotFolderOptions options,
+        HotFolderQueue queue,
+        CancellationToken ct)
+    {
+        if (!options.Enabled)
+        {
+            return Results.Ok(new HotFolderRetryResult(0, "Hot-folder deaktivert."));
+        }
+
+        var quarantineRoot = Path.Combine(options.RootPath, options.QuarantineFolderName);
+        if (!Directory.Exists(quarantineRoot))
+        {
+            return Results.Ok(new HotFolderRetryResult(0, "Ingen karantene-mappe."));
+        }
+
+        // Flytt alle .xlsx/.csv tilbake til root, slett tilhørende .error.txt
+        var moved = 0;
+        foreach (var file in Directory.EnumerateFiles(quarantineRoot, "*.*", SearchOption.AllDirectories))
+        {
+            var ext = Path.GetExtension(file).ToLowerInvariant();
+            if (ext is not (".xlsx" or ".xls" or ".csv")) continue;
+
+            var dest = Path.Combine(options.RootPath, Path.GetFileName(file));
+            try
+            {
+                if (File.Exists(dest))
+                {
+                    // Unngå overwrite — legg til timestamp-suffiks
+                    var stem = Path.GetFileNameWithoutExtension(file);
+                    var newName = $"{stem}_retry{DateTime.UtcNow:HHmmss}{ext}";
+                    dest = Path.Combine(options.RootPath, newName);
+                }
+                File.Move(file, dest);
+                // Slett tilhørende .error.txt hvis finnes
+                var errorFile = file + ".error.txt";
+                if (File.Exists(errorFile)) File.Delete(errorFile);
+                moved++;
+            }
+            catch
+            {
+                // Hopp over filer vi ikke får tatt — neste retry tar dem
+            }
+        }
+
+        // Trigge en scan etter retry så filene plukkes opp umiddelbart
+        var watcher = HotFolderWatcher.Current;
+        if (watcher is not null && moved > 0)
+        {
+            await watcher.TriggerScanAsync(ct).ConfigureAwait(false);
+        }
+
+        return Results.Ok(new HotFolderRetryResult(moved,
+            moved > 0
+                ? $"{moved} filer flyttet tilbake fra karantene — scanner igjen."
+                : "Ingen filer i karantene å prøve på nytt."));
     }
 
     private static async Task<IResult> ScanNowAsync(
@@ -84,3 +148,7 @@ public sealed record HotFolderScanResult(
     bool Triggered,
     string Message,
     int WaitingBefore);
+
+public sealed record HotFolderRetryResult(
+    int FilesMoved,
+    string Message);

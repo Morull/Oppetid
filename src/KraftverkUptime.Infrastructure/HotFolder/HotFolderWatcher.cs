@@ -257,6 +257,22 @@ public sealed class HotFolderWatcher : BackgroundService
                     await scadaSvc.ImportOperlogCsvAsync(plantId, ownerOrg, stream, ct);
                     break;
                 }
+            case SourceType.ScadaAlarmsMultiPlant:
+                {
+                    // Multi-plant operlog: ruter til /api/v1/operlog/multi-plant
+                    // som splitter på station-feltet og oppretter en data_imports-
+                    // rad per anlegg. Samme flyt som drag-drop på /data-import.
+                    var httpClient = scope.ServiceProvider.GetRequiredService<IHttpClientFactory>()
+                        .CreateClient("HotFolderUpload");
+                    using var content = new MultipartFormDataContent();
+                    using var fileContent = new StreamContent(stream);
+                    fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
+                    content.Add(fileContent, "file", file.Name);
+                    var requestUri = new Uri("api/v1/operlog/multi-plant", UriKind.Relative);
+                    var resp = await httpClient.PostAsync(requestUri, content, ct);
+                    resp.EnsureSuccessStatusCode();
+                    break;
+                }
         }
     }
 
