@@ -100,7 +100,10 @@ public sealed class DbDataImportLogger : IDataImportLogger
             Cadence = "monthly",
             ExpectedLagDays = defaultLag,
             IsActive = true,
-            ActivatedAtUtc = DateTimeOffset.UtcNow,
+            // Sett activated_at til en konservativ start (2024-01-01) slik at
+            // historiske importer regnes med i status-matrisen. Hvis vi setter
+            // til "nå" filtreres tidligere perioder bort av query-en.
+            ActivatedAtUtc = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
         });
         // SaveChanges skjer i hoved-LogAsync — vi unngår dobbel-roundtrip.
         _log.LogInformation(

@@ -35,7 +35,7 @@
       <Link>fixtures\drivdal-feb2025-fasit.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\..\CSV Eksporter\dataeksport_20260429103503.xlsx">
+    <None Include="..\_fixtures\dataeksport_20260429103503.xlsx">
       <Link>fixtures\dataeksport_20260429103503.xlsx</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

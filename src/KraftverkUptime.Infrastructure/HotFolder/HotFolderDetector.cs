@@ -56,7 +56,19 @@ public sealed class HotFolderDetector
                 $"Ukjent filtype: {ext}. Forventer .xlsx (settlement) eller .csv (SCADA).");
         }
 
-        // 2. Plant — filnavn-regex først
+        // 2a. Settlement: sjekk om det er multi-plant (≥ 2 plant-faner i workbook)
+        if (sourceType == SourceType.Settlement)
+        {
+            var sheetCount = TryCountPlantSheets(file);
+            if (sheetCount >= 2)
+            {
+                // Multi-plant: ruter til /settlements/multi-plant — selve
+                // splittingen per plant skjer i parsing-laget.
+                return DetectionResult.Ok(plantId: "_multi_", SourceType.SettlementMultiPlant);
+            }
+        }
+
+        // 2b. Plant — filnavn-regex først
         var plantId = DetectPlantFromFilename(name);
 
         // 3. Hvis filnavn ikke ga svar: content-sniff for SCADA
@@ -74,6 +86,37 @@ public sealed class HotFolderDetector
 
         return DetectionResult.Ok(plantId, sourceType.Value);
     }
+
+    /// <summary>
+    /// Forsøker å telle hvor mange plant-faner en xlsx har. Bruker minimal
+    /// open av workbook-en (kun ZIP-direktoriet). Returner -1 ved feil.
+    /// </summary>
+    private static int TryCountPlantSheets(FileInfo file)
+    {
+        try
+        {
+            // ClosedXML er allerede en avhengighet via Settlement-modulen.
+            // Vi vil ikke åpne hele workbooket — bruker minimal sheet-count.
+            using var workbook = new ClosedXML.Excel.XLWorkbook(file.FullName);
+            // Filter ut "Summering" / "Sammendrag" / "Info"-faner som ikke
+            // er plant-data. Her: telle alle synlige faner som "tellbare"
+            // og la parser-laget gjøre den endelige seleksjonen.
+            var plantLikeSheets = workbook.Worksheets.Count(ws =>
+                ws.Visibility == ClosedXML.Excel.XLWorksheetVisibility.Visible
+                && !IsAggregateSheetName(ws.Name));
+            return plantLikeSheets;
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+
+    private static bool IsAggregateSheetName(string name) =>
+        name.Equals("Summering", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("Sammendrag", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("Info", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("Forside", StringComparison.OrdinalIgnoreCase);
 
     private SourceType? DetectCsvType(string fileName, FileInfo file)
     {
@@ -165,8 +208,9 @@ public sealed class HotFolderDetector
 public enum SourceType
 {
     Settlement,
-    ScadaTrends,   // master-CSV (tidsserier)
-    ScadaAlarms,   // operlog (events)
+    SettlementMultiPlant,  // én xlsx med flere plant-faner — rutes til /settlements/multi-plant
+    ScadaTrends,           // master-CSV (tidsserier)
+    ScadaAlarms,           // operlog (events)
 }
 
 public static class SourceTypeExtensions
@@ -174,6 +218,7 @@ public static class SourceTypeExtensions
     public static string ToSourceTypeKey(this SourceType type) => type switch
     {
         SourceType.Settlement => "settlement",
+        SourceType.SettlementMultiPlant => "settlement",
         SourceType.ScadaTrends => "scada",
         SourceType.ScadaAlarms => "operlog",
         _ => throw new ArgumentOutOfRangeException(nameof(type)),

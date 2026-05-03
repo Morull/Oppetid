@@ -105,6 +105,37 @@ public static class DataImportsBackfillSeeder
         {
             logger.LogDebug(ex, "hydrogrid_plan-cleanup: hoppet over.");
         }
+
+        // Backfill activated_at_utc for tidligere auto-aktiverte rader hvor
+        // datoen ble satt til "nå" (i tidligere versjoner av DbDataImportLogger).
+        // Hvis activated_at er nyere enn et historisk import-tidspunkt for
+        // samme plant+source, vil status-matrisen filtrere bort den perioden.
+        // Fix: dra activated_at tilbake til 2024-01-01 for hydrogrid_plan + scada
+        // + operlog-rader hvor activated_at > eldste imported_at_utc.
+        const string fixActivationDateSql = """
+            UPDATE core.data_source_expectations e
+            SET activated_at_utc = '2024-01-01T00:00:00+00:00'::timestamptz
+            WHERE EXISTS (
+                SELECT 1 FROM core.data_imports i
+                WHERE i.plant_id = e.plant_id
+                  AND i.source_type = e.source_type
+                  AND i.period_from_utc < e.activated_at_utc
+            );
+            """;
+        try
+        {
+            var fixed_ = await db.Database.ExecuteSqlRawAsync(fixActivationDateSql, ct).ConfigureAwait(false);
+            if (fixed_ > 0)
+            {
+                logger.LogInformation(
+                    "Justerte activated_at_utc tilbake til 2024-01-01 for {Count} expectations " +
+                    "som hadde historikk fra før activation-tidspunktet.", fixed_);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "activation-date-fix: hoppet over.");
+        }
     }
 
     private static bool IsMissingRelation(Exception ex)

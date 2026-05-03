@@ -56,6 +56,19 @@ public sealed class HotFolderWatcher : BackgroundService
     /// </summary>
     public Task TriggerScanAsync(CancellationToken ct = default) => ScanOnceAsync(ct);
 
+    /// <summary>Filer som matcher ExcludePatterns ignoreres.</summary>
+    private bool IsExcluded(string fileName)
+    {
+        foreach (var pattern in _options.ExcludePatterns)
+        {
+            if (fileName.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var ct = stoppingToken;
@@ -116,6 +129,7 @@ public sealed class HotFolderWatcher : BackgroundService
                 f.Extension.Equals(".xlsx", StringComparison.OrdinalIgnoreCase)
                 || f.Extension.Equals(".xls", StringComparison.OrdinalIgnoreCase)
                 || f.Extension.Equals(".csv", StringComparison.OrdinalIgnoreCase))
+            .Where(f => !IsExcluded(f.Name))
             .ToList();
 
         if (files.Count == 0) return;
@@ -197,17 +211,6 @@ public sealed class HotFolderWatcher : BackgroundService
         {
             case SourceType.Settlement:
                 {
-                    // For settlement går vi via SettlementUploadHandler (ligger
-                    // i Api-prosjektet som Scoped service — vi kan ikke direkte
-                    // referere det fra Infrastructure uten sirkularitet).
-                    // Pragmatisk: kall SettlementImportRecorder direkte etter
-                    // parsing for å logge at fila er mottatt — den synkrone
-                    // klassifikasjonen kan gjøres som en oppfølging via API.
-                    //
-                    // I praksis: kopier fila til en blob-sti som ParseSettlementJob
-                    // kan plukke opp — eller send via HTTP til /api/v1/plants/{id}/settlements.
-                    // For v1 av hot-folder: bruk HTTP-kallet via en HttpClient som
-                    // peker mot localhost. Dette holder oss frikoblet fra Api-prosjektet.
                     var httpClient = scope.ServiceProvider.GetRequiredService<IHttpClientFactory>()
                         .CreateClient("HotFolderUpload");
                     using var content = new MultipartFormDataContent();
@@ -218,6 +221,24 @@ public sealed class HotFolderWatcher : BackgroundService
 
                     var requestUri = new Uri(
                         $"api/v1/plants/{Uri.EscapeDataString(plantId)}/settlements", UriKind.Relative);
+                    var resp = await httpClient.PostAsync(requestUri, content, ct);
+                    resp.EnsureSuccessStatusCode();
+                    break;
+                }
+            case SourceType.SettlementMultiPlant:
+                {
+                    // Multi-plant xlsx: rute til /settlements/multi-plant. Endepunktet
+                    // splitter automatisk på plant-faner og oppretter én import per anlegg.
+                    var httpClient = scope.ServiceProvider.GetRequiredService<IHttpClientFactory>()
+                        .CreateClient("HotFolderUpload");
+                    using var content = new MultipartFormDataContent();
+                    using var fileContent = new StreamContent(stream);
+                    fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+                    content.Add(fileContent, "file", file.Name);
+
+                    var requestUri = new Uri(
+                        "api/v1/settlements/multi-plant", UriKind.Relative);
                     var resp = await httpClient.PostAsync(requestUri, content, ct);
                     resp.EnsureSuccessStatusCode();
                     break;

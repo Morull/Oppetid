@@ -37,3 +37,6 @@ logs/
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Live data — ikke committe brukerens KAIA/SCADA-eksporter
+/CSV Eksporter/

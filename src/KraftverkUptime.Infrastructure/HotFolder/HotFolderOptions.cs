@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+
 namespace KraftverkUptime.Infrastructure.HotFolder;
 
 /// <summary>
@@ -36,6 +38,18 @@ public sealed class HotFolderOptions
     public bool ManualOnly { get; set; }
 
     /// <summary>
+    /// Filnavn-mønstre (case-insensitive substring) som skal ignoreres av
+    /// watcher-en. Brukes for å skille test-fixtures, README-er, osv. fra
+    /// reelle eksport-filer som skal auto-importeres.
+    /// </summary>
+    public Collection<string> ExcludePatterns { get; } = new()
+    {
+        "README",
+        ".lock",
+        "~$",        // Excel/Word lock-files
+    };
+
+    /// <summary>
     /// Hvor lenge en fil må være "stabil" (uendret last-write-time) før
     /// vi prosesserer den. Hindrer at vi leser en fil mens den blir kopiert.
     /// </summary>
@@ -47,17 +61,27 @@ public sealed class HotFolderOptions
     /// </summary>
     public Dictionary<string, string> PlantPrefixMap { get; set; } = new(StringComparer.OrdinalIgnoreCase)
     {
+        // SCADA-tag-konvensjon: korte prefikser (ikke fullt anleggs-navn)
         ["DRIVDAL"] = "drivdal",
+        ["DRIV"] = "drivdal",
         ["LINDLAND"] = "lindland",
+        ["LIND"] = "lindland",
         ["HAUKLAND"] = "haukland",
+        ["HAUK"] = "haukland",
         ["HONNE"] = "honnefoss",
-        ["LIAVT"] = "honnefoss",
+        ["LIAVT"] = "honnefoss",     // LIAVT-tags i Honnefoss-eksport tilhører Honnefoss-inntak
+        ["GRODEM"] = "grodemfoss",
         ["GRODEMFOSS"] = "grodemfoss",
+        ["OGREY"] = "ogreyfoss",
         ["OGREYFOSS"] = "ogreyfoss",
         ["LOGJEN"] = "logjen",
+        ["LOG"] = "logjen",
+        ["ORSDAL"] = "orsdalen",
         ["ORSDALEN"] = "orsdalen",
-        ["LIAVATN"] = "liavatn",
+        ["LIAVATN"] = "liavatn",     // dam-relatert SCADA — ikke kraftverk
         ["VIKESA"] = "vikesa",
+        ["VIKE"] = "vikesa",
+        ["STOLS"] = "stolskraft",
         ["STOLSKRAFT"] = "stolskraft",
     };
 }
