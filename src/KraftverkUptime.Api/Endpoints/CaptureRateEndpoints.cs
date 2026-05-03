@@ -29,7 +29,7 @@ public static class CaptureRateEndpoints
         group.MapGet("/", GetAsync)
             .WithName("GetCaptureRate")
             .WithSummary("Aggregert capture rate for et anlegg over en periode.")
-            .AllowAnonymous()
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<CaptureRateCalculator.CaptureRateResult>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
@@ -37,14 +37,14 @@ public static class CaptureRateEndpoints
         group.MapGet("/monthly", GetMonthlyAsync)
             .WithName("GetCaptureRateMonthly")
             .WithSummary("Månedlig capture rate-serie for graf på /capture-rate-side.")
-            .AllowAnonymous()
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<IReadOnlyList<MonthlyCaptureRate>>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
         group.MapGet("/daily", GetDailyAsync)
             .WithName("GetCaptureRateDaily")
             .WithSummary("Daglig serie for scatter/histogram på /capture-rate-side.")
-            .AllowAnonymous()
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<IReadOnlyList<DailyCaptureRate>>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 

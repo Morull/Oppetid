@@ -30,7 +30,7 @@ public static class ProduksjonEndpoints
         group.MapGet("/", GetAsync)
             .WithName("GetProduksjonAnalyse")
             .WithSummary("Hydrogrid-plan-evaluering, andel produksjon i topp-prisperioder, måneds-trend.")
-            .AllowAnonymous()
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<ProduksjonAnalyseResult>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);

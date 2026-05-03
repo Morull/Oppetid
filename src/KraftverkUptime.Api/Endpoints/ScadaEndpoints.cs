@@ -15,8 +15,9 @@ namespace KraftverkUptime.Api.Endpoints;
 ///   POST /api/v1/plants/{plantId}/scada           — master-CSV (tidsserier)
 ///   POST /api/v1/plants/{plantId}/scada/operlog   — operatorlog (events)
 ///
-/// Begge er anonyme i v1 (samme som settlements). Bytt til
-/// <see cref="AuthorizationPolicies.PlantAdmin"/> når Entra ID kobles til.
+/// Begge krever <see cref="AuthorizationPolicies.PlantAdmin"/>. V1: policy
+/// returnerer "allow" frem til Entra ID kobles til, men taggene er på plass
+/// slik at Entra-kobling ikke krever endpoint-endringer.
 /// </summary>
 public static class ScadaEndpoints
 {
@@ -31,7 +32,7 @@ public static class ScadaEndpoints
             .WithName("UploadScadaMaster")
             .WithSummary("Laster opp SCADA master-CSV (tidsserier).")
             .DisableAntiforgery()
-            .AllowAnonymous() // TODO: .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
             .AddEndpointFilter(EnsureMaxBodySize)
             .Produces<ScadaImportResult>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -42,7 +43,7 @@ public static class ScadaEndpoints
             .WithName("UploadScadaOperlog")
             .WithSummary("Laster opp SCADA operatorlog (events).")
             .DisableAntiforgery()
-            .AllowAnonymous()
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
             .AddEndpointFilter(EnsureMaxBodySize)
             .Produces<OperlogImportResult>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
@@ -57,22 +58,42 @@ public static class ScadaEndpoints
         HttpRequest request,
         IScadaImportService import,
         ICurrentUser currentUser,
+        IAuditLogger audit,
         IOptions<SettlementUploadOptions> uploadOptions,
         CancellationToken ct) =>
         ProcessUploadAsync(plantId, request, async (stream, ownerOrgId) =>
-            Results.Ok(await import.ImportMasterCsvAsync(plantId, ownerOrgId, stream, ct).ConfigureAwait(false)),
-            currentUser, uploadOptions, ct);
+        {
+            var result = await import.ImportMasterCsvAsync(plantId, ownerOrgId, stream, ct).ConfigureAwait(false);
+            await audit.LogAsync(
+                action: "scada.master_imported",
+                entityType: "ScadaImport",
+                entityId: $"{plantId}:{DateTimeOffset.UtcNow:o}",
+                payload: new { plantId, ownerOrgId, result },
+                ct).ConfigureAwait(false);
+            return Results.Ok(result);
+        },
+        currentUser, uploadOptions, ct);
 
     private static Task<IResult> UploadOperlogAsync(
         string plantId,
         HttpRequest request,
         IScadaImportService import,
         ICurrentUser currentUser,
+        IAuditLogger audit,
         IOptions<SettlementUploadOptions> uploadOptions,
         CancellationToken ct) =>
         ProcessUploadAsync(plantId, request, async (stream, ownerOrgId) =>
-            Results.Ok(await import.ImportOperlogCsvAsync(plantId, ownerOrgId, stream, ct).ConfigureAwait(false)),
-            currentUser, uploadOptions, ct);
+        {
+            var result = await import.ImportOperlogCsvAsync(plantId, ownerOrgId, stream, ct).ConfigureAwait(false);
+            await audit.LogAsync(
+                action: "scada.operlog_imported",
+                entityType: "OperlogImport",
+                entityId: $"{plantId}:{DateTimeOffset.UtcNow:o}",
+                payload: new { plantId, ownerOrgId, result },
+                ct).ConfigureAwait(false);
+            return Results.Ok(result);
+        },
+        currentUser, uploadOptions, ct);
 
     /// <summary>
     /// Felles multipart-håndtering. Validerer Content-Type, plukker første fil-seksjon,

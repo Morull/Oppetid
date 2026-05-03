@@ -33,7 +33,7 @@ public static class NedetidEndpoints
         group.MapGet("/nedetid", GetNedetidAsync)
             .WithName("GetNedetid")
             .WithSummary("Henter aggregerte nedetids-events for et anlegg i gitt periode.")
-            .AllowAnonymous()
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<NedetidResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
@@ -41,7 +41,7 @@ public static class NedetidEndpoints
         group.MapGet("/vakt-roi", GetVaktRoiAsync)
             .WithName("GetVaktRoi")
             .WithSummary("Beregner Vakt-ROI: hvor mye produksjons-tap reddet vakten i perioden.")
-            .AllowAnonymous()
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<VaktRoiResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);

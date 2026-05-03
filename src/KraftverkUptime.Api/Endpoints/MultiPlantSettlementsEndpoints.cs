@@ -34,7 +34,7 @@ namespace KraftverkUptime.Api.Endpoints;
 /// <list type="bullet">
 ///   <item>Multipart/form-data med "file"-seksjon</item>
 ///   <item>Content-Type: <c>application/vnd.openxmlformats-officedocument.spreadsheetml.sheet</c></item>
-///   <item>Anonym i v1 (samme som settlements). TODO: PlantAdmin-policy</item>
+///   <item>Krever <c>PlantAdmin</c>-policy (V1: returnerer "allow" inntil Entra ID kobles til).</item>
 ///   <item>Returnerer 200 med array av <see cref="MultiPlantImportResult"/></item>
 /// </list>
 /// </summary>
@@ -52,7 +52,7 @@ public static class MultiPlantSettlementsEndpoints
             .WithName("UploadMultiPlantSettlement")
             .WithSummary("Laster opp én Excel med flere anlegg og oppretter en import-rad per anlegg.")
             .DisableAntiforgery()
-            .AllowAnonymous() // TODO: PlantAdmin når Entra ID kobles til
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
             .AddEndpointFilter(async (ctx, next) =>
             {
                 var opts = ctx.HttpContext.RequestServices

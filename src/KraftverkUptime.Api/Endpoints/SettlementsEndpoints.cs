@@ -3,6 +3,7 @@ using Asp.Versioning.Builder;
 using KraftverkUptime.Api.Contracts;
 using KraftverkUptime.Api.Options;
 using KraftverkUptime.Core.Reporting;
+using KraftverkUptime.Core.Security;
 using KraftverkUptime.Modules.Annotations.Overlay;
 using KraftverkUptime.Modules.Annotations.Repositories;
 using KraftverkUptime.Modules.Classification.Dtos;
@@ -22,8 +23,9 @@ namespace KraftverkUptime.Api.Endpoints;
 ///
 /// Avklaringer for denne iterasjonen:
 /// <list type="bullet">
-///   <item>Authn: <see cref="Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute"/> +
-///         TODO for Entra ID i Steg 5.</item>
+///   <item>Authn: GET → <c>PlantReader</c>, POST/DELETE → <c>PlantAdmin</c>
+///         (V1: policies returnerer "allow" frem til Entra ID kobles til, men
+///         taggene er på plass slik at Entra-kobling ikke krever endpoint-endringer).</item>
 ///   <item>IdempotencyKey: server beregner SHA256 av strømmet body.</item>
 ///   <item>Body: multipart, maks 25 MB default (konfigurerbart via
 ///         <see cref="SettlementUploadOptions.MaxUploadBytes"/>), strømmet til blob.</item>
@@ -44,7 +46,7 @@ public static class SettlementsEndpoints
             .WithName("UploadSettlement")
             .WithSummary("Laster opp en portaleksport og starter asynkron parsing.")
             .DisableAntiforgery()
-            .AllowAnonymous() // TODO(Steg 6): erstatt med .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
             .AddEndpointFilter(async (ctx, next) =>
             {
                 // Hever Kestrel-grensen fra default 30 MB til konfigurert verdi.
@@ -67,28 +69,28 @@ public static class SettlementsEndpoints
         group.MapGet("/", ListAsync)
             .WithName("ListSettlements")
             .WithSummary("Lister importer for et anlegg, valgfritt filtrert på periode-overlapp.")
-            .AllowAnonymous() // TODO(Steg 6): .RequireAuthorization(AuthorizationPolicies.PlantReader)
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<IReadOnlyList<SettlementImportDto>>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
         group.MapGet("/{idempotencyKey}/report", GetReportAsync)
             .WithName("GetSettlementReport")
             .WithSummary("Henter ferdig-klassifisert UptimeReport som JSON.")
-            .AllowAnonymous() // TODO(Steg 6): .RequireAuthorization(AuthorizationPolicies.PlantReader)
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<UptimeReport>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/{idempotencyKey}/report/xlsx", GetReportXlsxAsync)
             .WithName("GetSettlementReportXlsx")
             .WithSummary("Laster ned UptimeReport som Excel-arbeidsbok (.xlsx).")
-            .AllowAnonymous() // TODO(Steg 6): .RequireAuthorization(AuthorizationPolicies.PlantReader)
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces(StatusCodes.Status200OK, contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapDelete("/{idempotencyKey}", DeleteSettlementAsync)
             .WithName("DeleteSettlement")
             .WithSummary("Sletter en spesifikk settlement-import + tilhørende rapport-blob.")
-            .AllowAnonymous()
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
@@ -243,6 +245,7 @@ public static class SettlementsEndpoints
         string idempotencyKey,
         ISettlementImportRecorder recorder,
         IUptimeReportStore reportStore,
+        IAuditLogger audit,
         CancellationToken ct)
     {
         var record = await recorder
@@ -260,6 +263,21 @@ public static class SettlementsEndpoints
             .ConfigureAwait(false);
         // Slett DB-raden — etter at blob er borte for å unngå dangling pointer
         await recorder.DeleteAsync(plantId, idempotencyKey, ct).ConfigureAwait(false);
+
+        await audit.LogAsync(
+            action: "settlement.deleted",
+            entityType: "SettlementImport",
+            entityId: idempotencyKey,
+            payload: new
+            {
+                plantId,
+                record.OwnerOrgId,
+                record.PeriodStartUtc,
+                record.PeriodEndUtc,
+                record.HourCount,
+                record.PlantName
+            },
+            ct).ConfigureAwait(false);
 
         return Results.NoContent();
     }

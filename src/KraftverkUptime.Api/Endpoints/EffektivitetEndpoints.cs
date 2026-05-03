@@ -28,7 +28,7 @@ public static class EffektivitetEndpoints
         group.MapGet("/", GetAsync)
             .WithName("GetEffektivitet")
             .WithSummary("Henter η(P)-kurve, sweet-spot og spesifikt vannforbruk for et anlegg.")
-            .AllowAnonymous()
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<EffektivitetResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);

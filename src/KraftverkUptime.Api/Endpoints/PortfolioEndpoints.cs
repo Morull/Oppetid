@@ -1,5 +1,6 @@
 using Asp.Versioning;
 using Asp.Versioning.Builder;
+using KraftverkUptime.Core.Security;
 using KraftverkUptime.Modules.Reporting.Portefolje;
 
 namespace KraftverkUptime.Api.Endpoints;
@@ -24,7 +25,7 @@ public static class PortfolioEndpoints
         group.MapGet("/kpis", GetKpisAsync)
             .WithName("GetPortfolioKpis")
             .WithSummary("Henter KPI-er på tvers av alle anlegg for en gitt periode.")
-            .AllowAnonymous()
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<PortfolioKpiResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 

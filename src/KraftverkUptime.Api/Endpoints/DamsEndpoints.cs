@@ -30,13 +30,13 @@ public static class DamsEndpoints
         group.MapGet("/", ListAsync)
             .WithName("ListDams")
             .WithSummary("Lister dammene for et anlegg, sortert etter cascade_position.")
-            .AllowAnonymous()
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<IReadOnlyList<DamDto>>(StatusCodes.Status200OK);
 
         group.MapPut("/{damId}", UpdateAsync)
             .WithName("UpdateDam")
             .WithSummary("Oppdater HRV/LRV/Volum/IsTurbineIntake for en eksisterende dam.")
-            .AllowAnonymous()
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
             .Produces<DamDto>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
@@ -69,6 +69,7 @@ public static class DamsEndpoints
         string damId,
         UpdateDamRequest body,
         IDamRepository dams,
+        IAuditLogger audit,
         CancellationToken ct)
     {
         if (body is null)
@@ -119,6 +120,28 @@ public static class DamsEndpoints
             VolumeMm3 = body.VolumeMm3,
         };
         await dams.UpdateAsync(updated, ct).ConfigureAwait(false);
+
+        await audit.LogAsync(
+            action: "dam.updated",
+            entityType: "Dam",
+            entityId: $"{plantId}/{damId}",
+            payload: new
+            {
+                plantId,
+                damId,
+                Before = new
+                {
+                    target.Name, target.CascadePosition, target.IsTurbineIntake,
+                    target.HrvMoh, target.LrvMoh, target.VolumeMm3
+                },
+                After = new
+                {
+                    updated.Name, updated.CascadePosition, updated.IsTurbineIntake,
+                    updated.HrvMoh, updated.LrvMoh, updated.VolumeMm3
+                }
+            },
+            ct).ConfigureAwait(false);
+
         return Results.Ok(ToDto(updated));
     }
 

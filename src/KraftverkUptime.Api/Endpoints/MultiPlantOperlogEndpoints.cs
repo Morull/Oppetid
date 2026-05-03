@@ -36,7 +36,7 @@ public static class MultiPlantOperlogEndpoints
             .WithName("UploadMultiPlantOperlog")
             .WithSummary("Tar imot én operlog-CSV med events fra alle anlegg, splitter på station-feltet.")
             .DisableAntiforgery()
-            .AllowAnonymous() // TODO: PlantAdmin-policy når Entra ID kobles til
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
             .AddEndpointFilter(async (ctx, next) =>
             {
                 // Operlog-CSV kan være 50+ MB for full Q1 (74k+ rader). Hev
@@ -61,6 +61,7 @@ public static class MultiPlantOperlogEndpoints
         KraftverkDbContext db,
         IQueryContext queryContext,
         ICurrentUser currentUser,
+        IAuditLogger audit,
         IOptions<SettlementUploadOptions> uploadOptions,
         CancellationToken ct)
     {
@@ -119,6 +120,22 @@ public static class MultiPlantOperlogEndpoints
                 {
                     var result = await import.ImportOperlogMultiPlantAsync(
                         ownerOrgId, section.Body, StationLookup, ct).ConfigureAwait(false);
+
+                    await audit.LogAsync(
+                        action: "operlog.multi_plant_imported",
+                        entityType: "OperlogImport",
+                        entityId: $"{ownerOrgId}:{DateTimeOffset.UtcNow:o}",
+                        payload: new
+                        {
+                            ownerOrgId,
+                            FileName = fileName,
+                            result.TotalRowsParsed,
+                            result.TotalRowsSkipped,
+                            result.UnknownStations,
+                            PlantCount = result.PerPlant.Count
+                        },
+                        ct).ConfigureAwait(false);
+
                     return Results.Ok(result);
                 }
                 catch (InvalidDataException ex)

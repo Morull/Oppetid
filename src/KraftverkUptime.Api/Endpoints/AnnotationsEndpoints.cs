@@ -13,12 +13,14 @@ namespace KraftverkUptime.Api.Endpoints;
 /// <summary>
 /// CRUD for nedetidsannoteringer + lookup på kategorier.
 ///
-/// Auth-modell:
+/// Auth-modell (V1: alle policies returnerer "allow", men endepunktene er korrekt
+/// tagget slik at Entra ID-kobling i V2 fungerer uten endringer her):
 /// <list type="bullet">
-///   <item>GET er <c>AllowAnonymous</c> i v1 (samme som settlements). Skifte til
-///         <c>PlantReader</c> når Entra ID kobles til.</item>
-///   <item>POST/PATCH/DELETE er <c>AllowAnonymous</c> i v1. Skifte til
-///         <c>PlantAnalyst</c> når Entra ID kobles til (fra spec: "Alle med skrivetilgang").</item>
+///   <item>GET annotations + categories → <c>PlantReader</c></item>
+///   <item>POST/PATCH/DELETE annotations → <c>PlantAnalyst</c> (drifts-leder kan
+///         annotere uten å være admin)</item>
+///   <item>POST/PUT/DELETE categories → <c>PlantAdmin</c> (kategori-skjema
+///         påvirker hele org)</item>
 /// </list>
 ///
 /// Tidsoppløsning: hele timer (UTC). Endepunktene avviser body med ikke-time-justerte
@@ -39,14 +41,14 @@ public static class AnnotationsEndpoints
         plantGroup.MapGet("/", ListAsync)
             .WithName("ListAnnotations")
             .WithSummary("Lister aktive annoteringer for et anlegg som overlapper [from, to).")
-            .AllowAnonymous() // TODO: .RequireAuthorization(AuthorizationPolicies.PlantReader)
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<IReadOnlyList<DowntimeAnnotationDto>>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
         plantGroup.MapPost("/", CreateAsync)
             .WithName("CreateAnnotation")
             .WithSummary("Oppretter ny annotering. Avviser ulovlig overlapp med 409.")
-            .AllowAnonymous() // TODO: .RequireAuthorization(AuthorizationPolicies.PlantAnalyst)
+            .RequireAuthorization(AuthorizationPolicies.PlantAnalyst)
             .Produces<DowntimeAnnotationDto>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status409Conflict);
@@ -54,7 +56,7 @@ public static class AnnotationsEndpoints
         plantGroup.MapPatch("/{id:long}", UpdateAsync)
             .WithName("UpdateAnnotation")
             .WithSummary("Delvis oppdatering av eksisterende annotering.")
-            .AllowAnonymous() // TODO: .RequireAuthorization(AuthorizationPolicies.PlantAnalyst)
+            .RequireAuthorization(AuthorizationPolicies.PlantAnalyst)
             .Produces<DowntimeAnnotationDto>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -63,7 +65,7 @@ public static class AnnotationsEndpoints
         plantGroup.MapDelete("/{id:long}", DeleteAsync)
             .WithName("DeleteAnnotation")
             .WithSummary("Soft-delete av annotering.")
-            .AllowAnonymous() // TODO: .RequireAuthorization(AuthorizationPolicies.PlantAnalyst)
+            .RequireAuthorization(AuthorizationPolicies.PlantAnalyst)
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
@@ -75,19 +77,19 @@ public static class AnnotationsEndpoints
         rootGroup.MapGet("/categories", ListCategoriesAsync)
             .WithName("ListAnnotationCategories")
             .WithSummary("Lister alle aktive nedetidskategorier (system + bruker).")
-            .AllowAnonymous() // TODO: .RequireAuthorization(AuthorizationPolicies.PlantReader)
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<IReadOnlyList<DowntimeCategoryDto>>(StatusCodes.Status200OK);
 
         rootGroup.MapGet("/categories/all", ListAllCategoriesAsync)
             .WithName("ListAllAnnotationCategories")
             .WithSummary("Lister alle nedetidskategorier inkl. inaktive — for admin-skjermen.")
-            .AllowAnonymous()
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<IReadOnlyList<DowntimeCategoryDto>>(StatusCodes.Status200OK);
 
         rootGroup.MapPost("/categories", CreateCategoryAsync)
             .WithName("CreateAnnotationCategory")
             .WithSummary("Oppretter en ny brukerdefinert kategori.")
-            .AllowAnonymous()
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
             .Produces<DowntimeCategoryDto>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status409Conflict);
@@ -95,14 +97,14 @@ public static class AnnotationsEndpoints
         rootGroup.MapPut("/categories/{id}", UpdateCategoryAsync)
             .WithName("UpdateAnnotationCategory")
             .WithSummary("Oppdaterer en eksisterende kategori.")
-            .AllowAnonymous()
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
             .Produces<DowntimeCategoryDto>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         rootGroup.MapDelete("/categories/{id}", DeleteCategoryAsync)
             .WithName("DeleteAnnotationCategory")
             .WithSummary("Sletter en brukerdefinert kategori (system-kategorier kan ikke slettes).")
-            .AllowAnonymous()
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
@@ -145,6 +147,7 @@ public static class AnnotationsEndpoints
         IDowntimeAnnotationRepository repo,
         IDowntimeCategoryRepository categoryRepo,
         ICurrentUser currentUser,
+        IAuditLogger audit,
         IOptions<SettlementUploadOptions> uploadOptions,
         CancellationToken ct)
     {
@@ -193,6 +196,20 @@ public static class AnnotationsEndpoints
         var id = await repo.CreateAsync(domain, ct).ConfigureAwait(false);
         var saved = await repo.GetAsync(id, ct).ConfigureAwait(false);
 
+        await audit.LogAsync(
+            action: "annotation.created",
+            entityType: "DowntimeAnnotation",
+            entityId: id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            payload: new
+            {
+                plantId,
+                request.StartUtc,
+                request.EndUtc,
+                request.CategoryId,
+                ReplacedIdCount = (request.ReplaceIds?.Count) ?? 0
+            },
+            ct).ConfigureAwait(false);
+
         return Results.Created($"/api/v1/plants/{plantId}/annotations/{id}",
             DowntimeAnnotationDto.From(saved!));
     }
@@ -204,6 +221,7 @@ public static class AnnotationsEndpoints
         IDowntimeAnnotationRepository repo,
         IDowntimeCategoryRepository categoryRepo,
         ICurrentUser currentUser,
+        IAuditLogger audit,
         CancellationToken ct)
     {
         if (request is null)
@@ -257,9 +275,24 @@ public static class AnnotationsEndpoints
             currentUser.UserId,
             ct).ConfigureAwait(false);
 
-        return updated is null
-            ? Results.Problem(title: "Annotering ikke funnet", statusCode: StatusCodes.Status404NotFound)
-            : Results.Ok(DowntimeAnnotationDto.From(updated));
+        if (updated is null)
+        {
+            return Results.Problem(title: "Annotering ikke funnet", statusCode: StatusCodes.Status404NotFound);
+        }
+
+        await audit.LogAsync(
+            action: "annotation.updated",
+            entityType: "DowntimeAnnotation",
+            entityId: id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            payload: new
+            {
+                plantId,
+                Before = new { existing.StartUtc, existing.EndUtc, existing.CategoryId, existing.Comment },
+                After = new { updated.StartUtc, updated.EndUtc, updated.CategoryId, updated.Comment }
+            },
+            ct).ConfigureAwait(false);
+
+        return Results.Ok(DowntimeAnnotationDto.From(updated));
     }
 
     private static async Task<IResult> DeleteAsync(
@@ -267,6 +300,7 @@ public static class AnnotationsEndpoints
         long id,
         IDowntimeAnnotationRepository repo,
         ICurrentUser currentUser,
+        IAuditLogger audit,
         CancellationToken ct)
     {
         var existing = await repo.GetAsync(id, ct).ConfigureAwait(false);
@@ -276,6 +310,21 @@ public static class AnnotationsEndpoints
         }
 
         await repo.SoftDeleteAsync(id, currentUser.UserId, ct).ConfigureAwait(false);
+
+        await audit.LogAsync(
+            action: "annotation.deleted",
+            entityType: "DowntimeAnnotation",
+            entityId: id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            payload: new
+            {
+                plantId,
+                existing.StartUtc,
+                existing.EndUtc,
+                existing.CategoryId,
+                existing.Comment
+            },
+            ct).ConfigureAwait(false);
+
         return Results.NoContent();
     }
 
@@ -300,6 +349,7 @@ public static class AnnotationsEndpoints
     private static async Task<IResult> CreateCategoryAsync(
         CreateCategoryRequest request,
         IDowntimeCategoryRepository repo,
+        IAuditLogger audit,
         CancellationToken ct)
     {
         if (request is null)
@@ -335,6 +385,22 @@ public static class AnnotationsEndpoints
             IsSystem: false,
             Description: string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim());
         await repo.AddAsync(category, ct).ConfigureAwait(false);
+
+        await audit.LogAsync(
+            action: "annotation_category.created",
+            entityType: "DowntimeCategory",
+            entityId: category.Id,
+            payload: new
+            {
+                category.Id,
+                category.DisplayName,
+                category.ColorHex,
+                category.UnitStateOverride,
+                category.SortOrder,
+                category.IsActive
+            },
+            ct).ConfigureAwait(false);
+
         return Results.Created(
             $"/api/v1/annotations/categories/{request.Id}",
             DowntimeCategoryDto.From(category));
@@ -344,6 +410,7 @@ public static class AnnotationsEndpoints
         string id,
         UpdateCategoryRequest request,
         IDowntimeCategoryRepository repo,
+        IAuditLogger audit,
         CancellationToken ct)
     {
         if (request is null)
@@ -371,17 +438,46 @@ public static class AnnotationsEndpoints
                           : (string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim()),
         };
         await repo.UpdateAsync(updated, ct).ConfigureAwait(false);
+
+        await audit.LogAsync(
+            action: "annotation_category.updated",
+            entityType: "DowntimeCategory",
+            entityId: id,
+            payload: new
+            {
+                Before = new
+                {
+                    existing.DisplayName, existing.ColorHex, existing.UnitStateOverride,
+                    existing.SortOrder, existing.IsActive, existing.Description
+                },
+                After = new
+                {
+                    updated.DisplayName, updated.ColorHex, updated.UnitStateOverride,
+                    updated.SortOrder, updated.IsActive, updated.Description
+                }
+            },
+            ct).ConfigureAwait(false);
+
         return Results.Ok(DowntimeCategoryDto.From(updated));
     }
 
     private static async Task<IResult> DeleteCategoryAsync(
         string id,
         IDowntimeCategoryRepository repo,
+        IAuditLogger audit,
         CancellationToken ct)
     {
         try
         {
             await repo.DeleteAsync(id, ct).ConfigureAwait(false);
+
+            await audit.LogAsync(
+                action: "annotation_category.deleted",
+                entityType: "DowntimeCategory",
+                entityId: id,
+                payload: null,
+                ct).ConfigureAwait(false);
+
             return Results.NoContent();
         }
         catch (InvalidOperationException ex)
