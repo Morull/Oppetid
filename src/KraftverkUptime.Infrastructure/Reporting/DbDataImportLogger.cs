@@ -93,6 +93,18 @@ public sealed class DbDataImportLogger : IDataImportLogger
             _ => 7,
         };
 
+        // Forskjellige forventninger til dekning per kilde-type:
+        //  - Settlement: KAIA leverer typisk 670/672 timer = 99.7 %
+        //  - SCADA: snapshots og periodiske eksporter har naturlig hull
+        //  - Operlog: events er per definisjon "kompletter når importert"
+        var defaultThreshold = sourceType switch
+        {
+            "settlement" => 0.95,
+            "scada" => 0.80,
+            "operlog" => 0.95,
+            _ => 0.95,
+        };
+
         _db.DataSourceExpectations.Add(new DataSourceExpectation
         {
             PlantId = plantId,
@@ -104,6 +116,7 @@ public sealed class DbDataImportLogger : IDataImportLogger
             // historiske importer regnes med i status-matrisen. Hvis vi setter
             // til "nå" filtreres tidligere perioder bort av query-en.
             ActivatedAtUtc = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            CompletionThresholdPct = defaultThreshold,
         });
         // SaveChanges skjer i hoved-LogAsync — vi unngår dobbel-roundtrip.
         _log.LogInformation(

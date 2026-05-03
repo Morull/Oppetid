@@ -430,6 +430,10 @@ public static class DatabaseBootstrapper
                 PRIMARY KEY (plant_id, source_type)
             );
 
+            -- Idempotent: legg til ny kolonne for konfigurerbar dekningsterskel
+            ALTER TABLE core.data_source_expectations
+                ADD COLUMN IF NOT EXISTS completion_threshold_pct double precision NOT NULL DEFAULT 0.95;
+
             CREATE TABLE IF NOT EXISTS core.data_imports (
                 import_id uuid PRIMARY KEY,
                 plant_id varchar(64) NOT NULL,

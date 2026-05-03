@@ -140,7 +140,12 @@ public sealed class DataCompletenessQueryService : IDataCompletenessQueryService
                 if (importsByKey.TryGetValue(key, out var hit))
                 {
                     var coverage = hit.Last.CoveragePct ?? 1.0;
-                    var status = coverage < CompleteCoverageThreshold ? "PARTIAL" : "COMPLETE";
+                    // Per-(plant, source)-konfigurerbar terskel — drifts-leder
+                    // kan sette mildere krav for SCADA enn settlement.
+                    var threshold = exp.CompletionThresholdPct > 0
+                        ? exp.CompletionThresholdPct
+                        : CompleteCoverageThreshold;
+                    var status = coverage < threshold ? "PARTIAL" : "COMPLETE";
                     cell = new DataCompletenessCell(
                         Status: status,
                         LastImportedAt: hit.Last.ImportedAtUtc,

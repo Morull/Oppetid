@@ -73,7 +73,7 @@ public static class DataSourceExpectationsEndpoints
         {
             return Results.Problem(
                 title: "Ukjent kilde-type",
-                detail: $"'{sourceType}' er ikke en kjent type. Tillatt: settlement, scada, operlog, hydrogrid_plan.",
+                detail: $"'{sourceType}' er ikke en kjent type. Tillatt: settlement, scada, operlog.",
                 statusCode: StatusCodes.Status400BadRequest);
         }
         if (body.ExpectedLagDays < 0 || body.ExpectedLagDays > 90)
@@ -81,6 +81,14 @@ public static class DataSourceExpectationsEndpoints
             return Results.Problem(
                 title: "Ugyldig expectedLagDays",
                 detail: "Må være mellom 0 og 90 dager.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+        if (body.CompletionThresholdPct.HasValue
+            && (body.CompletionThresholdPct < 0.0 || body.CompletionThresholdPct > 1.0))
+        {
+            return Results.Problem(
+                title: "Ugyldig completionThresholdPct",
+                detail: "Må være mellom 0.0 og 1.0 (eks. 0.95 = 95 %).",
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
@@ -102,6 +110,7 @@ public static class DataSourceExpectationsEndpoints
                 IsActive = body.IsActive,
                 ActivatedAtUtc = body.IsActive ? DateTimeOffset.UtcNow : null,
                 DeactivatedAtUtc = body.IsActive ? null : DateTimeOffset.UtcNow,
+                CompletionThresholdPct = body.CompletionThresholdPct ?? 0.95,
             };
             db.DataSourceExpectations.Add(entity);
             action = "data_source_expectation.created";
@@ -111,7 +120,8 @@ public static class DataSourceExpectationsEndpoints
             payloadBefore = new
             {
                 existing.IsActive, existing.Cadence, existing.ExpectedLagDays,
-                existing.ActivatedAtUtc, existing.DeactivatedAtUtc
+                existing.ActivatedAtUtc, existing.DeactivatedAtUtc,
+                existing.CompletionThresholdPct,
             };
             // Toggle-overgang: oppdater activated/deactivated-tidspunkt.
             if (existing.IsActive != body.IsActive)
@@ -131,6 +141,10 @@ public static class DataSourceExpectationsEndpoints
             if (!string.IsNullOrWhiteSpace(body.Cadence))
             {
                 existing.Cadence = body.Cadence;
+            }
+            if (body.CompletionThresholdPct.HasValue)
+            {
+                existing.CompletionThresholdPct = body.CompletionThresholdPct.Value;
             }
             entity = existing;
             action = "data_source_expectation.updated";
@@ -161,7 +175,7 @@ public static class DataSourceExpectationsEndpoints
 
     private static DataSourceExpectationDto ToDto(DataSourceExpectation e) => new(
         e.PlantId, e.SourceType, e.Cadence, e.ExpectedLagDays,
-        e.IsActive, e.ActivatedAtUtc, e.DeactivatedAtUtc);
+        e.IsActive, e.ActivatedAtUtc, e.DeactivatedAtUtc, e.CompletionThresholdPct);
 }
 
 public sealed record DataSourceExpectationDto(
@@ -171,9 +185,11 @@ public sealed record DataSourceExpectationDto(
     int ExpectedLagDays,
     bool IsActive,
     DateTimeOffset? ActivatedAtUtc,
-    DateTimeOffset? DeactivatedAtUtc);
+    DateTimeOffset? DeactivatedAtUtc,
+    double CompletionThresholdPct);
 
 public sealed record UpsertDataSourceExpectationRequest(
     bool IsActive,
     int ExpectedLagDays,
-    string? Cadence);
+    string? Cadence,
+    double? CompletionThresholdPct);

@@ -201,7 +201,7 @@ else
                     <MudTh>Kilde</MudTh>
                     <MudTh Style="text-align:center">Aktiv</MudTh>
                     <MudTh Style="text-align:right">Lag (dager)</MudTh>
-                    <MudTh>Cadence</MudTh>
+                    <MudTh Style="text-align:right">Komplett-grense (%)</MudTh>
                     <MudTh>Aktivert</MudTh>
                 </HeaderContent>
                 <RowTemplate>
@@ -228,7 +228,14 @@ else
                                          Style="width:80px;"
                                          Disabled="@_expSaving" />
                     </MudTd>
-                    <MudTd>@(current?.Cadence ?? "monthly")</MudTd>
+                    <MudTd Style="text-align:right">
+                        <MudNumericField T="int" Value="@((int)Math.Round((current?.CompletionThresholdPct ?? DefaultThresholdFor(context)) * 100))"
+                                         ValueChanged="async (int v) => await OnThresholdChangedAsync(context, v / 100.0, current)"
+                                         Min="0" Max="100" Step="5"
+                                         Variant="Variant.Outlined" Margin="Margin.Dense"
+                                         Style="width:90px;"
+                                         Disabled="@_expSaving" />
+                    </MudTd>
                     <MudTd>
                         @if (current?.ActivatedAtUtc is { } activated)
                         {
@@ -241,6 +248,11 @@ else
                     </MudTd>
                 </RowTemplate>
             </MudTable>
+            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mt-1">
+                <strong>Lag</strong> = antall dager etter periode-slutt før manglende data flagges som forfalt.
+                <strong>Komplett-grense</strong> = nødvendig dekning (%) for at en periode regnes som komplett.
+                Lavere verdi gir mer "grønt" — egnet for SCADA der eksporter har naturlig hull.
+            </MudText>
 
             @if (_expSaveError is not null)
             {
@@ -398,7 +410,10 @@ else
         try
         {
             var lag = current?.ExpectedLagDays ?? DefaultLagFor(sourceType);
-            await NedetidApi.UpsertExpectationAsync(PlantId, sourceType, newActive, lag);
+            var threshold = current?.CompletionThresholdPct ?? DefaultThresholdFor(sourceType);
+            await NedetidApi.UpsertExpectationAsync(
+                PlantId, sourceType, newActive, lag,
+                completionThresholdPct: threshold);
             Snackbar.Add(newActive ? $"{FormatSourceType(sourceType)} aktivert"
                                    : $"{FormatSourceType(sourceType)} deaktivert",
                          Severity.Success);
@@ -421,8 +436,33 @@ else
         _expSaveError = null;
         try
         {
-            await NedetidApi.UpsertExpectationAsync(PlantId, sourceType, current.IsActive, newLag);
+            await NedetidApi.UpsertExpectationAsync(
+                PlantId, sourceType, current.IsActive, newLag,
+                completionThresholdPct: current.CompletionThresholdPct);
             await ReloadExpectationsAsync();
+        }
+        catch (Exception ex)
+        {
+            _expSaveError = $"Kunne ikke lagre: {ex.Message}";
+        }
+        finally
+        {
+            _expSaving = false;
+        }
+    }
+
+    private async Task OnThresholdChangedAsync(string sourceType, double newThreshold, DataSourceExpectationDto? current)
+    {
+        if (current is null || Math.Abs(current.CompletionThresholdPct - newThreshold) < 0.005) return;
+        _expSaving = true;
+        _expSaveError = null;
+        try
+        {
+            await NedetidApi.UpsertExpectationAsync(
+                PlantId, sourceType, current.IsActive, current.ExpectedLagDays,
+                completionThresholdPct: newThreshold);
+            await ReloadExpectationsAsync();
+            Snackbar.Add($"{FormatSourceType(sourceType)}: komplett-grense satt til {newThreshold:P0}", Severity.Success);
         }
         catch (Exception ex)
         {
@@ -440,6 +480,14 @@ else
         "scada" => 5,
         "operlog" => 5,
         _ => 7,
+    };
+
+    private static double DefaultThresholdFor(string sourceType) => sourceType switch
+    {
+        "settlement" => 0.95,
+        "scada" => 0.80,
+        "operlog" => 0.95,
+        _ => 0.95,
     };
 
     private static string FormatSourceType(string sourceType) => sourceType switch

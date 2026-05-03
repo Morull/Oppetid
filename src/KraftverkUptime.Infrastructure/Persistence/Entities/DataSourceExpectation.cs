@@ -45,4 +45,15 @@ public sealed class DataSourceExpectation
 
     /// <summary>Når kilden sist ble deaktivert (kan være null).</summary>
     public DateTimeOffset? DeactivatedAtUtc { get; set; }
+
+    /// <summary>
+    /// Dekningsgrense for å regnes som COMPLETE (default 0.95).
+    /// Coverage_pct &lt; denne → PARTIAL. Per-(plant, source)-konfigurerbar
+    /// fordi forskjellige kilder har forskjellige forventninger:
+    ///   - Settlement: 0.95 (KAIA-fila har som regel 670/672 timer)
+    ///   - SCADA: 0.80 (snapshots og periodiske eksporter har naturlig hull)
+    ///   - Operlog: 0.95 (events spores nøyaktig)
+    /// Drifts-leder kan justere per anlegg via PlantAdmin.
+    /// </summary>
+    public double CompletionThresholdPct { get; set; } = 0.95;
 }

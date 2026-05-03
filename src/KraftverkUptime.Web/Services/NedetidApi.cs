@@ -231,13 +231,15 @@ public sealed class NedetidApi
     /// <summary>Upsert expectation for et anlegg + kilde-type.</summary>
     public async Task<DataSourceExpectationDto> UpsertExpectationAsync(
         string plantId, string sourceType, bool isActive, int expectedLagDays,
-        string? cadence = null, CancellationToken ct = default)
+        string? cadence = null, double? completionThresholdPct = null,
+        CancellationToken ct = default)
     {
         var body = new
         {
             isActive,
             expectedLagDays,
-            cadence = cadence ?? "monthly"
+            cadence = cadence ?? "monthly",
+            completionThresholdPct,
         };
         var resp = await _http.PutAsJsonAsync(
             $"api/v1/plants/{Uri.EscapeDataString(plantId)}/data-source-expectations/{Uri.EscapeDataString(sourceType)}",
@@ -512,7 +514,8 @@ public sealed record DataSourceExpectationDto(
     int ExpectedLagDays,
     bool IsActive,
     DateTimeOffset? ActivatedAtUtc,
-    DateTimeOffset? DeactivatedAtUtc);
+    DateTimeOffset? DeactivatedAtUtc,
+    double CompletionThresholdPct);
 
 public sealed record RecentImportDto(
     Guid ImportId,
