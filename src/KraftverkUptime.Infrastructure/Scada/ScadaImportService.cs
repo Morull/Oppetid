@@ -78,21 +78,18 @@ public sealed class ScadaImportService : IScadaImportService
             "SCADA-import for {PlantId}: {Signals} signaler, {Parsed} timer, {Skipped} skip, {Written} samples skrevet.",
             plantId, result.SignalCount, result.RowsParsed, result.RowsSkipped, written);
 
-        // Logg til data_imports — utleder periode fra samples min/max time.
-        // SCADA-eksporter er ikke nødvendigvis månedlige: de er ofte snapshots
-        // av siste N timer/dager. Coverage beregnes mot det faktiske data-
-        // spennet (min→max), ikke mot hele måneden — slik at en komplett
-        // SCADA-fil for én dag rapporteres som 100 % uavhengig av om dataen
-        // dekker resten av måneden.
+        // Logg til data_imports — bruker FAKTISKE data-grenser (min/max) som
+        // PeriodFrom/PeriodTo, ikke avrundet til måneds-slutt. Det gir korrekt
+        // per-måned-dekning i status-matrisen for filer med offset-perioder
+        // (eks. en SCADA-eksport som dekker Jan 15 → Mar 14 vil markere mars
+        // som ~45 % delvis i stedet for 100 % komplett).
         //
-        // Periode-grensene rundes til måneds-grenser for konsistent matrise-
-        // binning — alle samples i samme måned grupperes som én celle.
+        // Coverage_pct = unike timer / actualSpanHours (samme som før).
         if (result.Samples.Count > 0)
         {
             var minTime = result.Samples.Min(s => s.TimeUtc);
             var maxTime = result.Samples.Max(s => s.TimeUtc);
 
-            // Coverage: unike timer / antall timer i data-spennet (NB: ikke måned)
             var minHourly = new DateTimeOffset(minTime.Year, minTime.Month, minTime.Day,
                 minTime.Hour, 0, 0, TimeSpan.Zero);
             var maxHourly = new DateTimeOffset(maxTime.Year, maxTime.Month, maxTime.Day,
@@ -103,13 +100,9 @@ public sealed class ScadaImportService : IScadaImportService
                 ? Math.Min(1.0, uniqueHours / (double)actualSpanHours)
                 : 1.0;
 
-            // Måneds-binning for matrisen
-            var periodFrom = new DateTimeOffset(minTime.Year, minTime.Month, 1, 0, 0, 0, TimeSpan.Zero);
-            var periodTo = periodFrom.AddMonths(1);
-            if (maxTime >= periodTo)
-            {
-                periodTo = new DateTimeOffset(maxTime.Year, maxTime.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1);
-            }
+            // Faktisk data-spenn: minHourly → maxHourly + 1 t (eksklusiv slutt)
+            var periodFrom = minHourly;
+            var periodTo = maxHourly.AddHours(1);
 
             try
             {
@@ -235,8 +228,8 @@ public sealed class ScadaImportService : IScadaImportService
 
     /// <summary>
     /// Logger én rad til <c>data_imports</c> for en operlog-batch. Periode
-    /// utledes fra event-tidsstemplene (rundet til kalender-måneds-grenser).
-    /// Coverage settes alltid til 1.0 for operlog fordi fila per definisjon
+    /// settes fra første og siste event-tidsstempel (faktisk spenn, ikke
+    /// rundet til måneds-grense). Coverage er 1.0 fordi fila per definisjon
     /// inneholder kun events som faktisk skjedde — det finnes ingen
     /// "forventet antall events" å normalisere mot.
     /// </summary>
@@ -247,8 +240,8 @@ public sealed class ScadaImportService : IScadaImportService
     {
         var minTime = events.Min(e => e.StartUtc);
         var maxTime = events.Max(e => e.StartUtc);
-        var periodFrom = new DateTimeOffset(minTime.Year, minTime.Month, 1, 0, 0, 0, TimeSpan.Zero);
-        var periodTo = new DateTimeOffset(maxTime.Year, maxTime.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1);
+        var periodFrom = minTime;
+        var periodTo = maxTime.AddHours(1);
 
         try
         {
