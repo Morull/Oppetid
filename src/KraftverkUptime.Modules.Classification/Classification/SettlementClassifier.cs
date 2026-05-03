@@ -15,7 +15,9 @@ namespace KraftverkUptime.Modules.Classification.Classification;
 /// <list type="number">
 ///   <item>Elhub mangler eller er negativ → <see cref="UnitState.InformationUnavailable"/>
 ///         (1.0 confidence). Negativ verdi tolkes som datafeil eller
-///         regulerkraft-kjøp som vi ikke kan skille uten SCADA.</item>
+///         regulerkraft-kjøp som vi ikke kan skille uten SCADA.
+///         <b>Unntak for <see cref="PlantType.Pumped"/>:</b> negativ Elhub er
+///         pumping og klassifiseres som <see cref="UnitState.InService"/>.</item>
 ///   <item>Elhub &gt; 0 OG Plan &gt; 0 OG <c>Elhub &lt; DeratingThreshold × Plan</c>
 ///         → <see cref="UnitState.ForcedDerating"/> (0.85). Drifts-leders krav:
 ///         avvik &gt; (1 − DeratingThreshold) fra plan teller som feil. Default-
@@ -26,13 +28,27 @@ namespace KraftverkUptime.Modules.Classification.Classification;
 ///       <item>Spotbud &gt; 0 → <see cref="UnitState.ForcedOutage"/> (0.90).
 ///             Verket var forpliktet til å levere day-ahead, men leverte
 ///             ingenting. Per definisjon et uvarslet utfall.</item>
-///       <item>Spotbud == 0 eller mangler → <see cref="UnitState.ReserveShutdown"/>
-///             (0.80). Ingen markedsforpliktelse — verket er stille av
-///             markeds- eller plan-grunner. Manuell annotering kan merke det
-///             som vedlikehold, vannmangel, e.l.</item>
+///       <item>Spotbud == 0 eller mangler → forgrening på <see cref="PlantClassificationConfig.PlantType"/>:
+///         <list type="bullet">
+///           <item><see cref="PlantType.RunOfRiver"/> →
+///                 <see cref="UnitState.ResourceUnavailable"/> (0.80).
+///                 Elvekraft uten produksjon og uten bud betyr som regel
+///                 lavt tilsig — det er hydrologi, ikke drifts-valg.</item>
+///           <item>Andre typer →
+///                 <see cref="UnitState.ReserveShutdown"/> (0.80).
+///                 Magasin/Mixed kan velge å stå stille av markedsgrunner.
+///                 Manuell annotering kan merke det som vedlikehold,
+///                 vannmangel, e.l.</item>
+///         </list>
+///       </item>
 ///     </list>
 ///   </item>
 /// </list>
+///
+/// <para>SPEC-MVP-HARDENING tiltak D: PlantType styrer nå klassifikator-
+/// heuristikken. Uten denne forgreningen ble alle anlegg behandlet likt og
+/// elvekraftverk fikk feilaktig "ReserveShutdown" på vannmangel-timer, noe
+/// som maskerte at ressurs-tilgjengelighet er hovedsystemet for de anleggene.</para>
 ///
 /// <para><see cref="PlantClassificationConfig.DeratingThreshold"/> er per-anlegg-
 /// justerbar via PlantAdmin-UI. Default 0.80 betyr at Elhub mindre enn 80 % av
@@ -57,7 +73,7 @@ public sealed class SettlementClassifier
         var result = new List<ClassifiedHourlyRow>(n);
         for (var i = 0; i < n; i++)
         {
-            var (state, conf, cause, rationale) = ClassifyOne(hourly[i], plant.DeratingThreshold);
+            var (state, conf, cause, rationale) = ClassifyOne(hourly[i], plant.PlantType, plant.DeratingThreshold);
             result.Add(new ClassifiedHourlyRow
             {
                 Row = hourly[i],
@@ -72,6 +88,7 @@ public sealed class SettlementClassifier
 
     private static (UnitState state, double conf, string cause, string rationale) ClassifyOne(
         SettlementHourlyRow row,
+        PlantType plantType,
         double deratingThreshold)
     {
         var elhub = row.MwhElhub;
@@ -85,9 +102,18 @@ public sealed class SettlementClassifier
                 "Manglende Elhub-data");
         }
 
-        // 1b. Negativ Elhub = datafeil eller regulerkraft-kjøp; vi kan ikke skille
+        // 1b. Negativ Elhub
+        // Pumpekraft: negativ Elhub er pumping (verket bruker strøm for å løfte
+        // vann tilbake til magasin). Det er normal drift, ikke en datafeil.
+        // For andre anleggstyper er negativ Elhub uvanlig og indikerer enten
+        // datafeil eller regulerkraft-kjøp som vi ikke kan skille uten SCADA.
         if (elhub.Value < 0)
         {
+            if (plantType == PlantType.Pumped)
+            {
+                return (UnitState.InService, 0.90, "P1-Pumping",
+                    $"Pumpedrift: Elhub={elhub.Value.ToString("F3", CultureInfo.InvariantCulture)} MWh (negativ = strømforbruk for pumping)");
+            }
             return (UnitState.InformationUnavailable, 0.6, "9.2-NegativeReading",
                 $"Negativ MWh-Elhub={elhub.Value.ToString("F3", CultureInfo.InvariantCulture)} – datafeil eller regulerkraft-kjøp");
         }
@@ -118,6 +144,16 @@ public sealed class SettlementClassifier
         {
             return (UnitState.ForcedOutage, 0.90, "U1-UnplannedStop",
                 $"Spotbud={bid.Value.ToString("F3", CultureInfo.InvariantCulture)} MWh men Elhub=0 – uvarslet utfall");
+        }
+
+        // 3b. Elhub=0, ingen Spotbud — forgrening på PlantType.
+        // Elvekraft uten produksjon og uten bud er nesten alltid lavt tilsig
+        // (drifts-leder kan ikke velge å kjøre). Magasin/Mixed/Pumped kan
+        // velge å stå stille av markedsgrunner og får ReserveShutdown.
+        if (plantType == PlantType.RunOfRiver)
+        {
+            return (UnitState.ResourceUnavailable, 0.80, "R1-LowInflow",
+                "Elhub=0, ingen Spotbud, anlegg er elvekraft – sannsynlig lavt tilsig");
         }
 
         return (UnitState.ReserveShutdown, 0.80, "M1-NoCommitment",

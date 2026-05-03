@@ -9,26 +9,35 @@ using Xunit;
 namespace KraftverkUptime.EndToEnd.Tests;
 
 /// <summary>
-/// Regel-for-regel-tester for forenklet SettlementClassifier (post-Phase A).
+/// Regel-for-regel-tester for SettlementClassifier.
 ///
-/// Modellen produserer kun fire tilstander automatisk:
+/// Modellen produserer disse tilstandene automatisk:
 /// <list type="bullet">
-///   <item>InService — Elhub > 0</item>
+///   <item>InService — Elhub > 0 (eller negativ Elhub for Pumped = pumping)</item>
 ///   <item>ForcedOutage — Elhub = 0 og Spotbud > 0</item>
-///   <item>ReserveShutdown — Elhub = 0 og Spotbud = 0/null</item>
-///   <item>InformationUnavailable — Elhub mangler eller er negativ</item>
+///   <item>ReserveShutdown — Elhub = 0, Spotbud = 0/null, og PlantType ≠ RunOfRiver</item>
+///   <item>ResourceUnavailable — Elhub = 0, Spotbud = 0/null, og PlantType = RunOfRiver
+///         (vannmangel-heuristikk for elvekraft, SPEC-MVP-HARDENING D)</item>
+///   <item>ForcedDerating — Elhub > 0 men under DeratingThreshold × Plan</item>
+///   <item>InformationUnavailable — Elhub mangler eller negativ (untatt Pumped)</item>
 /// </list>
 ///
-/// Tilstandene PlannedOutage, MaintenanceOutage, ResourceUnavailable og
-/// ForcedDerating produseres ikke automatisk lenger – de skal komme via
-/// manuell annotering når den funksjonen er bygd.
+/// PlannedOutage / MaintenanceOutage produseres ikke automatisk — de kommer
+/// fra manuell annotering.
 /// </summary>
 public class ClassifierTests
 {
     private static readonly PlantClassificationConfig DefaultPlant = new()
     {
         PlantId = "Test",
-        PlantType = PlantType.Regulated, // Type påvirker ikke logikken lenger
+        PlantType = PlantType.Regulated,
+        NominalPowerMw = 2.2,
+    };
+
+    private static PlantClassificationConfig PlantOf(PlantType type) => new()
+    {
+        PlantId = "Test-" + type,
+        PlantType = type,
         NominalPowerMw = 2.2,
     };
 
@@ -122,12 +131,130 @@ public class ClassifierTests
         classified.Should().BeEmpty();
     }
 
+    // ===========================================================================
+    // SPEC-MVP-HARDENING tiltak D: PlantType-forgrening
+    // ===========================================================================
+
+    [Fact(DisplayName = "RunOfRiver: 0/0-time klassifiseres som ResourceUnavailable (vannmangel)")]
+    public void RunOfRiver_NoProductionNoBid_ClassifiesAsResourceUnavailable()
+    {
+        var classified = ClassifyAs(PlantType.RunOfRiver, new[]
+        {
+            Hour(0, mwhElhub: 0, bid: 0),
+            Hour(1, mwhElhub: 0, bid: null),
+        });
+
+        classified[0].State.Should().Be(UnitState.ResourceUnavailable);
+        classified[0].CauseCode.Should().Be("R1-LowInflow");
+        classified[0].Confidence.Should().Be(0.80);
+        classified[0].Rationale.Should().Contain("elvekraft");
+
+        classified[1].State.Should().Be(UnitState.ResourceUnavailable);
+    }
+
+    [Fact(DisplayName = "RunOfRiver: Elhub > 0 → InService (uendret)")]
+    public void RunOfRiver_PositiveElhub_StillInService()
+    {
+        var classified = ClassifyAs(PlantType.RunOfRiver, new[]
+        {
+            Hour(0, mwhElhub: 1.5, bid: 0),
+        });
+
+        classified[0].State.Should().Be(UnitState.InService);
+    }
+
+    [Fact(DisplayName = "RunOfRiver: 0/Spotbud > 0 → ForcedOutage (uendret)")]
+    public void RunOfRiver_ZeroElhubWithBid_StillForcedOutage()
+    {
+        // Selv elvekraft er forpliktet til levering hvis det er bud — at vannet
+        // sviktet er ikke en gyldig unnskyldning kontraktsmessig.
+        var classified = ClassifyAs(PlantType.RunOfRiver, new[]
+        {
+            Hour(0, mwhElhub: 0, bid: 1.5),
+        });
+
+        classified[0].State.Should().Be(UnitState.ForcedOutage);
+    }
+
+    [Fact(DisplayName = "Regulated: 0/0-time klassifiseres som ReserveShutdown")]
+    public void Regulated_NoProductionNoBid_ClassifiesAsReserveShutdown()
+    {
+        var classified = ClassifyAs(PlantType.Regulated, new[]
+        {
+            Hour(0, mwhElhub: 0, bid: 0),
+        });
+
+        classified[0].State.Should().Be(UnitState.ReserveShutdown);
+        classified[0].CauseCode.Should().Be("M1-NoCommitment");
+    }
+
+    [Fact(DisplayName = "Mixed: 0/0-time klassifiseres som ReserveShutdown (samme som Regulated)")]
+    public void Mixed_NoProductionNoBid_ClassifiesAsReserveShutdown()
+    {
+        // Mixed (lite magasin) er pragmatisk = Regulated. Drifts-leder kan
+        // velge å stå stille, så det er ikke automatisk ResourceUnavailable.
+        var classified = ClassifyAs(PlantType.Mixed, new[]
+        {
+            Hour(0, mwhElhub: 0, bid: 0),
+        });
+
+        classified[0].State.Should().Be(UnitState.ReserveShutdown);
+    }
+
+    [Fact(DisplayName = "Pumped: negativ Elhub klassifiseres som InService (pumping)")]
+    public void Pumped_NegativeElhub_ClassifiesAsInService()
+    {
+        // For pumpekraft er negativ MWh normal drift (verket bruker strøm
+        // for å løfte vann). Skal ikke flagges som datafeil.
+        var classified = ClassifyAs(PlantType.Pumped, new[]
+        {
+            Hour(0, mwhElhub: -2.5, bid: 0),
+        });
+
+        classified[0].State.Should().Be(UnitState.InService);
+        classified[0].CauseCode.Should().Be("P1-Pumping");
+        classified[0].Rationale.Should().Contain("Pumpedrift");
+    }
+
+    [Fact(DisplayName = "Regulated: negativ Elhub klassifiseres som InformationUnavailable")]
+    public void Regulated_NegativeElhub_ClassifiesAsInformationUnavailable()
+    {
+        // For magasinverk er negativ MWh enten datafeil eller regulerkraft-
+        // kjøp; vi har ikke nok info til å skille → InformationUnavailable.
+        var classified = ClassifyAs(PlantType.Regulated, new[]
+        {
+            Hour(0, mwhElhub: -2.5, bid: 0),
+        });
+
+        classified[0].State.Should().Be(UnitState.InformationUnavailable);
+        classified[0].CauseCode.Should().Be("9.2-NegativeReading");
+    }
+
+    [Fact(DisplayName = "RunOfRiver: negativ Elhub klassifiseres som InformationUnavailable (samme som Regulated)")]
+    public void RunOfRiver_NegativeElhub_ClassifiesAsInformationUnavailable()
+    {
+        // Elvekraft har ikke pumpe-funksjon — negativ Elhub er datafeil.
+        var classified = ClassifyAs(PlantType.RunOfRiver, new[]
+        {
+            Hour(0, mwhElhub: -1.0, bid: 0),
+        });
+
+        classified[0].State.Should().Be(UnitState.InformationUnavailable);
+    }
+
     // ------------------------------------------------------------------
     private static IReadOnlyList<ClassifiedHourlyRow> Classify(
         IReadOnlyList<SettlementHourlyRow> hours)
     {
         var classifier = new SettlementClassifier();
         return classifier.Classify(hours, DefaultPlant);
+    }
+
+    private static IReadOnlyList<ClassifiedHourlyRow> ClassifyAs(
+        PlantType type, IReadOnlyList<SettlementHourlyRow> hours)
+    {
+        var classifier = new SettlementClassifier();
+        return classifier.Classify(hours, PlantOf(type));
     }
 
     private static SettlementHourlyRow Hour(

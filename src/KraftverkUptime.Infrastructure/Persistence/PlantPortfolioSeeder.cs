@@ -27,20 +27,27 @@ public static class PlantPortfolioSeeder
     /// <c>InstalledCapacityMw</c> oppgitt fra drifts-leder Dalane Kraft 2026-04-29.
     /// Løgjen har vi ikke sertifisert effekt for ennå — settes til 0 og må oppdateres
     /// manuelt før Vakt-ROI gir meningsfulle tall for det anlegget.
+    ///
+    /// <c>Type</c> bekreftet av drifts-leder 2026-05-02 (SPEC-MVP-HARDENING D):
+    ///   - Lindland klassifiseres som RunOfRiver fordi 24t-lag fra magasin gjør
+    ///     drift hydrologi-styrt i praksis (selv om det fysisk er kaskade).
+    ///   - Ørsdalen er ren elvekraft.
+    ///   - Vikeså/Stølskraft er Mixed (lite magasin / vannforbruks-styrt).
+    ///   - Resten er Regulated (kaskader med betydelige magasin).
     /// </summary>
-    private static readonly (string Name, double CapacityMw)[] Portfolio =
+    private static readonly (string Name, double CapacityMw, PlantType Type)[] Portfolio =
     [
-        ("Løgjen",     0),     // ikke bekreftet ennå
-        ("Drivdal",    2.3),
-        ("Grødemfoss", 2.8),
-        ("Haukland",   4.9),
-        ("Honnefoss",  3.1),
-        ("Lindland",   8.9),
-        ("Øgreyfoss",  14.6),  // to generatorer
-        ("Ørsdalen",   4.0),
-        ("Liavatn",    2.0),
-        ("Vikeså",     4.0),
-        ("Stølskraft", 1.5),
+        ("Løgjen",     0,    PlantType.Regulated),  // magasin
+        ("Drivdal",    2.3,  PlantType.Regulated),
+        ("Grødemfoss", 2.8,  PlantType.Regulated),  // Smievatn er magasin/inntak
+        ("Haukland",   4.9,  PlantType.Regulated),  // kaskade
+        ("Honnefoss",  3.1,  PlantType.Regulated),  // Kydland + Spjodevatn-magasin
+        ("Lindland",   8.9,  PlantType.RunOfRiver), // 24t-lag → fungerer som elvekraft
+        ("Øgreyfoss",  14.6, PlantType.Regulated),  // to generatorer, kaskade
+        ("Ørsdalen",   4.0,  PlantType.RunOfRiver), // ren elvekraft
+        ("Liavatn",    2.0,  PlantType.Regulated),  // kaskade
+        ("Vikeså",     4.0,  PlantType.Mixed),      // lite magasin
+        ("Stølskraft", 1.5,  PlantType.Mixed),      // vannforbruks-styrt (Gjesdal)
     ];
 
     public static async Task SeedAsync(IServiceProvider services, CancellationToken ct = default)
@@ -68,7 +75,7 @@ public static class PlantPortfolioSeeder
         var existing = existingIds.ToHashSet(StringComparer.Ordinal);
         var added = 0;
 
-        foreach (var (name, capacity) in Portfolio)
+        foreach (var (name, capacity, type) in Portfolio)
         {
             var id = PlantSlug.ToSlug(name);
             if (string.IsNullOrEmpty(id) || existing.Contains(id)) continue;
@@ -78,14 +85,14 @@ public static class PlantPortfolioSeeder
                 Id = id,
                 OwnerOrgId = OwnerOrgId,
                 Name = name,
-                Type = PlantType.Regulated, // default for Dalane Kraft-porteføljen
+                Type = type,
                 InstalledCapacityMw = capacity,
                 TimeZone = "Europe/Oslo",
             });
             added++;
             logger.LogInformation(
-                "Bootstrappet anlegg {PlantId} ({Name}) — InstalledCapacityMw={Capacity}.",
-                id, name, capacity);
+                "Bootstrappet anlegg {PlantId} ({Name}) — Type={Type}, InstalledCapacityMw={Capacity}.",
+                id, name, type, capacity);
         }
 
         if (added > 0)
@@ -126,7 +133,7 @@ public static class PlantPortfolioSeeder
         KraftverkDbContext db, ILogger logger, CancellationToken ct)
     {
         var byId = Portfolio.ToDictionary(
-            x => PlantSlug.ToSlug(x.Name), x => (x.Name, x.CapacityMw),
+            x => PlantSlug.ToSlug(x.Name), x => (x.Name, x.CapacityMw, x.Type),
             StringComparer.Ordinal);
 
         var allPlants = await db.Plants.IgnoreQueryFilters().ToListAsync(ct).ConfigureAwait(false);
@@ -144,10 +151,24 @@ public static class PlantPortfolioSeeder
                 logger.LogInformation(
                     "Backfill InstalledCapacityMw for {PlantId} ({Name}): 0 → {Capacity} MW.",
                     plant.Id, plant.Name, portfolio.CapacityMw);
-                continue;
             }
 
-            // 2) Anvend historiske én-skudds-rettelser (idempotent)
+            // 2) Backfill PlantType (SPEC-MVP-HARDENING D): hvis nåværende type
+            // er default Regulated og spec sier noe annet, oppdater. Respekt
+            // for manuelle endringer: hvis plant.Type allerede er ulik bådeRegulated
+            // og spec-verdien, lar vi være å overstyre.
+            if (byId.TryGetValue(plant.Id, out var entry)
+                && plant.Type == PlantType.Regulated
+                && entry.Type != PlantType.Regulated)
+            {
+                logger.LogInformation(
+                    "Backfill PlantType for {PlantId} ({Name}): Regulated → {NewType}.",
+                    plant.Id, plant.Name, entry.Type);
+                plant.Type = entry.Type;
+                updated++;
+            }
+
+            // 3) Anvend historiske én-skudds-rettelser (idempotent)
             foreach (var (fixId, fromValue, toValue) in HistoricalCapacityFixes)
             {
                 if (string.Equals(plant.Id, fixId, StringComparison.Ordinal)
