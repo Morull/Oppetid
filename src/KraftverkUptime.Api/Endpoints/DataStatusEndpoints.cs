@@ -40,9 +40,15 @@ public static class DataStatusEndpoints
 
         group.MapGet("/summary", GetSummaryAsync)
             .WithName("GetDataCompletenessSummary")
-            .WithSummary("Aggregert sammendrag for forrige + denne måneden — brukes i ukentlig digest.")
+            .WithSummary("Aggregert sammendrag for forrige + denne måneden.")
             .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<DataCompletenessSummary>(StatusCodes.Status200OK);
+
+        group.MapGet("/recent", GetRecentImportsAsync)
+            .WithName("GetRecentImports")
+            .WithSummary("Lister nylige importer (default siste 24 timer) — brukes av auto-import-infobar.")
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
+            .Produces<IReadOnlyList<RecentImport>>(StatusCodes.Status200OK);
 
         return endpoints;
     }
@@ -106,6 +112,18 @@ public static class DataStatusEndpoints
     {
         var summary = await service.GetWeeklySummaryAsync(ct).ConfigureAwait(false);
         return Results.Ok(summary);
+    }
+
+    private static async Task<IResult> GetRecentImportsAsync(
+        int? hours,
+        int? limit,
+        IDataCompletenessQueryService service,
+        CancellationToken ct)
+    {
+        var window = TimeSpan.FromHours(Math.Clamp(hours ?? 24, 1, 168));
+        var max = Math.Clamp(limit ?? 50, 1, 500);
+        var rows = await service.GetRecentImportsAsync(window, max, ct).ConfigureAwait(false);
+        return Results.Ok(rows);
     }
 }
 

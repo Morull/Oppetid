@@ -156,6 +156,17 @@ public sealed class NedetidApi
         return resp ?? throw new InvalidOperationException("Tom respons fra /data-status/summary.");
     }
 
+    /// <summary>Lister nylige importer (default siste 24 timer) — brukt av auto-import-infobar.</summary>
+    public async Task<IReadOnlyList<RecentImportDto>> GetRecentImportsAsync(
+        int hours = 24, int limit = 50, CancellationToken ct = default)
+    {
+        var resp = await _http
+            .GetFromJsonAsync<List<RecentImportDto>>(
+                $"api/v1/data-status/recent?hours={hours}&limit={limit}", JsonOptions, ct)
+            .ConfigureAwait(false);
+        return resp ?? new List<RecentImportDto>();
+    }
+
     /// <summary>Lister alle expectations for et anlegg.</summary>
     public async Task<IReadOnlyList<DataSourceExpectationDto>> ListExpectationsAsync(
         string plantId, CancellationToken ct = default)
@@ -452,3 +463,15 @@ public sealed record DataSourceExpectationDto(
     bool IsActive,
     DateTimeOffset? ActivatedAtUtc,
     DateTimeOffset? DeactivatedAtUtc);
+
+public sealed record RecentImportDto(
+    Guid ImportId,
+    string PlantId,
+    string SourceType,
+    DateTimeOffset PeriodFromUtc,
+    DateTimeOffset PeriodToUtc,
+    DateTimeOffset ImportedAtUtc,
+    string? FileName,
+    int? RowsImported,
+    double? CoveragePct,
+    string? UserId);

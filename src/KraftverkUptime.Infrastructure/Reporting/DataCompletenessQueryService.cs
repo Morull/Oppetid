@@ -218,6 +218,30 @@ public sealed class DataCompletenessQueryService : IDataCompletenessQueryService
             TopOverdue: topOverdue);
     }
 
+    public async Task<IReadOnlyList<RecentImport>> GetRecentImportsAsync(
+        TimeSpan window, int limit, CancellationToken ct)
+    {
+        var cutoff = _clock.GetUtcNow() - window;
+        var rows = await _db.DataImports
+            .AsNoTracking()
+            .Where(i => i.ImportedAtUtc >= cutoff)
+            .OrderByDescending(i => i.ImportedAtUtc)
+            .Take(limit)
+            .ToListAsync(ct).ConfigureAwait(false);
+
+        return rows.Select(i => new RecentImport(
+            ImportId: i.ImportId,
+            PlantId: i.PlantId,
+            SourceType: i.SourceType,
+            PeriodFromUtc: i.PeriodFromUtc,
+            PeriodToUtc: i.PeriodToUtc,
+            ImportedAtUtc: i.ImportedAtUtc,
+            FileName: i.FileName,
+            RowsImported: i.RowsImported,
+            CoveragePct: i.CoveragePct,
+            UserId: i.UserId)).ToList();
+    }
+
     private static DateTimeOffset TruncToMonth(DateTimeOffset t)
     {
         var u = t.UtcDateTime;

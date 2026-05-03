@@ -33,7 +33,30 @@ public interface IDataCompletenessQueryService
     /// måned + forrige måned (vinduet hvor det er meningsfullt å mangle data).
     /// </summary>
     Task<DataCompletenessSummary> GetWeeklySummaryAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Lister nylige importer (siste 24 timer) — brukes av auto-import-
+    /// infobar på /data-import-siden så drifts-leder kan følge med på
+    /// hva som er kommet inn og hva som behandles akkurat nå.
+    /// </summary>
+    Task<IReadOnlyList<RecentImport>> GetRecentImportsAsync(
+        TimeSpan window, int limit, CancellationToken ct);
 }
+
+/// <summary>
+/// Én nylig import — brukt i auto-import-infobar på /data-import.
+/// </summary>
+public sealed record RecentImport(
+    Guid ImportId,
+    string PlantId,
+    string SourceType,
+    DateTimeOffset PeriodFromUtc,
+    DateTimeOffset PeriodToUtc,
+    DateTimeOffset ImportedAtUtc,
+    string? FileName,
+    int? RowsImported,
+    double? CoveragePct,
+    string? UserId);
 
 /// <summary>
 /// Komplett matrise for et periode-vindu. <see cref="Cells"/>-dictionary
