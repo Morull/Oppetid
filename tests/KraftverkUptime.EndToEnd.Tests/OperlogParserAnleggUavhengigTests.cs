@@ -27,23 +27,51 @@ public class OperlogParserAnleggUavhengigTests
     }
 
     [Theory]
-    // Drivdal-format
+    // Drifts-overganger (start/stop) — anlegg-prefiks varierer, suffix avgjør
     [InlineData("DRIVDAL_G1_KONTROLL_STARTER_AL", UnitState.InService, "operlog:start")]
     [InlineData("DRIVDAL_G1_KONTROLL_STOPPER_AL", UnitState.MaintenanceOutage, "operlog:stop")]
-    [InlineData("DRIVDAL_G1_KONTROLL_FEIL_AL", UnitState.ForcedOutage, "operlog:fault")]
-    // Andre anleggs-prefiks — samme suffix-er
     [InlineData("LOGJEN_G1_KONTROLL_STARTER_AL", UnitState.InService, "operlog:start")]
-    [InlineData("OGREYFOSS_G2_FEIL_AL", UnitState.ForcedOutage, "operlog:fault")]
     [InlineData("STOLSKRAFT_G1_STOPPER_AL", UnitState.MaintenanceOutage, "operlog:stop")]
+    // Tekniske feil
+    [InlineData("DRIVDAL_G1_KONTROLL_FEIL_AL", UnitState.ForcedOutage, "operlog:fault")]
+    [InlineData("OGREYFOSS_G2_FEIL_AL", UnitState.ForcedOutage, "operlog:fault")]
     [InlineData("VIKESA_TURBIN_HAVARI_AL", UnitState.ForcedOutage, "operlog:fault")]
-    // Generisk alarm-event uten klar kategori — fall-through til ForcedOutage
-    [InlineData("ORSDALEN_KOMM_LINJE_AL", UnitState.ForcedOutage, "operlog:alarm")]
+    [InlineData("LIAVATN_G1_TURB_FEIL_AL", UnitState.ForcedOutage, "operlog:turb-feil")]
+    // Eksplisitte stopp-typer
+    [InlineData("ORSDAL_G1_KONTROLL_NODSTOPP_AL", UnitState.ForcedOutage, "operlog:nodstopp")]
+    [InlineData("ORSDAL_G1_KONTROLL_HURTIGSTOPP_AL", UnitState.ForcedOutage, "operlog:hurtigstopp")]
+    [InlineData("ORSDAL_G1_KONTROLL_HURTIGSTOPP_MEK_AL", UnitState.ForcedOutage, "operlog:hurtigstopp")]
+    // Rist-falltap (egen kategori for rist-detektor)
+    [InlineData("DRIVDAL_INNTAK_RIST_FALLTAP_HH_AL", UnitState.ForcedOutage, "operlog:rist-falltap")]
+    // Terskel-alarmer — ForcedOutage med lav confidence (FusionClassifier respekterer SCADA)
+    [InlineData("HONNE_G1_GEN_P_LL_AL", UnitState.ForcedOutage, "operlog:lav-lav-alarm")]
+    [InlineData("HAUKLAND_INNTAK_NIVA_OPPSTROM_HRV_HH_AL", UnitState.ForcedOutage, "operlog:hoy-hoy-alarm")]
+    // Generisk _AL uten klar kategori — registreres som MaintenanceOutage (annoteres,
+    // ikke automatisk forced outage) så de er sporbare uten å overdrive nedetid
+    [InlineData("ORSDALEN_KOMM_LINJE_AL", UnitState.MaintenanceOutage, "operlog:annen-alarm")]
     public void MapEvent_AnleggUavhengig_BasertPaaSuffix(
         string tag, UnitState expectedState, string expectedCause)
     {
         var result = ParseOne(tag);
 
         result.RowsParsed.Should().Be(1);
+        result.Events.Should().HaveCount(1);
+        result.Events[0].State.Should().Be(expectedState);
+        result.Events[0].CauseCode.Should().Be(expectedCause);
+    }
+
+    [Theory]
+    // Bug fixet 2026-05-04: alarmType="alarm" med _AL-suffiks ble tidligere skippet
+    // fordi MapEvent krevde alarmType="event". KraftScada bruker "alarm" for aktive
+    // alarmer (med varighet via offTimestamp) — disse skal også fanges.
+    [InlineData("HONNE_G1_GEN_P_LL_AL", "alarm", UnitState.ForcedOutage, "operlog:lav-lav-alarm")]
+    [InlineData("LIAVATN_G1_KONTROLL_NODSTOPP_AL", "alarm", UnitState.ForcedOutage, "operlog:nodstopp")]
+    [InlineData("LIAVATN_G1_TURB_FEIL_AL", "alarm", UnitState.ForcedOutage, "operlog:turb-feil")]
+    public void MapEvent_AlarmType_FangerOgsaaAktive(
+        string tag, string alarmType, UnitState expectedState, string expectedCause)
+    {
+        var result = ParseOne(tag, alarmType);
+
         result.Events.Should().HaveCount(1);
         result.Events[0].State.Should().Be(expectedState);
         result.Events[0].CauseCode.Should().Be(expectedCause);

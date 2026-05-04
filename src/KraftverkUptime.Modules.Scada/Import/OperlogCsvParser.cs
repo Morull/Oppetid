@@ -127,8 +127,8 @@ public sealed class OperlogCsvParser
                 };
             }
 
-            var (state, cause) = MapEvent(tag, alarmType);
-            if (state is null)
+            var mapping = MapEvent(tag, alarmType);
+            if (mapping.State is null)
             {
                 // Settpunkt-endring eller annen ikke-state-event. Telt i raw-stats
                 // over slik at plant-en ikke vises som "manglende data", men
@@ -152,9 +152,9 @@ public sealed class OperlogCsvParser
                 PlantId: plantId,
                 StartUtc: startUtc,
                 EndUtc: endUtc,
-                State: state.Value,
-                CauseCode: cause,
-                Confidence: 0.95,
+                State: mapping.State.Value,
+                CauseCode: mapping.Cause,
+                Confidence: mapping.Confidence,
                 SourcesJson: """["Operlog"]""",
                 Rationale: rationale));
             rowsParsed++;
@@ -186,43 +186,94 @@ public sealed class OperlogCsvParser
     }
 
     /// <summary>
-    /// Mapper en operlog-event til (UnitState, CauseCode) eller null hvis eventen
-    /// ikke skal påvirke klassifisering (typisk settpunkt-endring).
+    /// Mapper en operlog-event til <see cref="OperlogMapping"/> som inkluderer
+    /// (UnitState, CauseCode, Confidence). Returnerer State=null for settpunkt-
+    /// endringer og andre operatorlog-events som ikke skal påvirke klassifisering.
+    ///
+    /// Konfidens-skala (brukes av FusionClassifier til å vekte mot SCADA):
+    ///   0.95 — klare nedetid-utløsere (start/stop, nodstopp, hurtigstopp, havari)
+    ///   0.80 — bekreftede tekniske feil (turb-feil, generisk feil)
+    ///   0.50 — terskel-alarmer (HH/LL) der SCADA-trender bør bekrefte
+    ///   0.40 — øvrige alarmer (annoteringer, ikke selvstendig nedetid)
+    ///
+    /// FusionClassifier overstyrer aldri SCADA-state med operlog, så confidence
+    /// her er primært for sortering/filtrering i nedetid-tidslinjen.
     /// </summary>
-    private static (UnitState? State, string? Cause) MapEvent(string tag, string alarmType)
+    private static OperlogMapping MapEvent(string tag, string alarmType)
     {
         var t = tag.ToUpperInvariant();
-        var isAlarmEvent = alarmType.Equals("event", StringComparison.OrdinalIgnoreCase);
+        var isEventType = alarmType.Equals("event", StringComparison.OrdinalIgnoreCase);
+        var isAlarmType = alarmType.Equals("alarm", StringComparison.OrdinalIgnoreCase);
+        var isAlarmRow = isEventType || isAlarmType;
 
+        // 1) Klare drift-overganger (start/stop) — høy confidence
         if (t.Contains("STARTER_AL"))
         {
-            return (UnitState.InService, "operlog:start");
+            return new(UnitState.InService, "operlog:start", 0.95);
         }
         if (t.Contains("STOPPER_AL"))
         {
-            return (UnitState.MaintenanceOutage, "operlog:stop");
+            return new(UnitState.MaintenanceOutage, "operlog:stop", 0.95);
         }
-        // Rist-falltap-alarm: tett inntaksrist. Egen cause-code slik at
-        // rist-detektor kan korrelere med trip-events (innen ±60 min).
-        // Markerer ikke nedetid alene — bare som markør for senere matching.
+
+        // 2) Nødstopp / hurtigstopp — eksplisitt nedetid
+        if (t.Contains("NODSTOPP"))
+        {
+            return new(UnitState.ForcedOutage, "operlog:nodstopp", 0.95);
+        }
+        if (t.Contains("HURTIGSTOPP"))
+        {
+            return new(UnitState.ForcedOutage, "operlog:hurtigstopp", 0.95);
+        }
+
+        // 3) Rist-falltap (tett inntaksrist) — egen cause-code for rist-detektor
         if (t.Contains("RIST_FALLTAP"))
         {
-            return (UnitState.ForcedOutage, "operlog:rist-falltap");
+            return new(UnitState.ForcedOutage, "operlog:rist-falltap", 0.85);
+        }
+
+        // 4) Tekniske feil (turbinfeil, generisk feil, havari)
+        if (t.Contains("TURB_FEIL"))
+        {
+            return new(UnitState.ForcedOutage, "operlog:turb-feil", 0.85);
         }
         if (t.Contains("FEIL_AL") || t.Contains("HAVARI"))
         {
-            return (UnitState.ForcedOutage, "operlog:fault");
+            return new(UnitState.ForcedOutage, "operlog:fault", 0.80);
         }
-        if (isAlarmEvent && t.Contains("_AL"))
+
+        // 5) Terskel-alarmer (lav-lav / høy-høy) — registreres som svake nedetid-
+        // signaler. FusionClassifier bevarer SCADA-state hvis enheten faktisk
+        // produserer, så disse blir kun synlige som markører i tidslinjen og
+        // beriker rationale/tooltip.
+        if (isAlarmRow && t.Contains("_LL_AL"))
         {
-            // Generisk alarm-event uten klar kategori — registreres som FO med
-            // generisk cause-code. Operatøren kan refinere via annotering.
-            return (UnitState.ForcedOutage, "operlog:alarm");
+            return new(UnitState.ForcedOutage, "operlog:lav-lav-alarm", 0.50);
+        }
+        if (isAlarmRow && t.Contains("_HH_AL"))
+        {
+            return new(UnitState.ForcedOutage, "operlog:hoy-hoy-alarm", 0.50);
+        }
+
+        // 6) Generiske alarmer med _AL-suffiks (uansett alarmType) — tag som
+        // MaintenanceOutage med lav confidence så de er sporbare i historikken
+        // uten å konkurrere med SCADA på state. Tidligere krevde dette
+        // alarmType=event — men alarmType=alarm er den vanlige verdien for
+        // aktive alarmer i KraftScada-eksporten, så vi inkluderer begge.
+        if (isAlarmRow && t.Contains("_AL"))
+        {
+            return new(UnitState.MaintenanceOutage, "operlog:annen-alarm", 0.40);
         }
 
         // Settpunkt-endringer (KONTROLL_REG_*, AGC_*, etc.) påvirker ikke state.
-        return (null, null);
+        return new(null, null, 0);
     }
+
+    /// <summary>Resultat av <see cref="MapEvent"/>.</summary>
+    private readonly record struct OperlogMapping(
+        UnitState? State,
+        string? Cause,
+        double Confidence);
 
     private static bool TryParseUtc(string raw, out DateTimeOffset utc)
     {
