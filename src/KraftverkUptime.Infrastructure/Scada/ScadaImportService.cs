@@ -104,6 +104,38 @@ public sealed class ScadaImportService : IScadaImportService
             var periodFrom = minHourly;
             var periodTo = maxHourly.AddHours(1);
 
+            // Bygg notes med signaler, timer, skip-telemetri og prefiks-validering.
+            // Ukjente prefikser (signal-navn som ikke matcher noen kjente plant-
+            // tag-mønstre) flagges så drifts-leder ser hvis SCADA endrer
+            // tag-konvensjon for et anlegg.
+            var unknownPrefixes = DetectUnknownPrefixes(result.Samples
+                .Select(s => s.SignalId)
+                .Distinct(StringComparer.Ordinal), plantId);
+
+            var notesBuilder = new System.Text.StringBuilder();
+            notesBuilder.Append(result.SignalCount).Append(" signaler, ");
+            notesBuilder.Append(uniqueHours).Append(" unike timer i ").Append(actualSpanHours)
+                .Append(" t-spenn (").Append(minHourly.ToString("yyyy-MM-dd HH"))
+                .Append('–').Append(maxHourly.ToString("yyyy-MM-dd HH")).Append(").");
+            if (result.RowsSkipped > 0)
+            {
+                notesBuilder.Append(' ').Append(result.RowsSkipped)
+                    .Append(" rader skippet (DST-gap, ugyldig timestamp eller for få kolonner).");
+            }
+            if (unknownPrefixes.Count > 0)
+            {
+                notesBuilder.Append(" Ukjente prefikser: ")
+                    .Append(string.Join(", ", unknownPrefixes.Take(5)));
+                if (unknownPrefixes.Count > 5)
+                {
+                    notesBuilder.Append(" (+").Append(unknownPrefixes.Count - 5).Append(" til)");
+                }
+                notesBuilder.Append('.');
+                _logger.LogWarning(
+                    "SCADA-import for {PlantId} har {Count} ukjente tag-prefikser: {Prefixes}",
+                    plantId, unknownPrefixes.Count, string.Join(", ", unknownPrefixes));
+            }
+
             try
             {
                 await _dataImportLogger.LogAsync(new DataImportLogEntry(
@@ -116,7 +148,7 @@ public sealed class ScadaImportService : IScadaImportService
                     RowsImported: written,
                     CoveragePct: coverage,
                     UserId: "system",
-                    Notes: $"{result.SignalCount} signaler, {uniqueHours} unike timer i {actualSpanHours} t-spenn ({minHourly:yyyy-MM-dd HH}–{maxHourly:yyyy-MM-dd HH})"
+                    Notes: notesBuilder.ToString()
                 ), ct).ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -281,5 +313,57 @@ public sealed class ScadaImportService : IScadaImportService
     {
         try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
         catch { return null; }
+    }
+
+    /// <summary>
+    /// Mapping fra plant-id til kjente SCADA-tag-prefiks. Holdes synkronisert med
+    /// HotFolderOptions.PlantPrefixMap i Infrastructure/HotFolder. Eksponert som
+    /// felles statisk så validering også kan kjøres for SCADA-master-imports som
+    /// IKKE går via hot-folder (manuell opplasting).
+    /// </summary>
+    private static readonly Dictionary<string, HashSet<string>> KnownPrefixesByPlant = new(StringComparer.Ordinal)
+    {
+        ["drivdal"] = new(StringComparer.OrdinalIgnoreCase) { "DRIVDAL", "DRIV" },
+        ["lindland"] = new(StringComparer.OrdinalIgnoreCase) { "LINDLAND", "LIND" },
+        ["haukland"] = new(StringComparer.OrdinalIgnoreCase) { "HAUKLAND", "HAUK" },
+        ["honnefoss"] = new(StringComparer.OrdinalIgnoreCase) { "HONNE", "LIAVT" }, // LIAVT i Honnefoss-eksport tilhører Honnefoss-inntak
+        ["liavatn"] = new(StringComparer.OrdinalIgnoreCase) { "LIAVATN" },
+        ["grodemfoss"] = new(StringComparer.OrdinalIgnoreCase) { "GRODEM", "GRODEMFOSS" },
+        ["ogreyfoss"] = new(StringComparer.OrdinalIgnoreCase) { "OGREY", "OGREYFOSS", "OGREY1", "OGREY2" },
+        ["logjen"] = new(StringComparer.OrdinalIgnoreCase) { "LOGJEN", "LOG" },
+        ["orsdalen"] = new(StringComparer.OrdinalIgnoreCase) { "ORSDAL", "ORSDALEN" },
+        ["vikesa"] = new(StringComparer.OrdinalIgnoreCase) { "VIKESA", "VIKE" },
+        ["stolskraft"] = new(StringComparer.OrdinalIgnoreCase) { "STOLS", "STOLSKRAFT" },
+    };
+
+    /// <summary>Cached separator-set for prefiks-uttrekk (CA1870).</summary>
+    private static readonly System.Buffers.SearchValues<char> PrefixSeparators =
+        System.Buffers.SearchValues.Create("_.");
+
+    /// <summary>
+    /// Returnerer signal-prefikser i SCADA-importen som IKKE er kjente for det
+    /// angitte anlegget. Brukes til å varsle drifts-leder om at SCADA-systemet
+    /// kan ha endret tag-konvensjon. Tom liste = alt OK.
+    /// </summary>
+    private static List<string> DetectUnknownPrefixes(IEnumerable<string> signalIds, string plantId)
+    {
+        if (!KnownPrefixesByPlant.TryGetValue(plantId, out var known))
+        {
+            return new(); // Ukjent plant — vi har ikke autoritativ liste, hopp over
+        }
+
+        var unknown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var signal in signalIds)
+        {
+            // Hent ut prefiks før første '_' eller '.'
+            var idx = signal.AsSpan().IndexOfAny(PrefixSeparators);
+            var prefix = idx > 0 ? signal[..idx] : signal;
+            if (string.IsNullOrEmpty(prefix)) continue;
+            if (!known.Contains(prefix))
+            {
+                unknown.Add(prefix);
+            }
+        }
+        return unknown.OrderBy(p => p, StringComparer.Ordinal).ToList();
     }
 }
