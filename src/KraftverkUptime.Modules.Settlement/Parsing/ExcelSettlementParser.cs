@@ -357,6 +357,25 @@ public sealed class ExcelSettlementParser : ISettlementParser
 
         var canonicalByColumn = BuildCanonicalColumnMap(headerCells);
 
+        // Detekter ukjente kolonner — KAIA kan legge til nye felter (eks. nye
+        // gebyrer, nye balanse-typer) som vi ikke har mapping for. Disse blir
+        // stille ignorert i parsing, så vi flagger dem som info-issue så
+        // drifts-leder ser hvis schema-en endrer seg.
+        var unknownColumns = headerCells
+            .Where(c => !string.IsNullOrWhiteSpace(c.GetString())
+                     && SettlementColumnMapping.Canonical(c.GetString()) is null)
+            .Select(c => c.GetString().Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (unknownColumns.Count > 0)
+        {
+            issues.Add(new ValidationIssue(
+                IssueSeverity.Info,
+                "UNKNOWN_COLUMNS",
+                $"Ukjent kolonne i KAIA-eksport (ignorert i parsing): {string.Join(", ", unknownColumns)}. " +
+                "Hvis disse skal lagres må SettlementColumnMapping oppdateres."));
+        }
+
         var rows = new List<SettlementHourlyRow>(capacity: 744);  // opp til 31 × 24 + DST
         var tz = TimeZones.Norway;
 

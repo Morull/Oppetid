@@ -251,10 +251,7 @@ public static class MultiPlantSettlementsEndpoints
             var settlementCoverage = expectedHours > 0
                 ? Math.Min(1.0, parsed.Hourly.Count / (double)expectedHours)
                 : 1.0;
-            var planRows = parsed.Hourly.Count(r => r.ProduksjonplanMwh.HasValue);
-            var notes = parsed.Issues.Count > 0
-                ? $"{parsed.Issues.Count} avvik"
-                : (planRows > 0 ? $"Hydrogrid-plan: {planRows}/{parsed.Hourly.Count} timer" : null);
+            var notes = SettlementImportNotesBuilder.Build(parsed);
 
             try
             {

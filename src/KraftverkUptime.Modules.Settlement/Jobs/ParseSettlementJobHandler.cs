@@ -109,10 +109,7 @@ public sealed class ParseSettlementJobHandler : IJobHandler<ParseSettlementJob>
             ? Math.Min(1.0, parsed.Hourly.Count / (double)expectedHours)
             : 1.0;
 
-        var planRows = parsed.Hourly.Count(r => r.ProduksjonplanMwh.HasValue);
-        var notes = parsed.Issues.Count > 0
-            ? $"{parsed.Issues.Count} avvik ved parsing"
-            : (planRows > 0 ? $"Hydrogrid-plan: {planRows}/{parsed.Hourly.Count} timer" : null);
+        var notes = SettlementImportNotesBuilder.Build(parsed);
 
         await _dataImportLogger.LogAsync(new DataImportLogEntry(
             PlantId: job.PlantId,
