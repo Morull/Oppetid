@@ -1,4 +1,6 @@
+using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
+using KraftverkUptime.Core.Domain;
 
 namespace KraftverkUptime.Infrastructure.HotFolder;
 
@@ -12,10 +14,36 @@ namespace KraftverkUptime.Infrastructure.HotFolder;
 ///   .csv  → SCADA-trender (master) eller SCADA-alarmer (operlog)
 ///           — operlog detekteres via "operlog" / "alarm" i filnavn
 ///             eller "Tidsstempel"/"Hendelse" i header.
+///
+/// Plant-mapping bruker <see cref="PlantSlug.ToSlug"/> + en kanonisk
+/// liste (<see cref="KnownPlantSlugs"/>) for validering. KAIA-eksporten
+/// stripper norske tegn fra fane-navn ("1 Lgjen", "7 greyfoss", "1 Vikes")
+/// som ikke kan rekonstrueres til plant-id, så detektoren leser kanonisk
+/// navn fra cell A1 ("Vikeså 01.04.2026 - 30.04.2026") når mulig.
 /// </summary>
 public sealed class HotFolderDetector
 {
     private readonly HotFolderOptions _options;
+
+    /// <summary>
+    /// Kanoniske plant-id-er fra <c>PlantPortfolioSeeder.Portfolio</c>. Brukes
+    /// til å validere at en utledet slug er et reelt anlegg (ikke garbage).
+    /// Holdt synkronisert med seederen — endring her må også gjøres der.
+    /// </summary>
+    private static readonly HashSet<string> KnownPlantSlugs = new(StringComparer.Ordinal)
+    {
+        "drivdal", "lindland", "haukland", "honnefoss", "liavatn",
+        "logjen", "grodemfoss", "ogreyfoss", "orsdalen", "vikesa", "stolskraft",
+    };
+
+    /// <summary>
+    /// Regex for kanonisk plant-tittel i R1: "Navn dd.MM.yyyy[ - dd.MM.yyyy]".
+    /// Speiler <c>ExcelSettlementParser.PlantTitleRegex</c>.
+    /// </summary>
+    private static readonly Regex PlantTitleRegex = new(
+        @"^(?<name>.+?)\s+\d{1,2}\.\d{1,2}\.\d{4}",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(50));
 
     // Regex som plukker plant-navn fra filnavn. Eksempler:
     //   "Avregning Drivdal April 2026.xlsx" → drivdal
@@ -36,61 +64,78 @@ public sealed class HotFolderDetector
         _options = options ?? throw new ArgumentNullException(nameof(options));
     }
 
+    /// <summary>
+    /// Detekterer filtype + plant-id og returnerer et resultat med vedlagt
+    /// <see cref="DetectionDiagnostics"/>. Diagnostics inneholder per-steg-
+    /// logg slik at karantene-modal i UI kan vise nøyaktig hva ble forsøkt.
+    /// </summary>
     public DetectionResult Detect(FileInfo file)
     {
-        var ext = file.Extension.ToLowerInvariant();
-        var name = file.Name;
+        var diag = new DetectionDiagnostics
+        {
+            FileName = file.Name,
+            FileSizeBytes = file.Exists ? file.Length : 0,
+            Extension = file.Extension.ToLowerInvariant(),
+        };
+        return DetectInternal(file, diag);
+    }
+
+    private DetectionResult DetectInternal(FileInfo file, DetectionDiagnostics diag)
+    {
+        var ext = diag.Extension;
+        var name = diag.FileName;
 
         // 1. Filtype basert på extension + navn
         SourceType? sourceType = ext switch
         {
             ".xlsx" => SourceType.Settlement,
             ".xls" => SourceType.Settlement,
-            ".csv" => DetectCsvType(name, file),
+            ".csv" => DetectCsvType(name, file, diag),
             _ => null,
         };
 
         if (sourceType is null)
         {
+            diag.Attempts.Add($"Ukjent filtype '{ext}' — forventer .xlsx eller .csv.");
             return DetectionResult.Unknown(
-                $"Ukjent filtype: {ext}. Forventer .xlsx (settlement) eller .csv (SCADA).");
+                $"Ukjent filtype: {ext}. Forventer .xlsx (settlement) eller .csv (SCADA).",
+                diag);
         }
+        diag.DetectedSourceType = sourceType.Value.ToString();
+        diag.Attempts.Add($"Filtype detektert: {sourceType.Value}");
 
         // 2a. Settlement: sjekk om det er multi-plant (≥ 2 plant-faner i workbook)
         if (sourceType == SourceType.Settlement)
         {
-            var sheetCount = TryCountPlantSheets(file);
+            var sheetCount = TryCountPlantSheets(file, diag);
             if (sheetCount >= 2)
             {
-                // Multi-plant: ruter til /settlements/multi-plant — selve
-                // splittingen per plant skjer i parsing-laget.
-                return DetectionResult.Ok(plantId: "_multi_", SourceType.SettlementMultiPlant);
+                diag.Attempts.Add($"≥ 2 plant-faner ({sheetCount}) → multi-plant settlement.");
+                return DetectionResult.Ok(plantId: "_multi_", SourceType.SettlementMultiPlant, diag);
             }
         }
 
         // 2b. Plant — filnavn-regex først
-        var plantId = DetectPlantFromFilename(name);
+        var plantId = DetectPlantFromFilename(name, diag);
 
         // 3. Content-sniff fallback hvis filnavn ikke ga svar
         if (plantId is null)
         {
             if (sourceType == SourceType.Settlement)
             {
-                // Single-plant settlement: les plant-navn fra fane-navn / R1 i xlsx
-                plantId = DetectPlantFromXlsxContent(file);
+                plantId = DetectPlantFromXlsxContent(file, diag);
             }
             else if (sourceType == SourceType.ScadaTrends)
             {
-                // SCADA-trends: tag-prefiks (Cluster1.PREFIKS_) i header
-                plantId = DetectPlantFromCsvContent(file);
+                plantId = DetectPlantFromCsvContent(file, diag);
             }
             else if (sourceType == SourceType.ScadaAlarms)
             {
-                // Operlog: 'station'-kolonnen i hver rad — kan være multi-plant
-                var stationResult = DetectPlantsFromOperlog(file);
+                var stationResult = DetectPlantsFromOperlog(file, diag);
                 if (stationResult.IsMultiPlant)
                 {
-                    return DetectionResult.Ok("_multi_", SourceType.ScadaAlarmsMultiPlant);
+                    diag.Attempts.Add("Multi-plant operlog (≥ 2 stations med signifikant volum).");
+                    return DetectionResult.Ok("_multi_", SourceType.ScadaAlarmsMultiPlant, diag);
                 }
                 plantId = stationResult.DominantPlant;
             }
@@ -100,72 +145,111 @@ public sealed class HotFolderDetector
         {
             return DetectionResult.Unknown(
                 $"Klarte ikke identifisere anlegg for fil '{name}'. " +
-                $"Forventer plant-navn i filnavnet, fane-navn i workbook, eller SCADA-tag-prefiks i header.");
+                $"Forventer plant-navn i filnavnet, fane-navn i workbook, eller SCADA-tag-prefiks i header.",
+                diag);
         }
 
-        return DetectionResult.Ok(plantId, sourceType.Value);
+        diag.ResolvedPlantId = plantId;
+        return DetectionResult.Ok(plantId, sourceType.Value, diag);
     }
 
     /// <summary>
-    /// For single-plant xlsx: les plant-navn fra første ikke-aggregat-fane.
-    /// Format-konvensjonen i KAIA-eksporten har en fane per anlegg, og
-    /// fane-navnet er ASCII-strippet plant-navn (eks. "Drivdal", "Logjen").
-    /// Slugifiserer til kanonisk plant-id via samme tabell som filnavn-regex.
+    /// For single-plant xlsx: les plant-navn fra cell A1 i første ikke-aggregat-
+    /// fane. KAIA-eksporten har formatet "Vikeså 01.04.2026 - 30.04.2026" i A1
+    /// med fulle norske tegn — sheet-navnet er strippet ("1 Vikes") og kan ikke
+    /// rekonstrueres, men A1 er kanonisk. Vi henter ut navn-delen via
+    /// <see cref="PlantTitleRegex"/> og slugifiserer.
     /// </summary>
-    private string? DetectPlantFromXlsxContent(FileInfo file)
+    private string? DetectPlantFromXlsxContent(FileInfo file, DetectionDiagnostics diag)
     {
         try
         {
             using var workbook = new ClosedXML.Excel.XLWorkbook(file.FullName);
 
-            // Prøv hver synlig ikke-aggregat-fane
             foreach (var ws in workbook.Worksheets.Where(w =>
                 w.Visibility == ClosedXML.Excel.XLWorksheetVisibility.Visible
                 && !IsAggregateSheetName(w.Name)))
             {
-                // 1. Selve fane-navnet
-                var fromSheetName = SlugifyPlantName(ws.Name);
-                if (fromSheetName is not null) return fromSheetName;
+                var a1 = ws.Cell(1, 1).GetString();
+                diag.SheetTitleCells[ws.Name] = a1;
 
-                // 2. Cell A1 / B1 / C1 — KAIA-eksport har gjerne plant-navn med
-                //    norske tegn i en av disse cellene
-                for (var col = 1; col <= 5; col++)
+                // 1. Cell A1 — KAIA-konvensjon: "Vikeså 01.04.2026 - 30.04.2026"
+                var titleSlug = TryExtractSlugFromTitleCell(a1);
+                if (titleSlug is not null)
                 {
-                    var raw = ws.Cell(1, col).GetString().Trim();
-                    if (string.IsNullOrEmpty(raw)) continue;
-                    var slug = SlugifyPlantName(raw);
-                    if (slug is not null) return slug;
+                    diag.Attempts.Add($"Sheet '{ws.Name}' A1='{Truncate(a1, 60)}' → slug '{titleSlug}'.");
+                    return titleSlug;
                 }
+
+                // 2. Fallback: B1..E1 (eldre eksport-versjoner kan ha tittelen forskjøvet)
+                for (var col = 2; col <= 5; col++)
+                {
+                    var raw = ws.Cell(1, col).GetString();
+                    var slug = TryExtractSlugFromTitleCell(raw);
+                    if (slug is not null)
+                    {
+                        diag.Attempts.Add($"Sheet '{ws.Name}' col {col}='{Truncate(raw, 60)}' → slug '{slug}'.");
+                        return slug;
+                    }
+                }
+
+                // 3. Siste fallback: selve fane-navnet — fungerer kun for filer
+                //    med ren navn ("drivdal.xlsx"), ikke KAIA-stripping ("1 Vikes").
+                var fromSheet = TryNormalizePlantName(ws.Name);
+                if (fromSheet is not null)
+                {
+                    diag.Attempts.Add($"Sheet-navn '{ws.Name}' → slug '{fromSheet}'.");
+                    return fromSheet;
+                }
+                diag.Attempts.Add(
+                    $"Sheet '{ws.Name}': A1='{Truncate(a1, 60)}' matcher ikke tittel-mønster, " +
+                    $"og fane-navn slug-er ikke til kjent anlegg.");
             }
             return null;
         }
-        catch
+        catch (Exception ex)
         {
+            diag.Attempts.Add($"Klarte ikke åpne workbook: {ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }
 
+    private static string Truncate(string s, int max) =>
+        string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : string.Concat(s.AsSpan(0, max), "…"));
+
     /// <summary>
-    /// Map plant-navn (med eller uten norske tegn) til kanonisk plant-id.
+    /// Forsøker å hente kanonisk plant-slug fra en R1-tittel-celle. Format:
+    /// "Vikeså 01.04.2026" eller "Stølskraft 01.04.2026 - 30.04.2026".
+    /// Returnerer null hvis innholdet ikke matcher tittel-mønsteret eller
+    /// resulterende slug ikke er et kjent anlegg.
     /// </summary>
-    private static string? SlugifyPlantName(string raw)
+    private static string? TryExtractSlugFromTitleCell(string raw)
     {
-        var lower = raw.Trim().ToLowerInvariant();
-        return lower switch
-        {
-            "drivdal" => "drivdal",
-            "lindland" => "lindland",
-            "haukland" => "haukland",
-            "honnefoss" => "honnefoss",
-            "liavatn" => "liavatn",
-            "løgjen" or "logjen" => "logjen",
-            "grødemfoss" or "grodemfoss" => "grodemfoss",
-            "øgreyfoss" or "ogreyfoss" => "ogreyfoss",
-            "ørsdalen" or "orsdalen" => "orsdalen",
-            "vikeså" or "vikesa" => "vikesa",
-            "stølskraft" or "stolskraft" => "stolskraft",
-            _ => null,
-        };
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var trimmed = raw.Trim();
+        var match = PlantTitleRegex.Match(trimmed);
+        if (!match.Success) return null;
+        return TryNormalizePlantName(match.Groups["name"].Value);
+    }
+
+    /// <summary>
+    /// Slugifiserer et råstring (kan ha norske tegn, prefiks-tall, mellomrom)
+    /// og validerer mot <see cref="KnownPlantSlugs"/>. Returnerer slug ved
+    /// match, ellers null. Eksempler:
+    ///   "Vikeså"  → "vikesa"
+    ///   "Drivdal" → "drivdal"
+    ///   "1 Vikes" → null (norsk tegn er strippet, kan ikke rekonstrueres)
+    ///   "Stølskraft" → "stolskraft"
+    /// </summary>
+    private static string? TryNormalizePlantName(string raw)
+    {
+        var slug = PlantSlug.ToSlug(raw);
+        if (string.IsNullOrEmpty(slug)) return null;
+        // Strip leading digits ("1vikesa" fra "1 Vikeså" — sjelden, men trygt)
+        var stripped = slug.TrimStart('0', '1', '2', '3', '4', '5', '6', '7', '8', '9');
+        if (KnownPlantSlugs.Contains(stripped)) return stripped;
+        if (KnownPlantSlugs.Contains(slug)) return slug;
+        return null;
     }
 
     /// <summary>
@@ -173,13 +257,18 @@ public sealed class HotFolderDetector
     /// Vi leser de første 200 radene og teller stasjoner. Hvis 2+ unike
     /// stasjoner med signifikant volum (≥ 10 % hver) → multi-plant.
     /// </summary>
-    private OperlogPlantDetectResult DetectPlantsFromOperlog(FileInfo file)
+    private OperlogPlantDetectResult DetectPlantsFromOperlog(FileInfo file, DetectionDiagnostics diag)
     {
         try
         {
             using var reader = new StreamReader(file.FullName);
             var headerLine = reader.ReadLine();
-            if (headerLine is null) return OperlogPlantDetectResult.None;
+            if (headerLine is null)
+            {
+                diag.Attempts.Add("Operlog: tom fil (ingen header-linje).");
+                return OperlogPlantDetectResult.None;
+            }
+            diag.HeaderLine = Truncate(headerLine, 200);
 
             // Finn station-kolonneindeks. Standard operlog-format:
             // timestamp;station;username;tag;text;value;operatorType;...
@@ -193,7 +282,11 @@ public sealed class HotFolderDetector
                     break;
                 }
             }
-            if (stationIdx < 0) return OperlogPlantDetectResult.None;
+            if (stationIdx < 0)
+            {
+                diag.Attempts.Add($"Operlog: fant ikke 'station'-kolonne i header. Kolonner: {string.Join(", ", headers.Take(10))}");
+                return OperlogPlantDetectResult.None;
+            }
 
             var stationCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             for (var i = 0; i < 500; i++)
@@ -206,7 +299,13 @@ public sealed class HotFolderDetector
                 if (string.IsNullOrEmpty(station)) continue;
                 stationCounts[station] = stationCounts.GetValueOrDefault(station) + 1;
             }
-            if (stationCounts.Count == 0) return OperlogPlantDetectResult.None;
+            if (stationCounts.Count == 0)
+            {
+                diag.Attempts.Add("Operlog: ingen stations funnet i de første 500 radene.");
+                return OperlogPlantDetectResult.None;
+            }
+            diag.OperlogStations = stationCounts.OrderByDescending(kv => kv.Value)
+                .Take(10).ToDictionary(kv => kv.Key, kv => kv.Value);
 
             // Map station-navn til plant-id via slug + PlantPrefixMap
             var totalRows = stationCounts.Values.Sum();
@@ -234,37 +333,24 @@ public sealed class HotFolderDetector
 
             // Bare én plant er signifikant — bruk den
             var top = plantsBySlug.OrderByDescending(p => p.Total).First();
+            diag.Attempts.Add($"Operlog: dominant plant = {top.Plant} ({top.Total} rader).");
             return new OperlogPlantDetectResult(DominantPlant: top.Plant, IsMultiPlant: false);
         }
-        catch
+        catch (Exception ex)
         {
+            diag.Attempts.Add($"Operlog-detect feilet: {ex.GetType().Name}: {ex.Message}");
             return OperlogPlantDetectResult.None;
         }
     }
 
     /// <summary>
-    /// Mapper station-navn fra operlog (eks. "Haukland", "Drivdal") til
-    /// kanonisk plant-id. Bruker case-insensitive direkte-match først,
-    /// så slug-konvertering for norske tegn.
+    /// Mapper station-navn fra operlog (eks. "Haukland", "Drivdal", "Stølskraft")
+    /// til kanonisk plant-id. Bruker først <see cref="PlantSlug.ToSlug"/> +
+    /// validering, så <c>PlantPrefixMap</c> som fallback for SCADA-tag-prefikser.
     /// </summary>
     private string? SlugifyStation(string station)
     {
-        var lower = station.Trim().ToLowerInvariant();
-        var slug = lower switch
-        {
-            "drivdal" => "drivdal",
-            "lindland" => "lindland",
-            "haukland" => "haukland",
-            "honnefoss" => "honnefoss",
-            "liavatn" => "liavatn",
-            "løgjen" or "logjen" => "logjen",
-            "grødemfoss" or "grodemfoss" => "grodemfoss",
-            "øgreyfoss" or "ogreyfoss" => "ogreyfoss",
-            "ørsdalen" or "orsdalen" => "orsdalen",
-            "vikeså" or "vikesa" => "vikesa",
-            "stølskraft" or "stolskraft" => "stolskraft",
-            _ => null,
-        };
+        var slug = TryNormalizePlantName(station);
         if (slug is not null) return slug;
 
         // Fallback: prøv PlantPrefixMap (eks. "HONNE" → "honnefoss")
@@ -281,23 +367,21 @@ public sealed class HotFolderDetector
     /// Forsøker å telle hvor mange plant-faner en xlsx har. Bruker minimal
     /// open av workbook-en (kun ZIP-direktoriet). Returner -1 ved feil.
     /// </summary>
-    private static int TryCountPlantSheets(FileInfo file)
+    private static int TryCountPlantSheets(FileInfo file, DetectionDiagnostics diag)
     {
         try
         {
-            // ClosedXML er allerede en avhengighet via Settlement-modulen.
-            // Vi vil ikke åpne hele workbooket — bruker minimal sheet-count.
             using var workbook = new ClosedXML.Excel.XLWorkbook(file.FullName);
-            // Filter ut "Summering" / "Sammendrag" / "Info"-faner som ikke
-            // er plant-data. Her: telle alle synlige faner som "tellbare"
-            // og la parser-laget gjøre den endelige seleksjonen.
+            diag.SheetNames = new Collection<string>(workbook.Worksheets.Select(ws => ws.Name).ToList());
             var plantLikeSheets = workbook.Worksheets.Count(ws =>
                 ws.Visibility == ClosedXML.Excel.XLWorksheetVisibility.Visible
                 && !IsAggregateSheetName(ws.Name));
+            diag.Attempts.Add($"Workbook åpnet: {diag.SheetNames.Count} faner totalt, {plantLikeSheets} plant-lignende.");
             return plantLikeSheets;
         }
-        catch
+        catch (Exception ex)
         {
+            diag.Attempts.Add($"Klarte ikke åpne workbook for å telle faner: {ex.GetType().Name}: {ex.Message}");
             return -1;
         }
     }
@@ -308,43 +392,44 @@ public sealed class HotFolderDetector
         || name.Equals("Info", StringComparison.OrdinalIgnoreCase)
         || name.Equals("Forside", StringComparison.OrdinalIgnoreCase);
 
-    private SourceType? DetectCsvType(string fileName, FileInfo file)
+    private SourceType? DetectCsvType(string fileName, FileInfo file, DetectionDiagnostics diag)
     {
-        // Operlog: "operlog" / "alarm" / "alarms" i filnavn
         if (fileName.Contains("operlog", StringComparison.OrdinalIgnoreCase)
             || fileName.Contains("alarm", StringComparison.OrdinalIgnoreCase))
         {
+            diag.Attempts.Add("CSV-filnavn inneholder 'operlog'/'alarm' → ScadaAlarms.");
             return SourceType.ScadaAlarms;
         }
 
-        // Content-sniff første linje for å bekrefte
         try
         {
             using var reader = new StreamReader(file.FullName);
             var firstLine = reader.ReadLine() ?? "";
+            diag.HeaderLine = Truncate(firstLine, 200);
             if (firstLine.Contains("Tidsstempel", StringComparison.OrdinalIgnoreCase)
                 || firstLine.Contains("Hendelse", StringComparison.OrdinalIgnoreCase)
                 || firstLine.Contains("Event", StringComparison.OrdinalIgnoreCase))
             {
+                diag.Attempts.Add("CSV header inneholder 'Tidsstempel'/'Hendelse'/'Event' → ScadaAlarms.");
                 return SourceType.ScadaAlarms;
             }
-            // SCADA master: "DateTime" + "Cluster1." typisk
             if (firstLine.Contains("DateTime", StringComparison.OrdinalIgnoreCase)
                 || firstLine.Contains("Cluster1.", StringComparison.OrdinalIgnoreCase))
             {
+                diag.Attempts.Add("CSV header inneholder 'DateTime'/'Cluster1.' → ScadaTrends.");
                 return SourceType.ScadaTrends;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignorer — fallback under
+            diag.Attempts.Add($"Klarte ikke lese CSV header: {ex.GetType().Name}: {ex.Message}");
         }
 
-        // Default for .csv: SCADA trender (master)
+        diag.Attempts.Add("CSV header matchet ingen kjente mønstre → default ScadaTrends.");
         return SourceType.ScadaTrends;
     }
 
-    private string? DetectPlantFromFilename(string fileName)
+    private string? DetectPlantFromFilename(string fileName, DetectionDiagnostics diag)
     {
         foreach (var pattern in FilenamePlantPatterns)
         {
@@ -352,8 +437,7 @@ public sealed class HotFolderDetector
             if (m.Success)
             {
                 var raw = m.Groups["plant"].Value.ToLowerInvariant();
-                // Mapping for ASCII-stripet navn → kanonisk plant-id
-                return raw switch
+                var slug = raw switch
                 {
                     "logjen" or "løgjen" => "logjen",
                     "grodemfoss" or "grødemfoss" => "grodemfoss",
@@ -362,19 +446,25 @@ public sealed class HotFolderDetector
                     "vikesa" or "vikeså" => "vikesa",
                     _ => raw,
                 };
+                diag.Attempts.Add($"Filnavn-regex matchet '{raw}' → slug '{slug}'.");
+                return slug;
             }
         }
+        diag.Attempts.Add("Filnavn-regex matchet ikke noe kjent plant-navn.");
         return null;
     }
 
-    private string? DetectPlantFromCsvContent(FileInfo file)
+    private string? DetectPlantFromCsvContent(FileInfo file, DetectionDiagnostics diag)
     {
         try
         {
             using var reader = new StreamReader(file.FullName);
             var firstLine = reader.ReadLine() ?? "";
+            if (string.IsNullOrEmpty(diag.HeaderLine))
+            {
+                diag.HeaderLine = Truncate(firstLine, 200);
+            }
 
-            // Tagger har typisk form "Cluster1.HONNE_SOMETHING" — tell prefikser
             var prefixCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             var matches = Regex.Matches(firstLine, @"Cluster1\.([A-Z]+)_", RegexOptions.IgnoreCase);
             foreach (Match m in matches)
@@ -382,14 +472,26 @@ public sealed class HotFolderDetector
                 var prefix = m.Groups[1].Value.ToUpperInvariant();
                 prefixCounts[prefix] = prefixCounts.GetValueOrDefault(prefix) + 1;
             }
-            if (prefixCounts.Count == 0) return null;
+            if (prefixCounts.Count == 0)
+            {
+                diag.Attempts.Add("CSV header har ingen 'Cluster1.PREFIKS_'-tags.");
+                return null;
+            }
+            diag.ScadaPrefixCounts = prefixCounts.OrderByDescending(kv => kv.Value)
+                .Take(10).ToDictionary(kv => kv.Key, kv => kv.Value);
 
-            // Plukk dominerende prefiks
             var dominant = prefixCounts.OrderByDescending(kv => kv.Value).First();
-            return _options.PlantPrefixMap.TryGetValue(dominant.Key, out var plant) ? plant : null;
+            if (_options.PlantPrefixMap.TryGetValue(dominant.Key, out var plant))
+            {
+                diag.Attempts.Add($"SCADA prefiks '{dominant.Key}' ({dominant.Value} tags) → plant '{plant}'.");
+                return plant;
+            }
+            diag.Attempts.Add($"SCADA prefiks '{dominant.Key}' ikke i PlantPrefixMap.");
+            return null;
         }
-        catch
+        catch (Exception ex)
         {
+            diag.Attempts.Add($"CSV-content-detect feilet: {ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }
@@ -421,11 +523,48 @@ public sealed record DetectionResult(
     bool Success,
     string? PlantId,
     SourceType? SourceType,
-    string? ErrorMessage)
+    string? ErrorMessage,
+    DetectionDiagnostics? Diagnostics = null)
 {
-    public static DetectionResult Ok(string plantId, SourceType type) =>
-        new(true, plantId, type, null);
+    public static DetectionResult Ok(string plantId, SourceType type, DetectionDiagnostics? diag = null) =>
+        new(true, plantId, type, null, diag);
 
-    public static DetectionResult Unknown(string error) =>
-        new(false, null, null, error);
+    public static DetectionResult Unknown(string error, DetectionDiagnostics? diag = null) =>
+        new(false, null, null, error, diag);
+}
+
+/// <summary>
+/// Per-fil-trase fra detektoren — hvilke steg ble forsøkt og hva returnerte de.
+/// Brukes av karantene-flyten for å skrive en .diag.json-fil ved siden av
+/// .error.txt slik at UI-en kan vise "hvorfor havnet denne i karantene".
+///
+/// Settes alltid (også på suksess) for at vi skal ha lik telemetri på begge stier;
+/// kostnaden er noen kB minne som forkastes når <see cref="HotFolderDetector.Detect"/>
+/// returnerer på suksess-stien.
+/// </summary>
+public sealed class DetectionDiagnostics
+{
+    public string FileName { get; set; } = "";
+    public long FileSizeBytes { get; set; }
+    public string Extension { get; set; } = "";
+    public string? DetectedSourceType { get; set; }
+    public string? ResolvedPlantId { get; set; }
+
+    /// <summary>Steg-for-steg-logg av hva detektoren forsøkte. Vises som liste i UI.</summary>
+    public Collection<string> Attempts { get; } = new();
+
+    /// <summary>For xlsx: alle fane-navn (inkludert aggregat-faner som ble filtrert).</summary>
+    public Collection<string>? SheetNames { get; set; }
+
+    /// <summary>For xlsx: A1-celle-innhold per ikke-aggregat-fane (truncated).</summary>
+    public Dictionary<string, string> SheetTitleCells { get; } = new();
+
+    /// <summary>For csv: første linje truncated til 200 tegn.</summary>
+    public string? HeaderLine { get; set; }
+
+    /// <summary>For SCADA-trends: tag-prefiks-tall (f.eks. "HONNE": 87, "DRIV": 14).</summary>
+    public Dictionary<string, int>? ScadaPrefixCounts { get; set; }
+
+    /// <summary>For operlog: station-navn med antall events (topp 10).</summary>
+    public Dictionary<string, int>? OperlogStations { get; set; }
 }
