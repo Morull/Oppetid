@@ -107,20 +107,121 @@ public sealed class VaktRoiCalculator
         ArgumentOutOfRangeException.ThrowIfNegative(snittUbalansetillegg_NokMwh);
 
         overflowHours ??= new HashSet<DateTimeOffset>();
-        var result = new List<VaktRoiResultat>(events.Count);
 
+        // Pass 1: klassifiser hvert event (utenfor-vakt / ikke-reddbar / reddbar)
+        // og lag en arbeidsliste med counterfactualEnd per reddbar event.
+        var classified = new List<(DowntimeEvent Event, EventClassification Class, DateTimeOffset? CounterfactualEnd)>(events.Count);
         foreach (var e in events)
         {
             var innenforVakt = _vaktModell.ErInnenforVakt(e.StartUtc);
             var reddbar = ReddbareKategorier.Contains(e.Category);
-
             if (!innenforVakt)
+            {
+                classified.Add((e, EventClassification.UtenforVakt, null));
+            }
+            else if (!reddbar)
+            {
+                classified.Add((e, EventClassification.IkkeReddbar, null));
+            }
+            else
+            {
+                var cf = _vaktModell.NesteArbeidsdagOppstart(e.StartUtc);
+                classified.Add((e, EventClassification.Reddbar, cf));
+            }
+        }
+
+        // Pass 2: grupper reddbare events på (PlantId, counterfactualEnd).
+        // Events i samme gruppe deler vakt-callout — drifts-leders 2026-05-04-
+        // korreksjon: siden plantet er oppe igjen mellom events i samme helg,
+        // skal ikke nye events i samme vindu øke ROI-omfanget.
+        var groups = classified
+            .Where(c => c.Class == EventClassification.Reddbar)
+            .GroupBy(c => (c.Event.PlantId, c.CounterfactualEnd!.Value))
+            .ToDictionary(g => g.Key, g => g.OrderBy(c => c.Event.StartUtc).Select(c => c.Event).ToList());
+
+        // Pass 3: for hver gruppe, beregn felles ROI én gang og avgjør
+        // hvilket event er "leder" (først i tid).
+        //
+        // Ekstra timer beregnes kontinuerlig (brøk-timer beholdes) slik at
+        // ubalanse-komponenten matcher den eksakte tiden plantet er oppe.
+        // Overflow telles per hele klokketime (gulv-kvantisert) fordi
+        // overflow-data leveres per-time fra SCADA. Dette er semantisk likt
+        // som gammel single-event-kalkulator, men generaliserer til grupper.
+        var groupRoi = new Dictionary<(string, DateTimeOffset), GroupRoi>(groups.Count);
+        foreach (var (key, members) in groups)
+        {
+            var leaderStart = members[0].StartUtc;
+            var counterfactualEnd = key.Item2;
+
+            // Slå sammen overlappende/back-to-back events til disjoinkte intervaller
+            // innenfor [leaderStart, counterfactualEnd). Trim hver event til vinduet.
+            var rawIntervals = members
+                .Select(ev =>
+                {
+                    var s = ev.StartUtc < leaderStart ? leaderStart : ev.StartUtc;
+                    var e = ev.EndUtc > counterfactualEnd ? counterfactualEnd : ev.EndUtc;
+                    return (Start: s, End: e);
+                })
+                .Where(iv => iv.End > iv.Start)
+                .OrderBy(iv => iv.Start)
+                .ToList();
+
+            var merged = new List<(DateTimeOffset Start, DateTimeOffset End)>();
+            foreach (var iv in rawIntervals)
+            {
+                if (merged.Count > 0 && iv.Start <= merged[^1].End)
+                {
+                    var last = merged[^1];
+                    merged[^1] = (last.Start, iv.End > last.End ? iv.End : last.End);
+                }
+                else
+                {
+                    merged.Add(iv);
+                }
+            }
+
+            var totalOutageHours = merged.Sum(iv => (iv.End - iv.Start).TotalHours);
+            var windowHours = (counterfactualEnd - leaderStart).TotalHours;
+            var savedHours = Math.Max(0, windowHours - totalOutageHours);
+
+            // Overflow: gulv-kvantiserte timer i vinduet som IKKE er dekket av
+            // noe outage-intervall. Match SCADA-time-aggregat-modellen.
+            var outageHourSet = new HashSet<DateTimeOffset>();
+            foreach (var iv in merged)
+            {
+                var hStart = FloorToHour(iv.Start);
+                var hEnd = FloorToHour(iv.End);
+                for (var h = hStart; h < hEnd; h = h.AddHours(1)) outageHourSet.Add(h);
+            }
+            var savedOverflowHours = 0;
+            var leaderStartHour = FloorToHour(leaderStart);
+            var counterfactualHour = FloorToHour(counterfactualEnd);
+            for (var h = leaderStartHour; h < counterfactualHour; h = h.AddHours(1))
+            {
+                if (outageHourSet.Contains(h)) continue;
+                if (overflowHours.Contains(h)) savedOverflowHours++;
+            }
+
+            groupRoi[key] = new GroupRoi(
+                Members: members,
+                LeaderStart: leaderStart,
+                CounterfactualEnd: counterfactualEnd,
+                SavedHours: savedHours,
+                SavedOverflowHours: savedOverflowHours);
+        }
+
+        // Pass 4: bygg per-event resultater. Leader får full gruppe-ROI;
+        // medlems-events får 0 ROI med forklaring som peker tilbake til leder.
+        var result = new List<VaktRoiResultat>(events.Count);
+        foreach (var (e, klass, cf) in classified)
+        {
+            if (klass == EventClassification.UtenforVakt)
             {
                 result.Add(new VaktRoiResultat
                 {
                     Event = e,
                     ErInnenforVakt = false,
-                    ErReddbar = reddbar,
+                    ErReddbar = ReddbareKategorier.Contains(e.Category),
                     CounterfactualEndUtc = null,
                     EkstraTimerSpart = 0,
                     ReddetMwh = 0,
@@ -134,7 +235,7 @@ public sealed class VaktRoiCalculator
                 continue;
             }
 
-            if (!reddbar)
+            if (klass == EventClassification.IkkeReddbar)
             {
                 result.Add(new VaktRoiResultat
                 {
@@ -154,28 +255,43 @@ public sealed class VaktRoiCalculator
                 continue;
             }
 
-            // Counterfactual: neste arbeidsdag kl. 08:00 lokal tid etter eventets start.
-            // Dette er når driftspersonell ville møtt opp uten vakt.
-            var counterfactualEnd = _vaktModell.NesteArbeidsdagOppstart(e.StartUtc);
+            // Reddbar — slå opp gruppe og bestem rolle (leder/medlem)
+            var groupKey = (e.PlantId, cf!.Value);
+            var group = groupRoi[groupKey];
+            var isLeader = ReferenceEquals(group.Members[0], e);
 
-            // Ekstra timer = counterfactualEnd − faktisk_end. Hvis faktisk_end allerede er
-            // forbi counterfactualEnd (lange events) → ingen ROI fra vakten på den delen.
-            var ekstraTimer = (counterfactualEnd - e.EndUtc).TotalHours;
-            if (ekstraTimer < 0) ekstraTimer = 0;
+            if (!isLeader)
+            {
+                // Medlem — alt ROI er allerede attribuert til leder.
+                var leader = group.Members[0];
+                result.Add(new VaktRoiResultat
+                {
+                    Event = e,
+                    ErInnenforVakt = true,
+                    ErReddbar = true,
+                    CounterfactualEndUtc = cf,
+                    EkstraTimerSpart = 0,
+                    ReddetMwh = 0,
+                    ReddetNok = 0,
+                    ReddetProduksjon_NOK = 0,
+                    ReddetUbalanse_NOK = 0,
+                    OverflowTimerInCounterfactual = 0,
+                    OverflowDataMissing = false,
+                    Forklaring =
+                        $"Samme vakt-callout som event kl. {leader.StartUtc.LocalDateTime:dd.MM HH:mm} — " +
+                        "ROI er allerede regnet på leder-eventet (vakta var allerede ute, ekstra hendelser " +
+                        "i samme vindu øker ikke omfanget).",
+                });
+                continue;
+            }
 
-            // Tell antall timer i counterfactual-perioden som hadde overløp i magasinet.
-            // Vakt-ROI gjelder kun for disse — uten overløp er vannet trygt magasinert.
-            var overflowTimer = ekstraTimer > 0
-                ? CountOverflowHours(e.EndUtc, counterfactualEnd, overflowHours)
-                : 0;
+            // Leder — får full gruppe-ROI.
+            var ekstraTimer = group.SavedHours;
+            var overflowTimer = group.SavedOverflowHours;
 
-            // ---- Produksjons-komponent (overflow-betinget, fra v2) -----------
             var reddetMwh = overflowTimer * installertEffektMw * kapasitetsfaktor;
             var reddetProduksjonNok = reddetMwh * snittSpotprisNokMwh;
 
-            // ---- Ubalanse-komponent (alle counterfactual-timer, ny i v3) ----
-            // Spotbud-forpliktelsen står uavhengig av magasinstand — vakten
-            // redder ubalanse-gebyret i hele counterfactual-vinduet.
             var ubalanseMwh = ekstraTimer * installertEffektMw * kapasitetsfaktor;
             var reddetUbalanseNok = ubalanseMwh * snittUbalansetillegg_NokMwh;
 
@@ -187,12 +303,18 @@ public sealed class VaktRoiCalculator
                 ubalanseMwh, snittUbalansetillegg_NokMwh,
                 reddetProduksjonNok, reddetUbalanseNok);
 
+            if (group.Members.Count > 1)
+            {
+                forklaring +=
+                    $" (Leder for {group.Members.Count} events i samme vakt-vindu — ROI samles her.)";
+            }
+
             result.Add(new VaktRoiResultat
             {
                 Event = e,
                 ErInnenforVakt = true,
                 ErReddbar = true,
-                CounterfactualEndUtc = counterfactualEnd,
+                CounterfactualEndUtc = cf,
                 EkstraTimerSpart = ekstraTimer,
                 ReddetMwh = reddetMwh,
                 ReddetNok = reddetTotalNok,
@@ -206,6 +328,15 @@ public sealed class VaktRoiCalculator
 
         return result;
     }
+
+    private enum EventClassification { UtenforVakt, IkkeReddbar, Reddbar }
+
+    private sealed record GroupRoi(
+        List<DowntimeEvent> Members,
+        DateTimeOffset LeaderStart,
+        DateTimeOffset CounterfactualEnd,
+        double SavedHours,
+        int SavedOverflowHours);
 
     /// <summary>
     /// Teller hele timer i [<paramref name="fromUtc"/>, <paramref name="toUtc"/>)

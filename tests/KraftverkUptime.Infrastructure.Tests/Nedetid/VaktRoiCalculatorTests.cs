@@ -387,4 +387,163 @@ public class VaktRoiCalculatorTests
             snittUbalansetillegg_NokMwh: -100))
             .Should().Throw<ArgumentOutOfRangeException>();
     }
+
+    /// <summary>
+    /// Drifts-leders 2026-05-04-bug: hvis det oppstår flere events i samme
+    /// vakt-vindu (eks. 21.02.2026 helg-callout), skal IKKE alle telles som
+    /// selvstendige ROI-er. Vakta er allerede ute — ekstra hendelser i samme
+    /// helg øker ikke omfanget.
+    /// </summary>
+    [Fact]
+    public void Helg_Flere_Events_I_Samme_Vakt_Vindu_Telles_Som_Ett_Callout()
+    {
+        // Lørdag 21.02.2026 — to events samme helg
+        var event1 = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 2, 21, 16),  // lørdag 16:00
+            EndUtc = OsloLokal(2026, 2, 21, 17),    // 1 t outage
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            CauseCode = "operlog:fault",
+            TapMwh = 1.0, TapNok = 850, TimerSettlement = 1,
+        };
+        var event2 = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 2, 22, 14),  // søndag 14:00
+            EndUtc = OsloLokal(2026, 2, 22, 15),    // 1 t outage
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            CauseCode = "operlog:fault",
+            TapMwh = 1.0, TapNok = 850, TimerSettlement = 1,
+        };
+
+        // Begge har samme counterfactualEnd: mandag 23.02 08:00 lokal
+        var counterfactualEnd = OsloLokal(2026, 2, 23, 8);
+        var overflow = OverflowAlleTimer(event1.StartUtc, counterfactualEnd);
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { event1, event2 },
+            installertEffektMw: 2.2, snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
+            overflowHours: overflow, overflowDataAvailable: true);
+
+        roi.Should().HaveCount(2);
+        var leader = roi.First(r => ReferenceEquals(r.Event, event1));
+        var member = roi.First(r => ReferenceEquals(r.Event, event2));
+
+        // Leder samler hele gruppe-ROI
+        leader.ErReddbar.Should().BeTrue();
+        leader.EkstraTimerSpart.Should().BeApproximately(38, 0.01,
+            "lør 16:00 → man 08:00 = 40 t, minus 2 t faktisk outage = 38 t");
+        leader.ReddetNok.Should().BeGreaterThan(0);
+
+        // Medlem skal ha 0 ROI med eksplisitt forklaring
+        member.ErReddbar.Should().BeTrue();
+        member.EkstraTimerSpart.Should().Be(0);
+        member.ReddetNok.Should().Be(0);
+        member.Forklaring.Should().Contain("Samme vakt-callout");
+    }
+
+    [Fact]
+    public void Helg_Tre_Events_Med_Overlapp_Tellers_Korrekt_I_Union()
+    {
+        // Tre events i samme helg, der event 2 og 3 overlapper i tid.
+        var e1 = MakeEvent(OsloLokal(2026, 2, 21, 16), OsloLokal(2026, 2, 21, 17)); // 1t
+        var e2 = MakeEvent(OsloLokal(2026, 2, 22, 10), OsloLokal(2026, 2, 22, 12)); // 2t
+        var e3 = MakeEvent(OsloLokal(2026, 2, 22, 11), OsloLokal(2026, 2, 22, 13)); // 2t (overlapper med e2)
+        // Union av outage = {16-17, 10-13} = 1t + 3t = 4t totalt
+
+        var counterfactualEnd = OsloLokal(2026, 2, 23, 8);
+        var overflow = OverflowAlleTimer(e1.StartUtc, counterfactualEnd);
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { e1, e2, e3 },
+            installertEffektMw: 2.2, snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
+            overflowHours: overflow, overflowDataAvailable: true);
+
+        var leader = roi.First(r => ReferenceEquals(r.Event, e1));
+        // Vindu = lør 16:00 → man 08:00 = 40 t. Minus 4 t union = 36 t.
+        leader.EkstraTimerSpart.Should().BeApproximately(36, 0.01);
+
+        // De to andre er medlemmer
+        roi.Where(r => ReferenceEquals(r.Event, e2) || ReferenceEquals(r.Event, e3))
+            .Should().AllSatisfy(r => r.EkstraTimerSpart.Should().Be(0));
+    }
+
+    [Fact]
+    public void Events_I_Forskjellige_Vakt_Vinduer_Tellers_Selvstendig()
+    {
+        // To events i forskjellige helger — hver sin counterfactual og ROI
+        var e1 = MakeEvent(OsloLokal(2026, 2, 14, 16), OsloLokal(2026, 2, 14, 17)); // helg 1
+        var e2 = MakeEvent(OsloLokal(2026, 2, 21, 16), OsloLokal(2026, 2, 21, 17)); // helg 2
+
+        var counterfactual1 = OsloLokal(2026, 2, 16, 8); // 14.02 lør → 16.02 man
+        var counterfactual2 = OsloLokal(2026, 2, 23, 8);
+        var overflow = OverflowAlleTimer(e1.StartUtc, counterfactual2);
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { e1, e2 },
+            installertEffektMw: 2.2, snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
+            overflowHours: overflow, overflowDataAvailable: true);
+
+        // Begge er ledere for sin gruppe — begge får full ROI
+        roi.Should().HaveCount(2);
+        roi[0].EkstraTimerSpart.Should().BeApproximately(39, 0.01,
+            "helg 1: lør 16:00 → man 08:00 = 40 t, minus 1 t = 39 t");
+        roi[1].EkstraTimerSpart.Should().BeApproximately(39, 0.01, "samme math for helg 2");
+    }
+
+    [Fact]
+    public void Forskjellige_Anlegg_Samme_Vindu_Tellers_Selvstendig()
+    {
+        // Drivdal-event og Haukland-event samme helg = forskjellige vakt-callouts
+        // (eller i hvert fall forskjellige anlegg — ROI per plant er separat).
+        var e1 = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 2, 21, 16),
+            EndUtc = OsloLokal(2026, 2, 21, 17),
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            TapMwh = 1.0, TapNok = 850, TimerSettlement = 1,
+        };
+        var e2 = new DowntimeEvent
+        {
+            PlantId = "haukland",
+            StartUtc = OsloLokal(2026, 2, 21, 18),
+            EndUtc = OsloLokal(2026, 2, 21, 19),
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            TapMwh = 1.0, TapNok = 850, TimerSettlement = 1,
+        };
+
+        var counterfactual = OsloLokal(2026, 2, 23, 8);
+        var overflow = OverflowAlleTimer(e1.StartUtc, counterfactual);
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { e1, e2 },
+            installertEffektMw: 2.2, snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
+            overflowHours: overflow, overflowDataAvailable: true);
+
+        // Begge får sin egen ROI siden de er forskjellige plants
+        roi.Should().HaveCount(2);
+        roi.Should().AllSatisfy(r =>
+        {
+            r.ErReddbar.Should().BeTrue();
+            r.EkstraTimerSpart.Should().BeGreaterThan(0);
+        });
+    }
+
+    private static DowntimeEvent MakeEvent(DateTimeOffset start, DateTimeOffset end)
+        => new()
+        {
+            PlantId = "drivdal",
+            StartUtc = start,
+            EndUtc = end,
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            CauseCode = "operlog:fault",
+            TapMwh = 1.0, TapNok = 850, TimerSettlement = 1,
+        };
 }
