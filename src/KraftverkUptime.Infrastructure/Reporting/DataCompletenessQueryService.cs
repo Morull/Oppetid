@@ -184,7 +184,13 @@ public sealed class DataCompletenessQueryService : IDataCompletenessQueryService
                         Status: status,
                         LastImportedAt: hit.Last.ImportedAtUtc,
                         CoveragePct: coverage,
-                        ImportCount: hit.Count);
+                        ImportCount: hit.Count,
+                        ImportPeriodFromUtc: hit.Last.PeriodFromUtc,
+                        ImportPeriodToUtc: hit.Last.PeriodToUtc,
+                        RowsImported: hit.Last.RowsImported,
+                        FileName: hit.Last.FileName,
+                        Notes: hit.Last.Notes,
+                        Threshold: threshold);
                 }
                 else
                 {
@@ -195,7 +201,10 @@ public sealed class DataCompletenessQueryService : IDataCompletenessQueryService
                             Status: "OVERDUE",
                             LastImportedAt: null,
                             CoveragePct: null,
-                            ImportCount: 0);
+                            ImportCount: 0,
+                            Threshold: exp.CompletionThresholdPct > 0
+                                ? exp.CompletionThresholdPct
+                                : CompleteCoverageThreshold);
                     }
                     else
                     {

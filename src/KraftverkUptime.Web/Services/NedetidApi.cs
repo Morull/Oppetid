@@ -510,7 +510,13 @@ public sealed record DataCompletenessCellDto(
     string Status,
     DateTimeOffset? LastImportedAt,
     double? CoveragePct,
-    int ImportCount);
+    int ImportCount,
+    DateTimeOffset? ImportPeriodFromUtc = null,
+    DateTimeOffset? ImportPeriodToUtc = null,
+    int? RowsImported = null,
+    string? FileName = null,
+    string? Notes = null,
+    double? Threshold = null);
 
 public sealed record MissingImportDto(
     string PlantId,

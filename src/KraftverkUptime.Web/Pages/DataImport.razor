@@ -296,11 +296,22 @@
                                                     {
                                                         <span class="cell-box cell-box--na" title="Ikke aktiv kilde">·</span>
                                                     }
-                                                    else
+                                                    else if (cell.Status == "COMPLETE")
                                                     {
                                                         <MudTooltip Text="@CellTooltip(cell)">
-                                                            <span class="cell-box @CellBoxClass(cell.Status)"
-                                                                  style="@CellBoxFill(cell)">
+                                                            <span class="cell-box @CellBoxClass(cell.Status)">
+                                                                <span>@CellBoxLabel(cell)</span>
+                                                            </span>
+                                                        </MudTooltip>
+                                                    }
+                                                    else
+                                                    {
+                                                        @* Klikkbar — åpner detalj-modal med "hva mangler" *@
+                                                        var clickCell = cell;
+                                                        <MudTooltip Text="@(CellTooltip(cell) + " — klikk for detaljer")">
+                                                            <span class="cell-box cell-box--clickable @CellBoxClass(cell.Status)"
+                                                                  style="@CellBoxFill(cell)"
+                                                                  @onclick="@(() => OpenCellDetail(clickCell))">
                                                                 <span>@CellBoxLabel(cell)</span>
                                                             </span>
                                                         </MudTooltip>
@@ -690,6 +701,14 @@
         border: 1px dashed var(--mud-palette-lines-default);
         opacity: 0.4;
     }
+    .cell-box--clickable {
+        cursor: pointer;
+        transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .cell-box--clickable:hover {
+        transform: scale(1.15);
+        box-shadow: 0 0 0 2px var(--mud-palette-primary);
+    }
     /* Legend: samme bokser, mindre */
     .cell-box--legend { width: 16px; height: 16px; font-size: 10px; }
     /* Symbol-versjon beholdes for legacy bruk (Top 5 osv) */
@@ -848,6 +867,179 @@
     </DialogActions>
 </MudDialog>
 
+@* ---- Celle-detalj-modal: hva mangler i en delvis/forfalt celle ---- *@
+<MudDialog @bind-Visible="_cellDetailOpen" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
+    <TitleContent>
+        @if (_cellDetail is { } c)
+        {
+            <MudIcon Icon="@(c.Status == "OVERDUE" ? Icons.Material.Filled.Error : Icons.Material.Filled.PieChartOutline)"
+                     Class="mr-2"
+                     Color="@(c.Status == "OVERDUE" ? MudBlazor.Color.Error : MudBlazor.Color.Warning)" />
+            <span>@c.PlantId — @FormatSource(c.SourceType) — @c.Period.LocalDateTime.ToString("MMMM yyyy")</span>
+        }
+    </TitleContent>
+    <DialogContent>
+        @if (_cellDetail is { } cell)
+        {
+            var (coveredDays, totalDays, missingFrom, missingTo) = ComputeMonthCoverage(cell);
+            var coveragePct = (cell.CoveragePct ?? 0) * 100;
+            var thresholdPct = (cell.Threshold ?? 0.95) * 100;
+
+            <MudGrid Spacing="2">
+                @if (cell.Status == "OVERDUE")
+                {
+                    <MudItem xs="12">
+                        <MudAlert Severity="Severity.Error" Dense="true">
+                            <strong>Ingen import mottatt</strong> for denne måneden enda.
+                            Forventet senest @(cell.Period.AddMonths(1).LocalDateTime.ToString("dd.MM.yyyy")) +
+                            lag-dager (se PlantAdmin → Forventede datakilder).
+                        </MudAlert>
+                    </MudItem>
+                }
+                else
+                {
+                    @* Status-strip *@
+                    <MudItem xs="12">
+                        <div class="d-flex align-center" style="gap:12px;">
+                            <span class="cell-box cell-box--partial" style="--fill:@($"{coveragePct:F0}")%; width:32px; height:32px;"></span>
+                            <div>
+                                <MudText Typo="Typo.h6">Dekning: @coveragePct.ToString("F1") %</MudText>
+                                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                                    Grense for komplett: @thresholdPct.ToString("F0") %
+                                    — mangler @((thresholdPct - coveragePct).ToString("F1")) prosentpoeng
+                                </MudText>
+                            </div>
+                        </div>
+                    </MudItem>
+
+                    @* Periode-dekning *@
+                    <MudItem xs="12">
+                        <table class="diag-key-value" style="width:100%;">
+                            <tr>
+                                <th>Måneden i tabellen</th>
+                                <td>@cell.Period.LocalDateTime.ToString("dd.MM.yyyy") — @cell.Period.AddMonths(1).LocalDateTime.AddDays(-1).ToString("dd.MM.yyyy") (@totalDays dager)</td>
+                            </tr>
+                            @if (cell.ImportPeriodFromUtc is not null && cell.ImportPeriodToUtc is not null)
+                            {
+                                <tr>
+                                    <th>Importert periode</th>
+                                    <td>@cell.ImportPeriodFromUtc.Value.LocalDateTime.ToString("dd.MM.yyyy HH:mm") — @cell.ImportPeriodToUtc.Value.LocalDateTime.ToString("dd.MM.yyyy HH:mm")</td>
+                                </tr>
+                                <tr>
+                                    <th>Dekket dager i måneden</th>
+                                    <td>@coveredDays / @totalDays dager</td>
+                                </tr>
+                            }
+                            @if (cell.RowsImported is { } rows)
+                            {
+                                <tr><th>Antall rader importert</th><td>@rows.ToString("N0")</td></tr>
+                            }
+                            @if (!string.IsNullOrEmpty(cell.FileName))
+                            {
+                                <tr><th>Fil</th><td style="word-break:break-all;">@cell.FileName</td></tr>
+                            }
+                            @if (cell.LastImportedAt is { } imported)
+                            {
+                                <tr><th>Sist importert</th><td>@imported.LocalDateTime.ToString("dd.MM.yyyy HH:mm")</td></tr>
+                            }
+                            @if (cell.ImportCount > 1)
+                            {
+                                <tr><th>Antall imports som dekker måneden</th><td>@cell.ImportCount (siste/beste vinner)</td></tr>
+                            }
+                            @if (!string.IsNullOrEmpty(cell.Notes))
+                            {
+                                <tr><th>Notat</th><td>@cell.Notes</td></tr>
+                            }
+                        </table>
+                    </MudItem>
+
+                    @* Hva mangler — basert på om gap-en er periode-grenset eller per-time *@
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.subtitle2" Class="mb-1">Hva mangler</MudText>
+                        @if (missingFrom is not null && missingTo is not null)
+                        {
+                            var missingDays = (int)Math.Round((missingTo.Value - missingFrom.Value).TotalDays);
+                            <MudAlert Severity="Severity.Warning" Dense="true">
+                                <strong>Periode-grenset gap:</strong>
+                                @missingFrom.Value.LocalDateTime.ToString("dd.MM.yyyy") —
+                                @missingTo.Value.LocalDateTime.AddDays(-1).ToString("dd.MM.yyyy")
+                                (@missingDays dager).<br />
+                                <span style="font-size:0.9em;">
+                                    Eksporten dekker bare deler av måneden. Last opp en ny eksport
+                                    som inkluderer @missingFrom.Value.LocalDateTime.ToString("MMMM yyyy") for
+                                    å fylle hullet.
+                                </span>
+                            </MudAlert>
+                        }
+                        else if (cell.ImportPeriodFromUtc is not null)
+                        {
+                            // Hele måneden dekket av import-perioden, men dekning < threshold —
+                            // det betyr per-time-gap (manglende rader, sensor-feil, eller hull i kilden)
+                            var expectedRows = totalDays * 24;
+                            var actualRows = cell.RowsImported ?? 0;
+                            var missingRows = Math.Max(0, expectedRows - actualRows);
+                            <MudAlert Severity="Severity.Warning" Dense="true">
+                                <strong>Hull i tids-rader:</strong> hele måneden er innenfor importens periode,
+                                men dekningen er @coveragePct.ToString("F1") %.<br />
+                                <span style="font-size:0.9em;">
+                                    @if (cell.SourceType == "scada")
+                                    {
+                                        <span>Forventet ca. @expectedRows.ToString("N0") timer (@totalDays × 24).
+                                        Importert @actualRows.ToString("N0") — dvs. @missingRows.ToString("N0") timer mangler.
+                                        Sannsynlig årsak: sensor-feil, kommunikasjonsavbrudd eller hull i SCADA-eksport.</span>
+                                    }
+                                    else if (cell.SourceType == "settlement")
+                                    {
+                                        <span>Forventet 720+ timer for en månedlig avregning.
+                                        Importert @actualRows.ToString("N0"). Sjekk om filen mangler timer
+                                        (DST-overgang i mars/oktober gir små legitime hull).</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Operlog er event-basert; dekning beregnes på en annen måte.
+                                        Hopp over hvis det ikke er konsistent feilmønster.</span>
+                                    }
+                                </span>
+                            </MudAlert>
+                        }
+                        else
+                        {
+                            <MudAlert Severity="Severity.Info" Dense="true">
+                                Ingen import-detaljer registrert for denne cellen. Mulig at expectation
+                                er aktiv før første import er logget — sjekk PlantAdmin.
+                            </MudAlert>
+                        }
+                    </MudItem>
+
+                    @* Forslag til handling *@
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.subtitle2" Class="mb-1">Forslag</MudText>
+                        <ul style="margin:0; padding-left:20px; font-size:0.9em;">
+                            @if (missingFrom is not null)
+                            {
+                                <li>Eksporter ny fil fra KAIA/SCADA som dekker @missingFrom.Value.LocalDateTime.ToString("MMMM yyyy"), legg den i /imports.</li>
+                            }
+                            else if (cell.SourceType == "scada")
+                            {
+                                <li>Sjekk om SCADA-eksporten har sensor-feil/kommunikasjonsbrudd i denne perioden.</li>
+                                <li>Hvis dekning er forventet for dette anlegget (kjent sensor-utfordring), senk <em>completion_threshold_pct</em> i PlantAdmin.</li>
+                            }
+                            else
+                            {
+                                <li>Sjekk eksporten mot kilden — manglende timer kan være DST-relaterte (legitim) eller hull (ikke ok).</li>
+                            }
+                            <li>For å re-importere en eksport: legg fila i /imports — duplikat-vakt fanger om innholdet er identisk med tidligere import.</li>
+                        </ul>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseCellDetail">Lukk</MudButton>
+    </DialogActions>
+</MudDialog>
+
 @code {
     [SupplyParameterFromQuery(Name = "plant")] public string? PreselectedPlantId { get; set; }
     [SupplyParameterFromQuery(Name = "tab")] public string? InitialTab { get; set; }
@@ -881,6 +1073,10 @@
     private bool _diagLoading;
     private string? _diagFileName;
     private HotFolderDiagnoseResultDto? _diagResult;
+
+    // Cell-detail-modal (hva mangler i en delvis celle)
+    private bool _cellDetailOpen;
+    private DataCompletenessCellDto? _cellDetail;
 
     // Single-plant upload
     private string _selectedPlantId = string.Empty;
@@ -1046,6 +1242,64 @@
         _diagOpen = false;
         _diagResult = null;
         _diagFileName = null;
+    }
+
+    /// <summary>
+    /// Åpne celle-detalj-modal som viser nøyaktig hva som mangler i en delvis-
+    /// (eller forfalt-) celle. For PARTIAL: hvilken periode importen dekket vs
+    /// månedens grenser, hvor mange rader, sannsynlig årsak. For OVERDUE: bare
+    /// "ingen import mottatt enda".
+    /// </summary>
+    private void OpenCellDetail(DataCompletenessCellDto cell)
+    {
+        if (cell.Status == "COMPLETE") return; // ingenting å vise — celle er full
+        _cellDetail = cell;
+        _cellDetailOpen = true;
+    }
+
+    private void CloseCellDetail()
+    {
+        _cellDetailOpen = false;
+        _cellDetail = null;
+    }
+
+    /// <summary>
+    /// Beregner hvor mange dager av en måned som er dekket av importen,
+    /// totalt antall dager i måneden, og perioden som mangler.
+    /// </summary>
+    private static (int CoveredDays, int TotalDays, DateTimeOffset? MissingFrom, DateTimeOffset? MissingTo)
+        ComputeMonthCoverage(DataCompletenessCellDto cell)
+    {
+        var monthStart = cell.Period;
+        var monthEnd = cell.Period.AddMonths(1);
+        var totalDays = (int)Math.Round((monthEnd - monthStart).TotalDays);
+
+        if (cell.ImportPeriodFromUtc is null || cell.ImportPeriodToUtc is null)
+        {
+            return (0, totalDays, monthStart, monthEnd);
+        }
+
+        var importFrom = cell.ImportPeriodFromUtc.Value;
+        var importTo = cell.ImportPeriodToUtc.Value;
+        var overlapStart = importFrom > monthStart ? importFrom : monthStart;
+        var overlapEnd = importTo < monthEnd ? importTo : monthEnd;
+        var coveredDays = Math.Max(0, (int)Math.Round((overlapEnd - overlapStart).TotalDays));
+
+        // Manglende del — viser den største sammenhengende ikke-dekkede biten
+        // (tidlig-i-måned eller sent-i-måned). Hvis hele måneden er dekket
+        // men dekning < 100% pga timehull: returnerer null-range.
+        if (overlapStart > monthStart && overlapEnd < monthEnd)
+        {
+            // Begge ender mangler — vis den lengste
+            var earlyGap = (overlapStart - monthStart).TotalDays;
+            var lateGap = (monthEnd - overlapEnd).TotalDays;
+            return earlyGap >= lateGap
+                ? (coveredDays, totalDays, monthStart, overlapStart)
+                : (coveredDays, totalDays, overlapEnd, monthEnd);
+        }
+        if (overlapStart > monthStart) return (coveredDays, totalDays, monthStart, overlapStart);
+        if (overlapEnd < monthEnd) return (coveredDays, totalDays, overlapEnd, monthEnd);
+        return (coveredDays, totalDays, null, null); // hele måneden dekket — gap er per-time
     }
 
     /// <summary>

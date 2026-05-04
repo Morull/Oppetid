@@ -86,7 +86,13 @@ public static class DataStatusEndpoints
                 kv.Value.Status,
                 kv.Value.LastImportedAt,
                 kv.Value.CoveragePct,
-                kv.Value.ImportCount))
+                kv.Value.ImportCount,
+                kv.Value.ImportPeriodFromUtc,
+                kv.Value.ImportPeriodToUtc,
+                kv.Value.RowsImported,
+                kv.Value.FileName,
+                kv.Value.Notes,
+                kv.Value.Threshold))
             .ToList();
 
         return Results.Ok(new DataCompletenessMatrixResponse(
@@ -147,4 +153,10 @@ public sealed record DataCompletenessCellDto(
     string Status,
     DateTimeOffset? LastImportedAt,
     double? CoveragePct,
-    int ImportCount);
+    int ImportCount,
+    DateTimeOffset? ImportPeriodFromUtc = null,
+    DateTimeOffset? ImportPeriodToUtc = null,
+    int? RowsImported = null,
+    string? FileName = null,
+    string? Notes = null,
+    double? Threshold = null);

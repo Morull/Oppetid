@@ -80,12 +80,24 @@ public readonly record struct DataCompletenessKey(
 /// <summary>
 /// Status for én (plant, source, period)-celle i matrisen.
 /// <see cref="Status"/>: COMPLETE / PARTIAL / PENDING / OVERDUE.
+///
+/// For PARTIAL/COMPLETE-celler er import-detaljene (<see cref="ImportPeriodFromUtc"/>,
+/// <see cref="RowsImported"/>, <see cref="FileName"/>) hentet fra den siste vinnende
+/// importen for cellen. UI bruker disse for å vise "hva mangler" når brukeren
+/// klikker på en delvis celle. Threshold er den effektive grensen for COMPLETE
+/// (per-(plant,source) i <c>data_source_expectations.completion_threshold_pct</c>).
 /// </summary>
 public sealed record DataCompletenessCell(
     string Status,
     DateTimeOffset? LastImportedAt,
     double? CoveragePct,
-    int ImportCount);
+    int ImportCount,
+    DateTimeOffset? ImportPeriodFromUtc = null,
+    DateTimeOffset? ImportPeriodToUtc = null,
+    int? RowsImported = null,
+    string? FileName = null,
+    string? Notes = null,
+    double? Threshold = null);
 
 /// <summary>
 /// En forventet import som ikke har kommet — sortert etter overdue-dager.
