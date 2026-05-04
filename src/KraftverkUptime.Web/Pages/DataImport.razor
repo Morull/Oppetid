@@ -140,7 +140,7 @@
                             </MudButton>
                         </div>
                         <MudSimpleTable Dense="true" Style="background:transparent;">
-                            <thead><tr><th>Filnavn</th><th>Tidspunkt</th><th>Notat</th></tr></thead>
+                            <thead><tr><th>Filnavn</th><th>Tidspunkt</th><th>Notat</th><th style="width:120px;">Diagnose</th></tr></thead>
                             <tbody>
                             @foreach (var r in _hotFolder.Recent.Where(r => r.Status == "QUARANTINE"))
                             {
@@ -148,6 +148,31 @@
                                     <td>@r.FileName</td>
                                     <td>@RelativeTime(r.ProcessedAtUtc)</td>
                                     <td style="font-size:0.85em; color:var(--mud-palette-error);">@r.Notes</td>
+                                    <td>
+                                        <MudButton Variant="Variant.Text" Size="Size.Small"
+                                                   StartIcon="@Icons.Material.Filled.BugReport"
+                                                   Color="MudBlazor.Color.Info"
+                                                   OnClick="@(() => OpenDiagnoseAsync(r.FileName))">
+                                            Vis
+                                        </MudButton>
+                                    </td>
+                                </tr>
+                            }
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+                    @if (_hotFolder.Recent.Any(r => r.Status == "DUPLICATE"))
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mt-3">Duplikater (allerede importert tidligere)</MudText>
+                        <MudSimpleTable Dense="true" Style="background:transparent;">
+                            <thead><tr><th>Filnavn</th><th>Tidspunkt</th><th>Detaljer</th></tr></thead>
+                            <tbody>
+                            @foreach (var r in _hotFolder.Recent.Where(r => r.Status == "DUPLICATE"))
+                            {
+                                <tr>
+                                    <td>@r.FileName</td>
+                                    <td>@RelativeTime(r.ProcessedAtUtc)</td>
+                                    <td style="font-size:0.85em; color:var(--mud-palette-text-secondary);">@r.Notes</td>
                                 </tr>
                             }
                             </tbody>
@@ -269,13 +294,14 @@
                                                 <td class="cell" style="@(visible ? "" : "opacity:0.3")">
                                                     @if (cell is null)
                                                     {
-                                                        <span class="cell-symbol cell-na" title="Ikke aktiv kilde">.</span>
+                                                        <span class="cell-box cell-box--na" title="Ikke aktiv kilde">·</span>
                                                     }
                                                     else
                                                     {
                                                         <MudTooltip Text="@CellTooltip(cell)">
-                                                            <span class="cell-symbol @CellClass(cell.Status)">
-                                                                @CellSymbol(cell.Status)
+                                                            <span class="cell-box @CellBoxClass(cell.Status)"
+                                                                  style="@CellBoxFill(cell)">
+                                                                <span>@CellBoxLabel(cell)</span>
                                                             </span>
                                                         </MudTooltip>
                                                     }
@@ -287,12 +313,20 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="mt-3" style="font-size:0.85em;">
-                        <strong>Symbol:</strong>
-                        <span class="cell-symbol cell-complete ml-2">█</span> Komplett
-                        <span class="cell-symbol cell-partial ml-2">░</span> Delvis
-                        <span class="cell-symbol cell-overdue ml-2">!</span> Forfalt
-                        <span class="cell-symbol cell-na ml-2">.</span> Ingen forventning
+                    <div class="mt-3 d-flex align-center flex-wrap" style="font-size:0.9em; gap:14px;">
+                        <strong>Tegnforklaring:</strong>
+                        <span class="d-inline-flex align-center" style="gap:6px;">
+                            <span class="cell-box cell-box--legend cell-box--complete"></span> Komplett
+                        </span>
+                        <span class="d-inline-flex align-center" style="gap:6px;">
+                            <span class="cell-box cell-box--legend cell-box--partial" style="--fill:50%"></span> Delvis (fyllgrad = dekning)
+                        </span>
+                        <span class="d-inline-flex align-center" style="gap:6px;">
+                            <span class="cell-box cell-box--legend cell-box--overdue"><span>!</span></span> Forfalt
+                        </span>
+                        <span class="d-inline-flex align-center" style="gap:6px;">
+                            <span class="cell-box cell-box--legend cell-box--na"></span> Ingen forventning
+                        </span>
                     </div>
                 }
 
@@ -573,35 +607,93 @@
 <style>
     .data-status-matrix {
         border-collapse: collapse;
-        font-size: 0.85em;
         font-family: monospace;
+        font-size: 0.95em;
     }
     .data-status-matrix th, .data-status-matrix td {
         border: 1px solid var(--mud-palette-lines-default);
-        padding: 4px 6px;
+        padding: 6px 8px;
         text-align: center;
+        vertical-align: middle;
     }
     .data-status-matrix th.plant-col, .data-status-matrix td.plant-col {
         text-align: left;
         font-family: inherit;
-        min-width: 100px;
+        min-width: 110px;
+        font-weight: 500;
     }
     .data-status-matrix th.period-col {
         background: var(--mud-palette-background-grey);
-        font-size: 0.9em;
+        font-size: 0.95em;
+        font-weight: 500;
+        padding: 6px 4px;
     }
     .data-status-matrix th.source-col {
-        font-weight: 400;
-        font-size: 0.7em;
+        font-weight: 500;
+        font-size: 0.8em;
         color: var(--mud-palette-text-secondary);
+        padding: 2px 4px;
     }
+    /* Hver celle er en fast-størrelse boks — ingen overflow uansett innhold. */
     .data-status-matrix td.cell {
-        width: 24px;
+        width: 32px;
+        height: 32px;
+        padding: 2px;
     }
-    .cell-symbol {
-        font-weight: bold;
-        font-family: monospace;
+    /* Bytter ut unicode block-tegn med eksplisitte fargete bokser så
+       PARTIAL/COMPLETE-rendering er deterministisk uavhengig av font. */
+    .cell-box {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1;
+        overflow: hidden;
+        position: relative;
     }
+    .cell-box--complete {
+        background: var(--mud-palette-success);
+        color: white;
+    }
+    /* PARTIAL: grå base + grønn fyll-stripe som proporsjon av coverage.
+       Bruker --fill CSS-variabel som settes inline per celle. */
+    .cell-box--partial {
+        background: var(--mud-palette-background-grey);
+        color: var(--mud-palette-warning-darken);
+        border: 1px solid var(--mud-palette-warning);
+    }
+    .cell-box--partial::before {
+        content: "";
+        position: absolute;
+        left: 0; bottom: 0; right: 0;
+        height: var(--fill, 50%);
+        background: var(--mud-palette-warning);
+        opacity: 0.55;
+        z-index: 0;
+    }
+    .cell-box--partial > span { position: relative; z-index: 1; }
+    .cell-box--overdue {
+        background: var(--mud-palette-error);
+        color: white;
+    }
+    .cell-box--pending {
+        background: var(--mud-palette-info);
+        color: white;
+    }
+    .cell-box--na {
+        background: transparent;
+        color: var(--mud-palette-text-disabled);
+        border: 1px dashed var(--mud-palette-lines-default);
+        opacity: 0.4;
+    }
+    /* Legend: samme bokser, mindre */
+    .cell-box--legend { width: 16px; height: 16px; font-size: 10px; }
+    /* Symbol-versjon beholdes for legacy bruk (Top 5 osv) */
+    .cell-symbol { font-weight: bold; font-family: monospace; }
     .cell-complete { color: var(--mud-palette-success); }
     .cell-partial  { color: var(--mud-palette-warning); }
     .cell-pending  { color: var(--mud-palette-info); }
@@ -617,7 +709,144 @@
         border-color: var(--mud-palette-primary);
         background: rgba(30, 95, 142, 0.04);
     }
+    .diag-attempts {
+        font-family: monospace;
+        font-size: 0.85em;
+        background: var(--mud-palette-background-grey);
+        padding: 8px 12px;
+        border-radius: 4px;
+        max-height: 320px;
+        overflow-y: auto;
+    }
+    .diag-attempts li { margin: 2px 0; }
+    .diag-key-value {
+        font-family: monospace;
+        font-size: 0.85em;
+    }
+    .diag-key-value th { text-align: left; padding-right: 12px; color: var(--mud-palette-text-secondary); font-weight: 400; vertical-align: top; }
+    .diag-key-value td { word-break: break-all; }
 </style>
+
+@* ---- Diagnose-modal ---- *@
+<MudDialog @bind-Visible="_diagOpen" Options="@(new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true })">
+    <TitleContent>
+        <MudIcon Icon="@Icons.Material.Filled.BugReport" Class="mr-2" />
+        Diagnose: @_diagFileName
+    </TitleContent>
+    <DialogContent>
+        @if (_diagLoading)
+        {
+            <MudProgressCircular Indeterminate="true" />
+            <MudText Class="ml-2 d-inline">Henter detaljer…</MudText>
+        }
+        else if (_diagResult is null)
+        {
+            <MudAlert Severity="Severity.Warning">Klarte ikke å hente diagnose. Filen er kanskje flyttet.</MudAlert>
+        }
+        else
+        {
+            <MudGrid Spacing="2">
+                <MudItem xs="12">
+                    <table class="diag-key-value">
+                        <tr><th>Filstørrelse</th><td>@(_diagResult.FileSizeBytes / 1024) KB</td></tr>
+                        <tr><th>I karantene siden</th><td>@_diagResult.QuarantinedAtUtc.LocalDateTime.ToString("dd.MM.yyyy HH:mm")</td></tr>
+                        @if (_diagResult.Diagnostics is not null)
+                        {
+                            <tr><th>Detektert filtype</th><td>@(_diagResult.Diagnostics.DetectedSourceType ?? "(ingen)")</td></tr>
+                            <tr><th>Plant-id resolved</th><td>@(_diagResult.Diagnostics.ResolvedPlantId ?? "(ingen)")</td></tr>
+                        }
+                    </table>
+                </MudItem>
+
+                @if (!string.IsNullOrEmpty(_diagResult.ErrorMessage))
+                {
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.subtitle2">Feilmelding</MudText>
+                        <MudAlert Severity="Severity.Error" Dense="true" Class="mt-1">@_diagResult.ErrorMessage</MudAlert>
+                    </MudItem>
+                }
+
+                @if (_diagResult.Diagnostics is { Attempts: { Count: > 0 } } d)
+                {
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.subtitle2">Detektor-trase (steg-for-steg)</MudText>
+                        <ol class="diag-attempts">
+                            @foreach (var step in d.Attempts)
+                            {
+                                <li>@step</li>
+                            }
+                        </ol>
+                    </MudItem>
+
+                    @if (d.SheetNames is { Count: > 0 })
+                    {
+                        <MudItem xs="12">
+                            <MudText Typo="Typo.subtitle2">Faner i workbook</MudText>
+                            <ul class="diag-attempts">
+                                @foreach (var sheet in d.SheetNames)
+                                {
+                                    <li>
+                                        <strong>@sheet</strong>
+                                        @if (d.SheetTitleCells.TryGetValue(sheet, out var a1))
+                                        {
+                                            <span style="color:var(--mud-palette-text-secondary);"> — A1: "@a1"</span>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        </MudItem>
+                    }
+
+                    @if (!string.IsNullOrEmpty(d.HeaderLine))
+                    {
+                        <MudItem xs="12">
+                            <MudText Typo="Typo.subtitle2">CSV-header (truncated)</MudText>
+                            <pre class="diag-attempts" style="white-space:pre-wrap;">@d.HeaderLine</pre>
+                        </MudItem>
+                    }
+
+                    @if (d.ScadaPrefixCounts is { Count: > 0 })
+                    {
+                        <MudItem xs="12">
+                            <MudText Typo="Typo.subtitle2">SCADA tag-prefikser i header</MudText>
+                            <table class="diag-key-value">
+                                @foreach (var kv in d.ScadaPrefixCounts.OrderByDescending(p => p.Value))
+                                {
+                                    <tr><th>@kv.Key</th><td>@kv.Value tags</td></tr>
+                                }
+                            </table>
+                        </MudItem>
+                    }
+
+                    @if (d.OperlogStations is { Count: > 0 })
+                    {
+                        <MudItem xs="12">
+                            <MudText Typo="Typo.subtitle2">Operlog stations (topp)</MudText>
+                            <table class="diag-key-value">
+                                @foreach (var kv in d.OperlogStations.OrderByDescending(p => p.Value))
+                                {
+                                    <tr><th>@kv.Key</th><td>@kv.Value rader</td></tr>
+                                }
+                            </table>
+                        </MudItem>
+                    }
+                }
+                else if (_diagResult.HasDetailedDiagnostics == false)
+                {
+                    <MudItem xs="12">
+                        <MudAlert Severity="Severity.Info" Dense="true">
+                            Ingen detaljert detektor-trase tilgjengelig (eldre fil eller import-feil).
+                            Kun feilmelding over.
+                        </MudAlert>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDiagnose">Lukk</MudButton>
+    </DialogActions>
+</MudDialog>
 
 @code {
     [SupplyParameterFromQuery(Name = "plant")] public string? PreselectedPlantId { get; set; }
@@ -646,6 +875,12 @@
     private HotFolderStatusDto? _hotFolder;
     private bool _scanning;
     private bool _retryingQuarantine;
+
+    // Diagnose-modal
+    private bool _diagOpen;
+    private bool _diagLoading;
+    private string? _diagFileName;
+    private HotFolderDiagnoseResultDto? _diagResult;
 
     // Single-plant upload
     private string _selectedPlantId = string.Empty;
@@ -783,6 +1018,36 @@
         }
     }
 
+    /// <summary>Hent og vis detaljert diagnose for en karantenert fil.</summary>
+    private async Task OpenDiagnoseAsync(string fileName)
+    {
+        _diagOpen = true;
+        _diagLoading = true;
+        _diagFileName = fileName;
+        _diagResult = null;
+        StateHasChanged();
+        try
+        {
+            _diagResult = await NedetidApi.DiagnoseQuarantineAsync(fileName);
+            if (_diagResult is null)
+            {
+                Snackbar.Add("Klarte ikke å hente diagnose for fila.", Severity.Warning);
+            }
+        }
+        finally
+        {
+            _diagLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseDiagnose()
+    {
+        _diagOpen = false;
+        _diagResult = null;
+        _diagFileName = null;
+    }
+
     /// <summary>
     /// Trigger manuell scan av auto-import-mappa. Re-loader status etter
     /// 2 sekunder slik at brukeren ser eventuelle nye filer i køen.
@@ -840,6 +1105,37 @@
     {
         "COMPLETE" => "cell-complete", "PARTIAL" => "cell-partial",
         "PENDING" => "cell-pending", "OVERDUE" => "cell-overdue", _ => "cell-na",
+    };
+
+    /// <summary>CSS-klasse for fargete celle-bokser i status-matrisen.</summary>
+    private static string CellBoxClass(string status) => status switch
+    {
+        "COMPLETE" => "cell-box--complete",
+        "PARTIAL"  => "cell-box--partial",
+        "PENDING"  => "cell-box--pending",
+        "OVERDUE"  => "cell-box--overdue",
+        _          => "cell-box--na",
+    };
+
+    /// <summary>
+    /// Inline style for celle-boks: setter <c>--fill</c> CSS-variabelen til
+    /// faktisk dekning så PARTIAL-celler får en proporsjonal fyll-stripe.
+    /// </summary>
+    private static string CellBoxFill(DataCompletenessCellDto cell)
+    {
+        if (cell.Status != "PARTIAL" || !cell.CoveragePct.HasValue) return "";
+        var pct = Math.Clamp(cell.CoveragePct.Value, 0.0, 1.0) * 100;
+        return $"--fill: {pct:F0}%;";
+    }
+
+    /// <summary>
+    /// Tekst inni celle-boksen. Vi viser kun symbol for OVERDUE (utropstegn);
+    /// resten er tomt fordi fargen formidler status. Holder boksene helt rene.
+    /// </summary>
+    private static string CellBoxLabel(DataCompletenessCellDto cell) => cell.Status switch
+    {
+        "OVERDUE" => "!",
+        _         => "",
     };
     private static string CellTooltip(DataCompletenessCellDto cell)
     {

@@ -206,6 +206,25 @@ public sealed class NedetidApi
         }
     }
 
+    /// <summary>
+    /// Henter detaljert diagnose for en karantenert fil — brukt av "Diagnostikk"-
+    /// modal i UI for å vise hvorfor filen ble avvist.
+    /// </summary>
+    public async Task<HotFolderDiagnoseResultDto?> DiagnoseQuarantineAsync(
+        string fileName, CancellationToken ct = default)
+    {
+        try
+        {
+            var url = $"api/v1/hot-folder/quarantine/{Uri.EscapeDataString(fileName)}/diagnose";
+            return await _http.GetFromJsonAsync<HotFolderDiagnoseResultDto>(url, JsonOptions, ct)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>Lister nylige importer (default siste 24 timer) — brukt av auto-import-infobar.</summary>
     public async Task<IReadOnlyList<RecentImportDto>> GetRecentImportsAsync(
         int hours = 24, int limit = 50, CancellationToken ct = default)
@@ -560,3 +579,24 @@ public sealed record HotFolderScanResultDto(
 public sealed record HotFolderRetryResultDto(
     int FilesMoved,
     string Message);
+
+public sealed record HotFolderDiagnoseResultDto(
+    string FileName,
+    long FileSizeBytes,
+    DateTimeOffset QuarantinedAtUtc,
+    string? ErrorMessage,
+    bool HasDetailedDiagnostics,
+    DetectionDiagnosticsDto? Diagnostics);
+
+public sealed record DetectionDiagnosticsDto(
+    string FileName,
+    long FileSizeBytes,
+    string Extension,
+    string? DetectedSourceType,
+    string? ResolvedPlantId,
+    IReadOnlyList<string> Attempts,
+    IReadOnlyList<string>? SheetNames,
+    IReadOnlyDictionary<string, string> SheetTitleCells,
+    string? HeaderLine,
+    IReadOnlyDictionary<string, int>? ScadaPrefixCounts,
+    IReadOnlyDictionary<string, int>? OperlogStations);

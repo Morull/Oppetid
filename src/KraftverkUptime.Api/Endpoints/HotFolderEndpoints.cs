@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Asp.Versioning;
 using Asp.Versioning.Builder;
 using KraftverkUptime.Core.Security;
@@ -37,7 +38,92 @@ public static class HotFolderEndpoints
             .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
             .Produces<HotFolderRetryResult>(StatusCodes.Status200OK);
 
+        group.MapGet("/quarantine/{fileName}/diagnose", DiagnoseQuarantineAsync)
+            .WithName("HotFolderDiagnoseQuarantine")
+            .WithSummary("Hent steg-for-steg-trase for hvorfor en karantenert fil ble avvist.")
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
+            .Produces<HotFolderDiagnoseResult>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         return endpoints;
+    }
+
+    /// <summary>
+    /// Returnerer diag.json-innholdet (DetectionDiagnostics) for en fil i karantene.
+    /// fileName slås opp i quarantine-undermapper (siste 30 dager). Hvis filen er
+    /// uten diag.json (eldre filer eller import-feil), returneres en minimal stub
+    /// basert på filattributter + .error.txt-innholdet.
+    /// </summary>
+    private static async Task<IResult> DiagnoseQuarantineAsync(
+        string fileName,
+        HotFolderOptions options,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(fileName)
+            || fileName.Contains("..", StringComparison.Ordinal)
+            || fileName.Contains('/', StringComparison.Ordinal)
+            || fileName.Contains('\\', StringComparison.Ordinal))
+        {
+            return Results.Problem(title: "Ugyldig filnavn",
+                detail: "fileName må være et bart filnavn uten path-segmenter.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var quarantineRoot = Path.Combine(options.RootPath, options.QuarantineFolderName);
+        if (!Directory.Exists(quarantineRoot))
+        {
+            return Results.Problem(title: "Ingen karantene-mappe",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        // Søk gjennom alle dag-mapper for fila
+        string? filePath = null;
+        foreach (var dir in Directory.EnumerateDirectories(quarantineRoot))
+        {
+            var candidate = Path.Combine(dir, fileName);
+            if (File.Exists(candidate))
+            {
+                filePath = candidate;
+                break;
+            }
+        }
+
+        if (filePath is null)
+        {
+            return Results.Problem(title: "Fil ikke i karantene",
+                detail: $"Fant ikke '{fileName}' under {quarantineRoot}.",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var diagPath = filePath + ".diag.json";
+        var errorPath = filePath + ".error.txt";
+
+        DetectionDiagnostics? diagnostics = null;
+        if (File.Exists(diagPath))
+        {
+            try
+            {
+                var json = await File.ReadAllTextAsync(diagPath, ct).ConfigureAwait(false);
+                diagnostics = JsonSerializer.Deserialize<DetectionDiagnostics>(json);
+            }
+            catch
+            {
+                // Korrupt JSON — vi viser stub i stedet for å feile hele kallet
+            }
+        }
+
+        var errorMessage = File.Exists(errorPath)
+            ? await File.ReadAllTextAsync(errorPath, ct).ConfigureAwait(false)
+            : null;
+
+        var info = new FileInfo(filePath);
+        return Results.Ok(new HotFolderDiagnoseResult(
+            FileName: fileName,
+            FileSizeBytes: info.Length,
+            QuarantinedAtUtc: info.LastWriteTimeUtc,
+            ErrorMessage: errorMessage,
+            HasDetailedDiagnostics: diagnostics is not null,
+            Diagnostics: diagnostics));
     }
 
     private static async Task<IResult> RetryQuarantineAsync(
@@ -152,3 +238,11 @@ public sealed record HotFolderScanResult(
 public sealed record HotFolderRetryResult(
     int FilesMoved,
     string Message);
+
+public sealed record HotFolderDiagnoseResult(
+    string FileName,
+    long FileSizeBytes,
+    DateTimeOffset QuarantinedAtUtc,
+    string? ErrorMessage,
+    bool HasDetailedDiagnostics,
+    DetectionDiagnostics? Diagnostics);
