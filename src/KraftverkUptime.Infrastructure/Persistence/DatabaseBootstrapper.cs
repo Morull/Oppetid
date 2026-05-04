@@ -77,6 +77,13 @@ public static class DatabaseBootstrapper
             // når deres SCADA blir konfigurert senere.
             await PlantPortfolioSeeder.SeedAsync(services, ct).ConfigureAwait(false);
 
+            // Sikrer at hvert plant har minst én default terminal-dam. Må kjøre
+            // ETTER PlantPortfolioSeeder fordi backfill-SQL-en i EnsureDamsSchema
+            // finner kun plants som eksisterte før plant-seederen. Idempotent.
+            // Drifts-leder kan oppdatere HRV/Volum eller legge til kaskade-dammer
+            // via PlantAdmin etter at appen er oppe.
+            await DefaultDamSeeder.SeedAsync(services, ct).ConfigureAwait(false);
+
             // Seed Drivdal-signal-map (22 tags). Idempotent. Andre anlegg legges
             // inn manuelt eller via egen seeder etter samme mønster.
             await DrivdalSignalMapSeeder.SeedAsync(services, ct).ConfigureAwait(false);

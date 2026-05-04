@@ -325,6 +325,7 @@ public class OverflowQueryServiceTests
             => Task.FromResult(_terminalDam);
         public Task AddAsync(Dam dam, CancellationToken ct) => throw new NotImplementedException();
         public Task UpdateAsync(Dam dam, CancellationToken ct) => throw new NotImplementedException();
+        public Task DeleteAsync(string plantId, string damId, CancellationToken ct) => throw new NotImplementedException();
     }
 
     private sealed class StubScadaSampleRepository : IScadaSampleRepository

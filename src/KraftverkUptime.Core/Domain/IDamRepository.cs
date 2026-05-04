@@ -31,4 +31,11 @@ public interface IDamRepository
     /// så vi kan flytte intake-markøren mellom dammer i én transaksjon.
     /// </summary>
     Task UpdateAsync(Dam dam, CancellationToken ct);
+
+    /// <summary>
+    /// Sletter en dam. Caller er ansvarlig for å sikre at minst én dam blir
+    /// igjen pr anlegg og at en av dem er terminal — endepunktet håndhever det.
+    /// Signal_map-rader som peker til denne damId blir nullet ut (dam_id = NULL).
+    /// </summary>
+    Task DeleteAsync(string plantId, string damId, CancellationToken ct);
 }

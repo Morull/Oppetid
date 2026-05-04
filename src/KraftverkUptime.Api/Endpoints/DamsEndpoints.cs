@@ -9,13 +9,17 @@ namespace KraftverkUptime.Api.Endpoints;
 
 /// <summary>
 /// Dam-administrering for kaskade-modellen (Spec KASKADE-DAMMER):
-///   GET /api/v1/plants/{plantId}/dams         — list alle dammer for et anlegg
-///   PUT /api/v1/plants/{plantId}/dams/{damId} — oppdater HRV/LRV/Volum/intake
+///   GET    /api/v1/plants/{plantId}/dams           — list alle dammer for et anlegg
+///   POST   /api/v1/plants/{plantId}/dams           — legg til ny kaskade-dam
+///   PUT    /api/v1/plants/{plantId}/dams/{damId}   — oppdater HRV/LRV/Volum/intake
+///   DELETE /api/v1/plants/{plantId}/dams/{damId}   — slett (krever annen terminal igjen)
 ///
-/// V1 ikke støttet: POST (ny dam) og DELETE — backfill garanterer at hvert
-/// plant har minst én default-dam, og IsTurbineIntake kan flyttes mellom
-/// eksisterende dammer. Multi-dam-anlegg (Haukland) seedes via dedikert
-/// kode-seeder (HauklandSignalMapSeeder) for nå.
+/// Default: hvert anlegg får én default terminal-dam ved oppstart via
+/// <c>DefaultDamSeeder</c>. Drifts-leder kan deretter:
+///   - Oppdatere HRV/LRV/Volum på default-dammen
+///   - Legge til kaskade-dammer (via POST)
+///   - Flytte terminal-markøren (via PUT IsTurbineIntake=true)
+///   - Slette kaskade-dammer som ikke lenger er i bruk
 /// </summary>
 public static class DamsEndpoints
 {
@@ -33,6 +37,15 @@ public static class DamsEndpoints
             .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<IReadOnlyList<DamDto>>(StatusCodes.Status200OK);
 
+        group.MapPost("/", CreateAsync)
+            .WithName("CreateDam")
+            .WithSummary("Legg til ny dam (typisk for kaskade-utvidelse).")
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
+            .Produces<DamDto>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
         group.MapPut("/{damId}", UpdateAsync)
             .WithName("UpdateDam")
             .WithSummary("Oppdater HRV/LRV/Volum/IsTurbineIntake for en eksisterende dam.")
@@ -41,7 +54,120 @@ public static class DamsEndpoints
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        group.MapDelete("/{damId}", DeleteAsync)
+            .WithName("DeleteDam")
+            .WithSummary("Slett en dam. Kan ikke slette siste dam eller terminal uten alternativ.")
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         return endpoints;
+    }
+
+    private static async Task<IResult> CreateAsync(
+        string plantId,
+        CreateDamRequest body,
+        IDamRepository dams,
+        IAuditLogger audit,
+        KraftverkDbContext db,
+        IQueryContext queryContext,
+        CancellationToken ct)
+    {
+        if (body is null || string.IsNullOrWhiteSpace(body.DamId) || string.IsNullOrWhiteSpace(body.Name))
+        {
+            return Results.Problem(title: "Mangler damId eller name",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var plantExists = await queryContext.Apply(db.Plants.AsQueryable())
+            .AnyAsync(p => p.Id == plantId, ct).ConfigureAwait(false);
+        if (!plantExists)
+        {
+            return Results.Problem(title: "Anlegg ikke funnet",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var existing = await dams.GetForPlantAsync(plantId, ct).ConfigureAwait(false);
+        if (existing.Any(d => string.Equals(d.DamId, body.DamId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return Results.Problem(
+                title: "DamId finnes allerede",
+                detail: $"Plant '{plantId}' har allerede en dam med id '{body.DamId}'.",
+                statusCode: StatusCodes.Status409Conflict);
+        }
+
+        // Hvis bruker ber om at den nye damen skal være terminal, fjern markøren
+        // fra eksisterende terminal først (deferrable constraint sikrer atomicity).
+        if (body.IsTurbineIntake)
+        {
+            foreach (var prev in existing.Where(d => d.IsTurbineIntake))
+            {
+                await dams.UpdateAsync(prev with { IsTurbineIntake = false }, ct).ConfigureAwait(false);
+            }
+        }
+
+        var newDam = new Dam(
+            PlantId: plantId,
+            DamId: body.DamId.Trim(),
+            Name: body.Name.Trim(),
+            CascadePosition: body.CascadePosition ?? (existing.Count + 1),
+            IsTurbineIntake: body.IsTurbineIntake,
+            HrvMoh: body.HrvMoh,
+            LrvMoh: body.LrvMoh,
+            VolumeMm3: body.VolumeMm3);
+        await dams.AddAsync(newDam, ct).ConfigureAwait(false);
+
+        await audit.LogAsync(
+            action: "dam.created",
+            entityType: "Dam",
+            entityId: $"{plantId}/{newDam.DamId}",
+            payload: new { plantId, newDam.DamId, newDam.Name, newDam.CascadePosition, newDam.IsTurbineIntake },
+            ct).ConfigureAwait(false);
+
+        return Results.Created($"/api/v1/plants/{plantId}/dams/{newDam.DamId}", ToDto(newDam));
+    }
+
+    private static async Task<IResult> DeleteAsync(
+        string plantId,
+        string damId,
+        IDamRepository dams,
+        IAuditLogger audit,
+        CancellationToken ct)
+    {
+        var existing = await dams.GetForPlantAsync(plantId, ct).ConfigureAwait(false);
+        var target = existing.FirstOrDefault(d => d.DamId == damId);
+        if (target is null)
+        {
+            return Results.Problem(title: "Dam ikke funnet",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        if (existing.Count == 1)
+        {
+            return Results.Problem(
+                title: "Kan ikke slette siste dam",
+                detail: "Hvert anlegg må ha minst én dam (terminal). Opprett en ny først, eller behold denne.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+        if (target.IsTurbineIntake)
+        {
+            return Results.Problem(
+                title: "Kan ikke slette terminal-dammen",
+                detail: "Sett IsTurbineIntake på en annen dam først (PUT), så kan du slette denne.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        await dams.DeleteAsync(plantId, damId, ct).ConfigureAwait(false);
+
+        await audit.LogAsync(
+            action: "dam.deleted",
+            entityType: "Dam",
+            entityId: $"{plantId}/{damId}",
+            payload: new { plantId, damId, target.Name, target.CascadePosition },
+            ct).ConfigureAwait(false);
+
+        return Results.NoContent();
     }
 
     private static async Task<IResult> ListAsync(
@@ -162,6 +288,15 @@ public sealed record DamDto(
 
 public sealed record UpdateDamRequest(
     string? Name,
+    int? CascadePosition,
+    bool IsTurbineIntake,
+    double? HrvMoh,
+    double? LrvMoh,
+    double? VolumeMm3);
+
+public sealed record CreateDamRequest(
+    string DamId,
+    string Name,
     int? CascadePosition,
     bool IsTurbineIntake,
     double? HrvMoh,

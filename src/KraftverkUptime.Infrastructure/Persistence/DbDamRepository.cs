@@ -85,6 +85,27 @@ public sealed class DbDamRepository : IDamRepository
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
 
+    public async Task DeleteAsync(string plantId, string damId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(damId);
+        var existing = await _db.Dams
+            .FirstOrDefaultAsync(d => d.PlantId == plantId && d.DamId == damId, ct)
+            .ConfigureAwait(false);
+        if (existing is null) return; // idempotent
+
+        // Null ut FK-referanser i signal_map så vi ikke får constraint-feil.
+        // Roller som krever dam (OverflowFlow osv.) blir tilbake-registrert
+        // via PlantAdmin etter at en ny terminal-dam er valgt.
+        await _db.SignalMaps
+            .Where(s => s.PlantId == plantId && s.DamId == damId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.DamId, (string?)null), ct)
+            .ConfigureAwait(false);
+
+        _db.Dams.Remove(existing);
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+    }
+
     private static Dam ToDomain(DamEntry e)
         => new(e.PlantId, e.DamId, e.Name, e.CascadePosition,
                e.IsTurbineIntake, e.HrvMoh, e.LrvMoh, e.VolumeMm3);

@@ -83,7 +83,15 @@ else
 
     @* ---- Dammer (kaskade-modell) ---- *@
     <MudPaper Class="pa-4 mt-6" Elevation="1" Style="max-width:880px;">
-        <MudText Typo="Typo.h3" Class="mb-2">Dammer (kaskade-modell)</MudText>
+        <div class="d-flex align-center mb-2" style="gap:12px;">
+            <MudText Typo="Typo.h3" Class="flex-grow-1">Dammer (kaskade-modell)</MudText>
+            <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="OpenAddDam"
+                       Disabled="@(_dams is null)">
+                Legg til dam
+            </MudButton>
+        </div>
         <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-3">
             Hvert anlegg har én eller flere dammer. <strong>Terminal-dam</strong>
             (siste før turbin) er den eneste hvor overløp koster produksjon —
@@ -133,6 +141,11 @@ else
                     <MudTd>
                         <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="MudBlazor.Size.Small"
                                        OnClick="@(() => OpenEditDamAsync(context))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="MudBlazor.Size.Small"
+                                       Color="MudBlazor.Color.Error"
+                                       Disabled="@(context.IsTurbineIntake || _dams!.Count == 1)"
+                                       OnClick="@(() => OnDeleteDamAsync(context))"
+                                       title="@(context.IsTurbineIntake ? "Sett en annen som terminal først" : (_dams!.Count == 1 ? "Kan ikke slette siste dam" : "Slett dam"))" />
                     </MudTd>
                 </RowTemplate>
             </MudTable>
@@ -143,6 +156,45 @@ else
             <MudAlert Severity="Severity.Error" Class="mt-3">@_damSaveError</MudAlert>
         }
     </MudPaper>
+
+    @* ---- Add-dialog for dam ---- *@
+    <MudDialog @bind-Visible="_addingDamOpen" Options="@(new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true })">
+        <TitleContent>Legg til dam</TitleContent>
+        <DialogContent>
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_addForm.DamId"
+                              Label="Dam-id (kortnavn, kun bokstaver/sifre/_)"
+                              HelperText="Eks: stolsvt, gjelevt. Brukes som intern referanse — kan ikke endres etterpå."
+                              Variant="Variant.Outlined" />
+                <MudTextField @bind-Value="_addForm.Name" Label="Navn (vises i UI)"
+                              Variant="Variant.Outlined" />
+                <MudNumericField T="int" @bind-Value="_addForm.CascadePosition"
+                                 Label="Kaskade-posisjon (1=øverst)" Min="1" Max="10"
+                                 Variant="Variant.Outlined" />
+                <MudCheckBox T="bool" @bind-Value="_addForm.IsTurbineIntake"
+                             Label="Sett som terminal-dam (flytter markøren fra eksisterende terminal)" />
+                <MudNumericField T="double?" @bind-Value="_addForm.HrvMoh"
+                                 Label="HRV (moh) — frivillig"
+                                 Step="0.1" Format="F1"
+                                 Variant="Variant.Outlined" />
+                <MudNumericField T="double?" @bind-Value="_addForm.LrvMoh"
+                                 Label="LRV (moh) — frivillig"
+                                 Step="0.1" Format="F1"
+                                 Variant="Variant.Outlined" />
+                <MudNumericField T="double?" @bind-Value="_addForm.VolumeMm3"
+                                 Label="Volum (Mill.m³) — frivillig"
+                                 Step="0.01" Format="F2"
+                                 Variant="Variant.Outlined" />
+            </MudStack>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _addingDamOpen = false)">Avbryt</MudButton>
+            <MudButton Color="MudBlazor.Color.Primary" Variant="Variant.Filled"
+                       OnClick="OnDamCreateAsync" Disabled="@_damSaving">
+                @(_damSaving ? "Lagrer…" : "Opprett")
+            </MudButton>
+        </DialogActions>
+    </MudDialog>
 
     @* ---- Edit-dialog for dam ---- *@
     @if (_editingDam is not null)
@@ -180,6 +232,112 @@ else
             </DialogActions>
         </MudDialog>
     }
+
+    @* ---- Overløp-måling (SCADA-tag → terminal-dam) ---- *@
+    <MudPaper Class="pa-4 mt-6" Elevation="1" Style="max-width:880px;">
+        <MudText Typo="Typo.h3" Class="mb-2">Overløp-måling</MudText>
+        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-3">
+            Velg hvilken SCADA-tag som måler overløps-vannføring (m³/s) på terminal-dammen.
+            <strong>Vakt-ROI</strong> bruker denne til å beregne hvor mange timer i counterfactual-perioden
+            som faktisk hadde overløp — uten en mappet tag rapporteres ROI som
+            "OverflowDataMissing".
+        </MudText>
+
+        @{
+            var terminalDam = _dams?.FirstOrDefault(d => d.IsTurbineIntake);
+            var currentOverflow = _overflowMappings?.FirstOrDefault(s =>
+                s.DamId == terminalDam?.DamId && s.Role == "OverflowFlow");
+        }
+
+        @if (_dams is null || _scadaTags is null)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else if (terminalDam is null)
+        {
+            <MudAlert Severity="Severity.Warning">
+                Ingen terminal-dam satt. Sett <em>IsTurbineIntake=true</em> på én av dammene over først.
+            </MudAlert>
+        }
+        else
+        {
+            <table class="diag-key-value">
+                <tr>
+                    <th>Terminal-dam</th>
+                    <td><strong>@terminalDam.Name</strong> (id=@terminalDam.DamId)</td>
+                </tr>
+                <tr>
+                    <th>Mappet OverflowFlow-tag</th>
+                    <td>
+                        @if (currentOverflow is not null)
+                        {
+                            <MudChip T="string" Size="MudBlazor.Size.Small" Color="MudBlazor.Color.Success"
+                                     Icon="@Icons.Material.Filled.CheckCircle">@currentOverflow.SignalId</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="MudBlazor.Size.Small" Color="MudBlazor.Color.Warning"
+                                     Icon="@Icons.Material.Filled.Warning">Ikke satt</MudChip>
+                        }
+                    </td>
+                </tr>
+                @if (_scadaTags.Count == 0)
+                {
+                    <tr>
+                        <th>Tilgjengelige tags</th>
+                        <td>
+                            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                                Ingen SCADA-samples importert ennå for dette anlegget. Last opp en master-CSV
+                                via /data-import for å fylle tag-listen.
+                            </MudText>
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    <tr>
+                        <th>Velg tag</th>
+                        <td>
+                            <MudAutocomplete T="string" @bind-Value="_overflowTagPick"
+                                             Label="SCADA-tag (filter på navn)"
+                                             SearchFunc="SearchOverflowTags"
+                                             Variant="Variant.Outlined"
+                                             Margin="Margin.Dense"
+                                             ShowProgressIndicator="true"
+                                             CoerceText="false"
+                                             AdornmentIcon="@Icons.Material.Filled.Search" />
+                            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                                Søk etter tag som inneholder "OVERLOP", "OVERFLOW" eller similar.
+                                Tag-en MÅ levere kontinuerlig vannføring i m³/s — ikke bare alarm-grenser.
+                            </MudText>
+                        </td>
+                    </tr>
+                }
+            </table>
+
+            <div class="d-flex mt-3" style="gap:8px;">
+                <MudButton Color="MudBlazor.Color.Primary" Variant="Variant.Filled"
+                           StartIcon="@Icons.Material.Filled.Save"
+                           Disabled="@(_overflowSaving || string.IsNullOrEmpty(_overflowTagPick))"
+                           OnClick="OnOverflowMapAsync">
+                    @(_overflowSaving ? "Lagrer…" : (currentOverflow is not null ? "Endre mapping" : "Sett mapping"))
+                </MudButton>
+                @if (currentOverflow is not null)
+                {
+                    <MudButton Color="MudBlazor.Color.Default" Variant="Variant.Outlined"
+                               StartIcon="@Icons.Material.Filled.Close"
+                               Disabled="@_overflowSaving"
+                               OnClick="OnOverflowClearAsync">
+                        Fjern mapping
+                    </MudButton>
+                }
+            </div>
+            @if (_overflowError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_overflowError</MudAlert>
+            }
+        }
+    </MudPaper>
 
     @* ---- Forventede datakilder (SPEC-IMPORT-COMPLETENESS) ---- *@
     <MudPaper Class="pa-4 mt-6" Elevation="1" Style="max-width:880px;">
@@ -300,6 +458,26 @@ else
     </MudPaper>
 }
 
+<style>
+    .diag-key-value {
+        font-size: 0.9em;
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .diag-key-value th {
+        text-align: left;
+        padding: 8px 12px 8px 0;
+        vertical-align: top;
+        color: var(--mud-palette-text-secondary);
+        font-weight: 400;
+        white-space: nowrap;
+    }
+    .diag-key-value td {
+        padding: 8px 0;
+        word-break: break-all;
+    }
+</style>
+
 @code {
     [Parameter] public string PlantId { get; set; } = string.Empty;
 
@@ -323,6 +501,17 @@ else
     private bool _damSaving;
     private string? _damSaveError;
 
+    // Add-dam state
+    private bool _addingDamOpen;
+    private DamAddForm _addForm = new();
+
+    // Overflow-mapping (signal-map for OverflowFlow på terminal-dam)
+    private List<SignalMapDto>? _overflowMappings;
+    private List<ScadaTagDto>? _scadaTags;
+    private string? _overflowTagPick;
+    private bool _overflowSaving;
+    private string? _overflowError;
+
     // DataSourceExpectations-state (SPEC-IMPORT-COMPLETENESS steg 7)
     private List<DataSourceExpectationDto>? _expectations;
     private bool _expSaving;
@@ -334,6 +523,17 @@ else
 
     private sealed class DamEditForm
     {
+        public string Name { get; set; } = string.Empty;
+        public int CascadePosition { get; set; } = 1;
+        public bool IsTurbineIntake { get; set; }
+        public double? HrvMoh { get; set; }
+        public double? LrvMoh { get; set; }
+        public double? VolumeMm3 { get; set; }
+    }
+
+    private sealed class DamAddForm
+    {
+        public string DamId { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public int CascadePosition { get; set; } = 1;
         public bool IsTurbineIntake { get; set; }
@@ -364,6 +564,7 @@ else
             }
             await ReloadDamsAsync();
             await ReloadExpectationsAsync();
+            await ReloadOverflowMappingAsync();
         }
         catch (Exception ex)
         {
@@ -540,6 +741,7 @@ else
             Snackbar.Add($"{_editForm.Name} oppdatert.", Severity.Success);
             _editingDamOpen = false;
             await ReloadDamsAsync();
+            await ReloadOverflowMappingAsync();
         }
         catch (HttpRequestException ex)
         {
@@ -552,6 +754,191 @@ else
         finally
         {
             _damSaving = false;
+        }
+    }
+
+    private void OpenAddDam()
+    {
+        var nextPosition = (_dams?.Max(d => (int?)d.CascadePosition) ?? 0) + 1;
+        _addForm = new DamAddForm { CascadePosition = nextPosition };
+        _addingDamOpen = true;
+    }
+
+    private async Task OnDamCreateAsync()
+    {
+        _damSaving = true;
+        _damSaveError = null;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_addForm.DamId) || string.IsNullOrWhiteSpace(_addForm.Name))
+            {
+                _damSaveError = "DamId og Navn er påkrevd.";
+                return;
+            }
+            var body = new CreateDamRequestDto(
+                DamId: _addForm.DamId.Trim(),
+                Name: _addForm.Name.Trim(),
+                CascadePosition: _addForm.CascadePosition,
+                IsTurbineIntake: _addForm.IsTurbineIntake,
+                HrvMoh: _addForm.HrvMoh,
+                LrvMoh: _addForm.LrvMoh,
+                VolumeMm3: _addForm.VolumeMm3);
+            await Api.CreateDamAsync(PlantId, body);
+            Snackbar.Add($"{_addForm.Name} opprettet.", Severity.Success);
+            _addingDamOpen = false;
+            await ReloadDamsAsync();
+        }
+        catch (HttpRequestException ex)
+        {
+            _damSaveError = $"Opprettelse feilet: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            _damSaveError = $"Uventet feil: {ex.Message}";
+        }
+        finally
+        {
+            _damSaving = false;
+        }
+    }
+
+    private async Task OnDeleteDamAsync(DamDto dam)
+    {
+        _damSaveError = null;
+        try
+        {
+            await Api.DeleteDamAsync(PlantId, dam.DamId);
+            Snackbar.Add($"{dam.Name} slettet.", Severity.Success);
+            await ReloadDamsAsync();
+            await ReloadOverflowMappingAsync();
+        }
+        catch (HttpRequestException ex)
+        {
+            _damSaveError = $"Sletting feilet: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            _damSaveError = $"Uventet feil: {ex.Message}";
+        }
+    }
+
+    private async Task ReloadOverflowMappingAsync()
+    {
+        try
+        {
+            var maps = await Api.ListSignalMapsAsync(PlantId, role: "OverflowFlow");
+            _overflowMappings = maps.ToList();
+            var tags = await Api.ListScadaTagsAsync(PlantId);
+            _scadaTags = tags.ToList();
+            // Pre-fyll dropdown med eksisterende mapping hvis terminal-dam har en
+            var terminal = _dams?.FirstOrDefault(d => d.IsTurbineIntake);
+            var current = _overflowMappings.FirstOrDefault(m => m.DamId == terminal?.DamId);
+            _overflowTagPick = current?.SignalId;
+        }
+        catch (Exception ex)
+        {
+            _overflowError = $"Kunne ikke laste overflow-mapping: {ex.Message}";
+        }
+    }
+
+    private Task<IEnumerable<string>> SearchOverflowTags(string? value, CancellationToken ct = default)
+    {
+        IEnumerable<string> result;
+        if (_scadaTags is null)
+        {
+            result = Array.Empty<string>();
+        }
+        else if (string.IsNullOrWhiteSpace(value))
+        {
+            // Default: vis tags som inneholder OVERLOP/OVERFLOW/FLOM
+            result = _scadaTags
+                .Where(t => t.SignalId.Contains("OVERLOP", StringComparison.OrdinalIgnoreCase)
+                         || t.SignalId.Contains("OVERFLOW", StringComparison.OrdinalIgnoreCase)
+                         || t.SignalId.Contains("FLOM", StringComparison.OrdinalIgnoreCase))
+                .Select(t => t.SignalId)
+                .Take(50);
+        }
+        else
+        {
+            result = _scadaTags
+                .Where(t => t.SignalId.Contains(value, StringComparison.OrdinalIgnoreCase))
+                .Select(t => t.SignalId)
+                .Take(50);
+        }
+        return Task.FromResult(result);
+    }
+
+    private async Task OnOverflowMapAsync()
+    {
+        var terminal = _dams?.FirstOrDefault(d => d.IsTurbineIntake);
+        if (terminal is null || string.IsNullOrEmpty(_overflowTagPick))
+        {
+            _overflowError = "Velg en tag og sett en terminal-dam først.";
+            return;
+        }
+        _overflowSaving = true;
+        _overflowError = null;
+        try
+        {
+            // Fjern eventuell eksisterende OverflowFlow-mapping for terminal-dam
+            // (én aktiv tag per dam-rolle for å unngå konflikter)
+            if (_overflowMappings is not null)
+            {
+                foreach (var existing in _overflowMappings.Where(m =>
+                    m.DamId == terminal.DamId && m.SignalId != _overflowTagPick))
+                {
+                    await Api.DeleteSignalMapAsync(PlantId, existing.SignalId);
+                }
+            }
+            var body = new UpsertSignalMapRequestDto(
+                SignalId: _overflowTagPick,
+                CsvColumn: $"Value (Cluster1.{_overflowTagPick})", // best-guess; importør oppdaterer ved neste import
+                Unit: "m3/s",
+                Role: "OverflowFlow",
+                DamId: terminal.DamId,
+                StoreSamples: true,
+                IsActive: true);
+            await Api.UpsertSignalMapAsync(PlantId, body);
+            Snackbar.Add($"Overflow-tag mappet til {terminal.Name}.", Severity.Success);
+            await ReloadOverflowMappingAsync();
+        }
+        catch (HttpRequestException ex)
+        {
+            _overflowError = $"Mapping feilet: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            _overflowError = $"Uventet feil: {ex.Message}";
+        }
+        finally
+        {
+            _overflowSaving = false;
+        }
+    }
+
+    private async Task OnOverflowClearAsync()
+    {
+        var terminal = _dams?.FirstOrDefault(d => d.IsTurbineIntake);
+        if (terminal is null || _overflowMappings is null) return;
+        _overflowSaving = true;
+        _overflowError = null;
+        try
+        {
+            foreach (var existing in _overflowMappings.Where(m => m.DamId == terminal.DamId))
+            {
+                await Api.DeleteSignalMapAsync(PlantId, existing.SignalId);
+            }
+            Snackbar.Add("Overflow-mapping fjernet.", Severity.Info);
+            _overflowTagPick = null;
+            await ReloadOverflowMappingAsync();
+        }
+        catch (Exception ex)
+        {
+            _overflowError = $"Sletting feilet: {ex.Message}";
+        }
+        finally
+        {
+            _overflowSaving = false;
         }
     }
 

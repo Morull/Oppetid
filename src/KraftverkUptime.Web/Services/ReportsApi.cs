@@ -105,6 +105,68 @@ public sealed class ReportsApi
             ?? throw new InvalidOperationException("Tom respons fra dam-update.");
     }
 
+    /// <summary>Oppretter en ny dam (typisk for kaskade-utvidelse).</summary>
+    public async Task<DamDto> CreateDamAsync(
+        string plantId, CreateDamRequestDto body, CancellationToken ct = default)
+    {
+        var uri = $"api/v1/plants/{Uri.EscapeDataString(plantId)}/dams";
+        var resp = await _http.PostAsJsonAsync(uri, body, JsonOptions, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<DamDto>(JsonOptions, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Tom respons fra dam-create.");
+    }
+
+    /// <summary>Sletter en dam. Krever at minst én annen dam (terminal) er igjen.</summary>
+    public async Task DeleteDamAsync(string plantId, string damId, CancellationToken ct = default)
+    {
+        var uri = $"api/v1/plants/{Uri.EscapeDataString(plantId)}/dams/{Uri.EscapeDataString(damId)}";
+        var resp = await _http.DeleteAsync(new Uri(uri, UriKind.Relative), ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>Lister alle signal-mappinger for et anlegg, evt. filtrert på role/damId.</summary>
+    public async Task<IReadOnlyList<SignalMapDto>> ListSignalMapsAsync(
+        string plantId, string? role = null, string? damId = null, CancellationToken ct = default)
+    {
+        var query = new List<string>();
+        if (!string.IsNullOrEmpty(role)) query.Add($"role={Uri.EscapeDataString(role)}");
+        if (!string.IsNullOrEmpty(damId)) query.Add($"damId={Uri.EscapeDataString(damId)}");
+        var qs = query.Count > 0 ? "?" + string.Join("&", query) : "";
+        var uri = $"api/v1/plants/{Uri.EscapeDataString(plantId)}/signal-maps{qs}";
+        var resp = await _http.GetFromJsonAsync<List<SignalMapDto>>(uri, JsonOptions, ct)
+            .ConfigureAwait(false);
+        return resp ?? new List<SignalMapDto>();
+    }
+
+    /// <summary>Opprett eller oppdater en SCADA-tag-mapping.</summary>
+    public async Task<SignalMapDto> UpsertSignalMapAsync(
+        string plantId, UpsertSignalMapRequestDto body, CancellationToken ct = default)
+    {
+        var uri = $"api/v1/plants/{Uri.EscapeDataString(plantId)}/signal-maps";
+        var resp = await _http.PostAsJsonAsync(uri, body, JsonOptions, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<SignalMapDto>(JsonOptions, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Tom respons fra signal-map-upsert.");
+    }
+
+    /// <summary>Slett en signal-mapping.</summary>
+    public async Task DeleteSignalMapAsync(string plantId, string signalId, CancellationToken ct = default)
+    {
+        var uri = $"api/v1/plants/{Uri.EscapeDataString(plantId)}/signal-maps/{Uri.EscapeDataString(signalId)}";
+        var resp = await _http.DeleteAsync(new Uri(uri, UriKind.Relative), ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>Lister tilgjengelige SCADA-tags (signal_id-er) som er observert i samples.</summary>
+    public async Task<IReadOnlyList<ScadaTagDto>> ListScadaTagsAsync(
+        string plantId, CancellationToken ct = default)
+    {
+        var uri = $"api/v1/plants/{Uri.EscapeDataString(plantId)}/scada-tags";
+        var resp = await _http.GetFromJsonAsync<List<ScadaTagDto>>(uri, JsonOptions, ct)
+            .ConfigureAwait(false);
+        return resp ?? new List<ScadaTagDto>();
+    }
+
     public async Task<IReadOnlyList<SettlementImportSummary>> ListSettlementsAsync(
         string plantId,
         DateTimeOffset? fromUtc = null,
@@ -321,6 +383,40 @@ public sealed record UpdateDamRequestDto(
     double? HrvMoh,
     double? LrvMoh,
     double? VolumeMm3);
+
+public sealed record CreateDamRequestDto(
+    string DamId,
+    string Name,
+    int? CascadePosition,
+    bool IsTurbineIntake,
+    double? HrvMoh,
+    double? LrvMoh,
+    double? VolumeMm3);
+
+public sealed record SignalMapDto(
+    string PlantId,
+    string SignalId,
+    string CsvColumn,
+    string Unit,
+    string Role,
+    bool StoreSamples,
+    bool IsActive,
+    string? DamId);
+
+public sealed record UpsertSignalMapRequestDto(
+    string SignalId,
+    string CsvColumn,
+    string? Unit,
+    string Role,           // SignalRole-enum-navn (sendes som streng)
+    string? DamId,
+    bool? StoreSamples,
+    bool? IsActive);
+
+public sealed record ScadaTagDto(
+    string SignalId,
+    bool IsMapped,
+    string? Role,
+    string? DamId);
 
 public sealed record PagedEnvelope<T>(
     IReadOnlyList<T> Items, string? NextCursor, int PageSize);
