@@ -228,10 +228,13 @@ public sealed class ScadaImportService : IScadaImportService
 
     /// <summary>
     /// Logger én rad til <c>data_imports</c> for en operlog-batch. Periode
-    /// settes fra første og siste event-tidsstempel (faktisk spenn, ikke
-    /// rundet til måneds-grense). Coverage er 1.0 fordi fila per definisjon
-    /// inneholder kun events som faktisk skjedde — det finnes ingen
-    /// "forventet antall events" å normalisere mot.
+    /// rundes til hele måneds-grenser (måneds-start for første event,
+    /// måneds-slutt for siste) fordi operlog er hendelse-basert: hvis
+    /// ingen alarmer skjedde 1.-4. april, betyr ikke det at data mangler
+    /// for de dagene — det betyr bare fredelig drift. Ved å bruke hele
+    /// måneds-spenn unngår vi at completeness-matrisen feilrapporterer
+    /// stille perioder som "delvis dekning". Coverage er 1.0 fordi fila
+    /// per definisjon inneholder alle events som faktisk skjedde.
     /// </summary>
     private async Task LogOperlogImportAsync(
         string plantId,
@@ -240,8 +243,9 @@ public sealed class ScadaImportService : IScadaImportService
     {
         var minTime = events.Min(e => e.StartUtc);
         var maxTime = events.Max(e => e.StartUtc);
-        var periodFrom = minTime;
-        var periodTo = maxTime.AddHours(1);
+        var periodFrom = new DateTimeOffset(minTime.Year, minTime.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        var lastMonthStart = new DateTimeOffset(maxTime.Year, maxTime.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        var periodTo = lastMonthStart.AddMonths(1);
 
         try
         {

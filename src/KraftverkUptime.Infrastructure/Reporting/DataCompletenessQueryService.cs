@@ -110,16 +110,35 @@ public sealed class DataCompletenessQueryService : IDataCompletenessQueryService
                 if (m >= toMonth) break;
                 if (m < fromMonth) continue;
 
-                // Beregn hvor stor del av denne måneden som er innenfor importens spenn
+                // Beregn hvor stor del av denne måneden som er innenfor importens spenn.
+                //
+                // For SCADA-trender og settlement: dette er meningsfullt — de er
+                // tids-serie-baserte, og hvis importen bare dekker halve måneden
+                // er det reelt et hull i halve måneden.
+                //
+                // For operlog (alarmer/events): dette er IKKE meningsfullt. Operlog
+                // er hendelse-basert; period_from/to er bare første/siste event-
+                // tidsstempel. Hvis ingen alarmer skjedde 1.-4. april, blir period_from
+                // = 5. april — men det betyr ikke at data mangler for 1.-4., det betyr
+                // bare at det var fredelig drift. Vi bruker derfor full rådekning
+                // (1.0) for operlog uavhengig av overlap-andel.
                 var monthEnd = m.AddMonths(1);
-                var overlapStart = import.PeriodFromUtc > m ? import.PeriodFromUtc : m;
-                var overlapEnd = import.PeriodToUtc < monthEnd ? import.PeriodToUtc : monthEnd;
-                var overlapHours = (overlapEnd - overlapStart).TotalHours;
-                var monthHours = (monthEnd - m).TotalHours;
-                var monthOverlapFraction = monthHours > 0
-                    ? Math.Clamp(overlapHours / monthHours, 0.0, 1.0)
-                    : 1.0;
-                var monthCoverage = Math.Clamp(rawCoverage * monthOverlapFraction, 0.0, 1.0);
+                double monthCoverage;
+                if (import.SourceType == "operlog")
+                {
+                    monthCoverage = Math.Clamp(rawCoverage, 0.0, 1.0);
+                }
+                else
+                {
+                    var overlapStart = import.PeriodFromUtc > m ? import.PeriodFromUtc : m;
+                    var overlapEnd = import.PeriodToUtc < monthEnd ? import.PeriodToUtc : monthEnd;
+                    var overlapHours = (overlapEnd - overlapStart).TotalHours;
+                    var monthHours = (monthEnd - m).TotalHours;
+                    var monthOverlapFraction = monthHours > 0
+                        ? Math.Clamp(overlapHours / monthHours, 0.0, 1.0)
+                        : 1.0;
+                    monthCoverage = Math.Clamp(rawCoverage * monthOverlapFraction, 0.0, 1.0);
+                }
 
                 var key = new DataCompletenessKey(import.PlantId, import.SourceType, m);
                 if (importsByKey.TryGetValue(key, out var existing))

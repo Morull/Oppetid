@@ -956,7 +956,25 @@
                     @* Hva mangler — basert på om gap-en er periode-grenset eller per-time *@
                     <MudItem xs="12">
                         <MudText Typo="Typo.subtitle2" Class="mb-1">Hva mangler</MudText>
-                        @if (missingFrom is not null && missingTo is not null)
+                        @if (cell.SourceType == "operlog")
+                        {
+                            @* Operlog er event-basert. Periode-gap betyr IKKE manglende data —
+                               det betyr bare at det ikke skjedde noen alarmer i den perioden.
+                               Vi viser dette tydelig i stedet for å skremme brukeren. *@
+                            <MudAlert Severity="Severity.Info" Dense="true">
+                                <strong>Operlog er hendelse-basert</strong> — perioden uten events
+                                betyr ikke nødvendigvis manglende data, det kan være fredelig drift.<br />
+                                <span style="font-size:0.9em;">
+                                    Importen inneholder @cell.RowsImported.GetValueOrDefault() events fra
+                                    @(cell.ImportPeriodFromUtc?.LocalDateTime.ToString("dd.MM HH:mm") ?? "?") til
+                                    @(cell.ImportPeriodToUtc?.LocalDateTime.ToString("dd.MM HH:mm") ?? "?").
+                                    Hvis du forventet flere alarmer i denne måneden (eks. fordi du vet det
+                                    var en stans 02.04.), eksporter på nytt fra SCADA-systemet og last opp.
+                                    Ellers: ingen handling nødvendig.
+                                </span>
+                            </MudAlert>
+                        }
+                        else if (missingFrom is not null && missingTo is not null)
                         {
                             var missingDays = (int)Math.Round((missingTo.Value - missingFrom.Value).TotalDays);
                             <MudAlert Severity="Severity.Warning" Dense="true">
@@ -1011,24 +1029,30 @@
                         }
                     </MudItem>
 
-                    @* Forslag til handling *@
+                    @* Forslag til handling — kontekst-sensitive per kilde-type *@
                     <MudItem xs="12">
                         <MudText Typo="Typo.subtitle2" Class="mb-1">Forslag</MudText>
                         <ul style="margin:0; padding-left:20px; font-size:0.9em;">
-                            @if (missingFrom is not null)
+                            @if (cell.SourceType == "operlog")
+                            {
+                                <li>Sjekk Nedetid-rapporten for samme måned. Hvis det ikke er registrert hendelser der heller, har anlegget gått problemfritt.</li>
+                                <li>Hvis du vet det skjedde alarmer som mangler: re-eksporter operlog fra SCADA og last opp. Duplikat-vakt fanger om innholdet er likt.</li>
+                                <li>For å undertrykke "delvis"-status for stille operlog-måneder: senk <em>completion_threshold_pct</em> for kilden i PlantAdmin (eller deaktiver kilden hvis anlegget aldri har alarmer).</li>
+                            }
+                            else if (missingFrom is not null)
                             {
                                 <li>Eksporter ny fil fra KAIA/SCADA som dekker @missingFrom.Value.LocalDateTime.ToString("MMMM yyyy"), legg den i /imports.</li>
+                                <li>Duplikat-vakt fanger hvis innholdet er identisk med tidligere import.</li>
                             }
                             else if (cell.SourceType == "scada")
                             {
                                 <li>Sjekk om SCADA-eksporten har sensor-feil/kommunikasjonsbrudd i denne perioden.</li>
-                                <li>Hvis dekning er forventet for dette anlegget (kjent sensor-utfordring), senk <em>completion_threshold_pct</em> i PlantAdmin.</li>
+                                <li>Hvis dekning er forventet lav for dette anlegget (kjent sensor-utfordring), senk <em>completion_threshold_pct</em> i PlantAdmin.</li>
                             }
                             else
                             {
                                 <li>Sjekk eksporten mot kilden — manglende timer kan være DST-relaterte (legitim) eller hull (ikke ok).</li>
                             }
-                            <li>For å re-importere en eksport: legg fila i /imports — duplikat-vakt fanger om innholdet er identisk med tidligere import.</li>
                         </ul>
                     </MudItem>
                 }
