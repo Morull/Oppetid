@@ -296,8 +296,9 @@
                                                     {
                                                         <span class="cell-box cell-box--na" title="Ikke aktiv kilde">·</span>
                                                     }
-                                                    else if (cell.Status == "COMPLETE")
+                                                    else if (cell.Status == "COMPLETE" && !cell.IsManuallyOverridden)
                                                     {
+                                                        @* Auto-komplett — ikke klikkbar (ingenting å vise/endre) *@
                                                         <MudTooltip Text="@CellTooltip(cell)">
                                                             <span class="cell-box @CellBoxClass(cell.Status)">
                                                                 <span>@CellBoxLabel(cell)</span>
@@ -306,10 +307,17 @@
                                                     }
                                                     else
                                                     {
-                                                        @* Klikkbar — åpner detalj-modal med "hva mangler" *@
+                                                        @* Klikkbar — åpner detalj-modal. Inkluderer både PARTIAL/OVERDUE
+                                                           og manuelt overstyrte COMPLETE-celler så brukeren kan se / fjerne
+                                                           overstyringen. *@
                                                         var clickCell = cell;
-                                                        <MudTooltip Text="@(CellTooltip(cell) + " — klikk for detaljer")">
-                                                            <span class="cell-box cell-box--clickable @CellBoxClass(cell.Status)"
+                                                        var classes = "cell-box cell-box--clickable " + CellBoxClass(cell.Status)
+                                                            + (cell.IsManuallyOverridden ? " cell-box--overridden" : "");
+                                                        var tooltip = cell.IsManuallyOverridden
+                                                            ? $"Manuelt verifisert{(string.IsNullOrEmpty(cell.OverrideReason) ? "" : ": " + cell.OverrideReason)} — klikk for å vise/fjerne"
+                                                            : CellTooltip(cell) + " — klikk for detaljer";
+                                                        <MudTooltip Text="@tooltip">
+                                                            <span class="@classes"
                                                                   style="@CellBoxFill(cell)"
                                                                   @onclick="@(() => OpenCellDetail(clickCell))">
                                                                 <span>@CellBoxLabel(cell)</span>
@@ -709,6 +717,26 @@
         transform: scale(1.15);
         box-shadow: 0 0 0 2px var(--mud-palette-primary);
     }
+    /* Manuelt overstyrte celler: liten "✓" i hjørnet for å skille fra
+       automatisk-komplette. Brukeren ser ved første blikk at noen er manuelt
+       verifisert, og kan klikke for å se begrunnelsen / fjerne overstyringen. */
+    .cell-box--overridden::after {
+        content: "✓";
+        position: absolute;
+        top: -2px;
+        right: -2px;
+        font-size: 9px;
+        font-weight: bold;
+        color: var(--mud-palette-info);
+        background: var(--mud-palette-surface);
+        border-radius: 50%;
+        width: 11px;
+        height: 11px;
+        line-height: 11px;
+        text-align: center;
+        z-index: 2;
+        border: 1px solid var(--mud-palette-info);
+    }
     /* Legend: samme bokser, mindre */
     .cell-box--legend { width: 16px; height: 16px; font-size: 10px; }
     /* Symbol-versjon beholdes for legacy bruk (Top 5 osv) */
@@ -1056,6 +1084,64 @@
                         </ul>
                     </MudItem>
                 }
+
+                @* Manuell overstyring: drifts-leder som har sjekket SCADA HMI eller annen
+                   kilde og vet at "delvis"-status ikke skyldes manglende data, kan markere
+                   cellen som verifisert komplett. *@
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                    @if (cell.IsManuallyOverridden)
+                    {
+                        <MudAlert Severity="Severity.Success" Dense="true" Class="mb-2"
+                                  Icon="@Icons.Material.Filled.VerifiedUser">
+                            <strong>Manuelt verifisert komplett</strong>
+                            @if (cell.OverriddenAtUtc is { } at)
+                            {
+                                <span> @at.LocalDateTime.ToString("dd.MM.yyyy HH:mm")</span>
+                            }
+                            @if (!string.IsNullOrEmpty(cell.OverriddenByUserId) && cell.OverriddenByUserId != "system")
+                            {
+                                <span> av @cell.OverriddenByUserId</span>
+                            }
+                            @if (!string.IsNullOrEmpty(cell.OverrideReason))
+                            {
+                                <div style="font-size:0.9em; margin-top:4px;">
+                                    Begrunnelse: <em>@cell.OverrideReason</em>
+                                </div>
+                            }
+                        </MudAlert>
+                        <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Default"
+                                   StartIcon="@Icons.Material.Filled.Undo"
+                                   OnClick="RemoveOverrideAsync"
+                                   Disabled="@_overrideBusy" FullWidth="true">
+                            @(_overrideBusy ? "Fjerner..." : "Fjern overstyring (vis auto-status)")
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mb-1">
+                            Manuell overstyring
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mb-2 d-block">
+                            Hvis du har sjekket kilden manuelt (eks. SCADA HMI) og verifisert at
+                            "delvis"-status ikke skyldes manglende data, kan du markere cellen
+                            som komplett her.
+                        </MudText>
+                        <MudTextField @bind-Value="_overrideReason"
+                                      Label="Begrunnelse (frivillig, men anbefalt)"
+                                      Placeholder="Eks: Sjekket SCADA HMI 04.05.2026 — ingen alarmer, fredelig drift."
+                                      Variant="Variant.Outlined"
+                                      Lines="2"
+                                      MaxLength="500"
+                                      Class="mb-2" />
+                        <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Success"
+                                   StartIcon="@Icons.Material.Filled.VerifiedUser"
+                                   OnClick="ApplyOverrideAsync"
+                                   Disabled="@_overrideBusy" FullWidth="true">
+                            @(_overrideBusy ? "Lagrer..." : "Marker som manuelt verifisert komplett")
+                        </MudButton>
+                    }
+                </MudItem>
             </MudGrid>
         }
     </DialogContent>
@@ -1101,6 +1187,8 @@
     // Cell-detail-modal (hva mangler i en delvis celle)
     private bool _cellDetailOpen;
     private DataCompletenessCellDto? _cellDetail;
+    private string _overrideReason = string.Empty;
+    private bool _overrideBusy;
 
     // Single-plant upload
     private string _selectedPlantId = string.Empty;
@@ -1276,8 +1364,12 @@
     /// </summary>
     private void OpenCellDetail(DataCompletenessCellDto cell)
     {
-        if (cell.Status == "COMPLETE") return; // ingenting å vise — celle er full
+        // Klikkbar både for PARTIAL/OVERDUE og for manuelt overstyrte celler
+        // (så brukeren kan se/fjerne overstyringen). COMPLETE uten override
+        // har ingenting å vise.
+        if (cell.Status == "COMPLETE" && !cell.IsManuallyOverridden) return;
         _cellDetail = cell;
+        _overrideReason = cell.OverrideReason ?? string.Empty;
         _cellDetailOpen = true;
     }
 
@@ -1285,6 +1377,63 @@
     {
         _cellDetailOpen = false;
         _cellDetail = null;
+        _overrideReason = string.Empty;
+    }
+
+    /// <summary>
+    /// Marker cellen som manuelt verifisert komplett. Etter suksess re-loades
+    /// matrisen så brukeren ser cellen som grønn med override-marker.
+    /// </summary>
+    private async Task ApplyOverrideAsync()
+    {
+        if (_cellDetail is null) return;
+        _overrideBusy = true;
+        StateHasChanged();
+        try
+        {
+            var ok = await NedetidApi.SetCompletenessOverrideAsync(
+                _cellDetail.PlantId, _cellDetail.SourceType, _cellDetail.Period,
+                string.IsNullOrWhiteSpace(_overrideReason) ? null : _overrideReason.Trim());
+            if (!ok)
+            {
+                Snackbar.Add("Kunne ikke lagre overstyring.", Severity.Warning);
+                return;
+            }
+            Snackbar.Add("Cellen er nå markert som manuelt verifisert komplett.", Severity.Success);
+            CloseCellDetail();
+            await LoadStatusAsync();
+        }
+        finally
+        {
+            _overrideBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>Fjern manuell overstyring så cellen returnerer til auto-status.</summary>
+    private async Task RemoveOverrideAsync()
+    {
+        if (_cellDetail is null) return;
+        _overrideBusy = true;
+        StateHasChanged();
+        try
+        {
+            var ok = await NedetidApi.RemoveCompletenessOverrideAsync(
+                _cellDetail.PlantId, _cellDetail.SourceType, _cellDetail.Period);
+            if (!ok)
+            {
+                Snackbar.Add("Kunne ikke fjerne overstyring.", Severity.Warning);
+                return;
+            }
+            Snackbar.Add("Overstyring fjernet — cellen er tilbake til auto-status.", Severity.Info);
+            CloseCellDetail();
+            await LoadStatusAsync();
+        }
+        finally
+        {
+            _overrideBusy = false;
+            StateHasChanged();
+        }
     }
 
     /// <summary>

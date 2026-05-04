@@ -242,6 +242,121 @@ public class DataCompletenessQueryServiceTests
         matrix.Cells[new("liavatn", "settlement", apr)].Status.Should().Be("OVERDUE");
     }
 
+    [Fact(DisplayName = "Manuell override forcer COMPLETE selv om dekning er lav")]
+    public async Task Override_ForcesComplete()
+    {
+        var apr = new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero);
+        var now = new DateTimeOffset(2026, 5, 4, 0, 0, 0, TimeSpan.Zero);
+
+        await using var db = NewDb();
+        await SeedExpectationAsync(db, "drivdal", "operlog", 5);
+        await SeedImportAsync(db, "drivdal", "operlog", apr,
+            coverage: 0.74, importedAt: apr.AddMonths(1).AddDays(2));
+
+        var svc = NewService(db, now);
+
+        // Før override: PARTIAL (men siden vi nå behandler operlog spesielt blir den
+        // COMPLETE — så for å trigge en realistisk PARTIAL bruker vi settlement i stedet)
+        await SeedExpectationAsync(db, "drivdal", "settlement", 7);
+        await SeedImportAsync(db, "drivdal", "settlement", apr,
+            coverage: 0.50, importedAt: apr.AddMonths(1).AddDays(2));
+
+        var before = await svc.GetMatrixAsync(apr, apr.AddMonths(1), default);
+        before.Cells[new("drivdal", "settlement", apr)].Status.Should().Be("PARTIAL");
+
+        // Sett override
+        await svc.SetOverrideAsync("drivdal", "settlement", apr,
+            "Sjekket KAIA manuelt — DST-overgang i april forklarer 50% timer", "test-user", default);
+
+        var after = await svc.GetMatrixAsync(apr, apr.AddMonths(1), default);
+        var cell = after.Cells[new("drivdal", "settlement", apr)];
+
+        cell.Status.Should().Be("COMPLETE");
+        cell.IsManuallyOverridden.Should().BeTrue();
+        cell.OverrideReason.Should().Contain("DST-overgang");
+        cell.OverriddenByUserId.Should().Be("test-user");
+        cell.CoveragePct.Should().Be(0.50, "metadata om auto-beregnet dekning beholdes");
+    }
+
+    [Fact(DisplayName = "RemoveOverride returnerer cellen til auto-status")]
+    public async Task RemoveOverride_RestoresAutoStatus()
+    {
+        var apr = new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero);
+        var now = new DateTimeOffset(2026, 5, 10, 0, 0, 0, TimeSpan.Zero);
+
+        await using var db = NewDb();
+        await SeedExpectationAsync(db, "drivdal", "settlement", 7);
+        await SeedImportAsync(db, "drivdal", "settlement", apr,
+            coverage: 0.60, importedAt: apr.AddMonths(1));
+
+        var svc = NewService(db, now);
+        await svc.SetOverrideAsync("drivdal", "settlement", apr, "Verifisert", "test-user", default);
+
+        var withOverride = await svc.GetMatrixAsync(apr, apr.AddMonths(1), default);
+        withOverride.Cells[new("drivdal", "settlement", apr)].Status.Should().Be("COMPLETE");
+
+        await svc.RemoveOverrideAsync("drivdal", "settlement", apr, default);
+
+        var afterRemove = await svc.GetMatrixAsync(apr, apr.AddMonths(1), default);
+        var cell = afterRemove.Cells[new("drivdal", "settlement", apr)];
+        cell.Status.Should().Be("PARTIAL", "auto-status er restored etter at override er fjernet");
+        cell.IsManuallyOverridden.Should().BeFalse();
+    }
+
+    [Fact(DisplayName = "Override på OVERDUE-celle (ingen import) markerer som komplett")]
+    public async Task Override_OnOverdueCell_BecomesComplete()
+    {
+        var apr = new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero);
+        var now = new DateTimeOffset(2026, 5, 20, 0, 0, 0, TimeSpan.Zero); // > apr + 1mnd + lag
+
+        await using var db = NewDb();
+        await SeedExpectationAsync(db, "drivdal", "operlog", 5);
+        // Ingen import seedet → OVERDUE
+
+        var svc = NewService(db, now);
+        var before = await svc.GetMatrixAsync(apr, apr.AddMonths(1), default);
+        before.Cells[new("drivdal", "operlog", apr)].Status.Should().Be("OVERDUE");
+
+        await svc.SetOverrideAsync("drivdal", "operlog", apr,
+            "Anlegget hadde planlagt vedlikehold — ingen alarmer forventet", "test-user", default);
+
+        var after = await svc.GetMatrixAsync(apr, apr.AddMonths(1), default);
+        var cell = after.Cells[new("drivdal", "operlog", apr)];
+        cell.Status.Should().Be("COMPLETE");
+        cell.IsManuallyOverridden.Should().BeTrue();
+        cell.RowsImported.Should().BeNull("ingen import bak override-en");
+    }
+
+    [Fact(DisplayName = "RemoveOverride er idempotent (no-op hvis ingen finnes)")]
+    public async Task RemoveOverride_Idempotent()
+    {
+        await using var db = NewDb();
+        var svc = NewService(db, DateTimeOffset.UtcNow);
+
+        // Kalle uten å kaste
+        await svc.RemoveOverrideAsync("drivdal", "settlement",
+            new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero), default);
+
+        db.DataCompletenessOverrides.Should().BeEmpty();
+    }
+
+    [Fact(DisplayName = "SetOverride er upsert — andre kall oppdaterer eksisterende")]
+    public async Task SetOverride_Upserts()
+    {
+        var apr = new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero);
+        await using var db = NewDb();
+        await SeedExpectationAsync(db, "drivdal", "settlement", 7);
+        var svc = NewService(db, new DateTimeOffset(2026, 5, 10, 0, 0, 0, TimeSpan.Zero));
+
+        await svc.SetOverrideAsync("drivdal", "settlement", apr, "Første grunn", "user-a", default);
+        await svc.SetOverrideAsync("drivdal", "settlement", apr, "Bedre grunn", "user-b", default);
+
+        var overrides = await db.DataCompletenessOverrides.ToListAsync();
+        overrides.Should().HaveCount(1);
+        overrides[0].Reason.Should().Be("Bedre grunn");
+        overrides[0].OverriddenByUserId.Should().Be("user-b");
+    }
+
     /// <summary>No-op IQueryContext for in-memory testing.</summary>
     private sealed class TestQueryContext : IQueryContext
     {

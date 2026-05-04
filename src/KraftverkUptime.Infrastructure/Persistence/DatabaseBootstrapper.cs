@@ -454,6 +454,18 @@ public static class DatabaseBootstrapper
 
             CREATE INDEX IF NOT EXISTS ix_imports_imported_at
                 ON core.data_imports (imported_at_utc);
+
+            -- Manuelle overstyringer av matrise-status. Drifts-leder kan
+            -- markere en celle som komplett etter visuell verifisering i SCADA.
+            CREATE TABLE IF NOT EXISTS core.data_completeness_overrides (
+                plant_id varchar(64) NOT NULL,
+                source_type varchar(32) NOT NULL,
+                period_utc timestamptz NOT NULL,
+                reason varchar(500) NULL,
+                overridden_by_user_id varchar(128) NOT NULL DEFAULT 'system',
+                overridden_at_utc timestamptz NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (plant_id, source_type, period_utc)
+            );
             """;
 
         try

@@ -31,6 +31,7 @@ public sealed class KraftverkDbContext : DbContext
     public DbSet<DamEntry> Dams => Set<DamEntry>();
     public DbSet<DataSourceExpectation> DataSourceExpectations => Set<DataSourceExpectation>();
     public DbSet<DataImport> DataImports => Set<DataImport>();
+    public DbSet<DataCompletenessOverride> DataCompletenessOverrides => Set<DataCompletenessOverride>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -219,6 +220,19 @@ public sealed class KraftverkDbContext : DbContext
             b.HasIndex(x => new { x.PlantId, x.SourceType, x.PeriodFromUtc })
                 .HasDatabaseName("ix_imports_plant_source_period");
             b.HasIndex(x => x.ImportedAtUtc);
+        });
+
+        // SPEC-IMPORT-COMPLETENESS: manuelle overstyringer av celle-status.
+        // Drifts-leder kan markere en celle som komplett etter visuell sjekk
+        // i SCADA HMI (eks. "ingen alarmer i april — fredelig drift").
+        modelBuilder.Entity<DataCompletenessOverride>(b =>
+        {
+            b.ToTable("data_completeness_overrides");
+            b.HasKey(x => new { x.PlantId, x.SourceType, x.PeriodUtc });
+            b.Property(x => x.PlantId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.SourceType).HasMaxLength(32).IsRequired();
+            b.Property(x => x.Reason).HasMaxLength(500);
+            b.Property(x => x.OverriddenByUserId).HasMaxLength(128).IsRequired();
         });
 
         modelBuilder.ApplyOwnedEntityFilters(_queryContext);

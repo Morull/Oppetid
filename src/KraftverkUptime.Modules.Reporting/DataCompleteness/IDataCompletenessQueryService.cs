@@ -41,6 +41,22 @@ public interface IDataCompletenessQueryService
     /// </summary>
     Task<IReadOnlyList<RecentImport>> GetRecentImportsAsync(
         TimeSpan window, int limit, CancellationToken ct);
+
+    /// <summary>
+    /// Setter (eller oppdaterer) en manuell overstyring som markerer en
+    /// (plant, source, period)-celle som komplett. Brukes når drifts-leder
+    /// har sjekket SCADA HMI eller annen kilde manuelt og verifisert at
+    /// "delvis"-status ikke skyldes manglende data.
+    /// </summary>
+    Task SetOverrideAsync(string plantId, string sourceType,
+        DateTimeOffset periodUtc, string? reason, string userId, CancellationToken ct);
+
+    /// <summary>
+    /// Fjerner en overstyring så cellen returnerer til automatisk beregnet
+    /// status. Idempotent: hvis ingen overstyring finnes, gjør ingenting.
+    /// </summary>
+    Task RemoveOverrideAsync(string plantId, string sourceType,
+        DateTimeOffset periodUtc, CancellationToken ct);
 }
 
 /// <summary>
@@ -97,7 +113,11 @@ public sealed record DataCompletenessCell(
     int? RowsImported = null,
     string? FileName = null,
     string? Notes = null,
-    double? Threshold = null);
+    double? Threshold = null,
+    bool IsManuallyOverridden = false,
+    string? OverrideReason = null,
+    DateTimeOffset? OverriddenAtUtc = null,
+    string? OverriddenByUserId = null);
 
 /// <summary>
 /// En forventet import som ikke har kommet — sortert etter overdue-dager.

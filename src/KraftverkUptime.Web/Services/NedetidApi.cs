@@ -225,6 +225,49 @@ public sealed class NedetidApi
         }
     }
 
+    /// <summary>
+    /// Marker en (plant, source, period)-celle som manuelt verifisert komplett.
+    /// Returnerer true ved suksess. Brukes når drifts-leder har sjekket SCADA HMI
+    /// og bekreftet at "delvis"-status ikke skyldes manglende data.
+    /// </summary>
+    public async Task<bool> SetCompletenessOverrideAsync(
+        string plantId, string sourceType, DateTimeOffset period, string? reason,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync(
+                "api/v1/data-status/override",
+                new SetOverrideRequestDto(plantId, sourceType, period, reason),
+                JsonOptions, ct).ConfigureAwait(false);
+            return resp.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Fjern manuell overstyring så cellen returnerer til auto-status.</summary>
+    public async Task<bool> RemoveCompletenessOverrideAsync(
+        string plantId, string sourceType, DateTimeOffset period,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var url =
+                $"api/v1/data-status/override?plantId={Uri.EscapeDataString(plantId)}" +
+                $"&sourceType={Uri.EscapeDataString(sourceType)}" +
+                $"&period={Uri.EscapeDataString(period.ToString("o"))}";
+            var resp = await _http.DeleteAsync(new Uri(url, UriKind.Relative), ct).ConfigureAwait(false);
+            return resp.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>Lister nylige importer (default siste 24 timer) — brukt av auto-import-infobar.</summary>
     public async Task<IReadOnlyList<RecentImportDto>> GetRecentImportsAsync(
         int hours = 24, int limit = 50, CancellationToken ct = default)
@@ -516,7 +559,11 @@ public sealed record DataCompletenessCellDto(
     int? RowsImported = null,
     string? FileName = null,
     string? Notes = null,
-    double? Threshold = null);
+    double? Threshold = null,
+    bool IsManuallyOverridden = false,
+    string? OverrideReason = null,
+    DateTimeOffset? OverriddenAtUtc = null,
+    string? OverriddenByUserId = null);
 
 public sealed record MissingImportDto(
     string PlantId,
@@ -585,6 +632,13 @@ public sealed record HotFolderScanResultDto(
 public sealed record HotFolderRetryResultDto(
     int FilesMoved,
     string Message);
+
+/// <summary>Request-body for POST /api/v1/data-status/override.</summary>
+public sealed record SetOverrideRequestDto(
+    string PlantId,
+    string SourceType,
+    DateTimeOffset Period,
+    string? Reason);
 
 public sealed record HotFolderDiagnoseResultDto(
     string FileName,

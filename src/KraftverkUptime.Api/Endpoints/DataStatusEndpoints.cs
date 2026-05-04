@@ -50,7 +50,62 @@ public static class DataStatusEndpoints
             .RequireAuthorization(AuthorizationPolicies.PlantReader)
             .Produces<IReadOnlyList<RecentImport>>(StatusCodes.Status200OK);
 
+        // Manuelle overstyringer av celle-status. Drifts-leder kan markere
+        // en delvis/forfalt celle som komplett etter visuell verifisering.
+        group.MapPost("/override", SetOverrideAsync)
+            .WithName("SetDataCompletenessOverride")
+            .WithSummary("Marker en (plant, source, period)-celle som manuelt verifisert komplett.")
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest);
+
+        group.MapDelete("/override", RemoveOverrideAsync)
+            .WithName("RemoveDataCompletenessOverride")
+            .WithSummary("Fjern manuell overstyring så cellen returnerer til auto-beregnet status.")
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest);
+
         return endpoints;
+    }
+
+    private static async Task<IResult> SetOverrideAsync(
+        SetOverrideRequest request,
+        IDataCompletenessQueryService service,
+        ICurrentUser currentUser,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.PlantId)
+            || string.IsNullOrWhiteSpace(request.SourceType))
+        {
+            return Results.Problem(title: "Mangler plant_id eller source_type",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+        await service.SetOverrideAsync(
+            request.PlantId,
+            request.SourceType,
+            request.Period.ToUniversalTime(),
+            request.Reason,
+            currentUser.UserId ?? "system",
+            ct).ConfigureAwait(false);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> RemoveOverrideAsync(
+        string plantId,
+        string sourceType,
+        DateTimeOffset period,
+        IDataCompletenessQueryService service,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(plantId) || string.IsNullOrWhiteSpace(sourceType))
+        {
+            return Results.Problem(title: "Mangler plant_id eller source_type",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+        await service.RemoveOverrideAsync(plantId, sourceType, period.ToUniversalTime(), ct)
+            .ConfigureAwait(false);
+        return Results.NoContent();
     }
 
     private static async Task<IResult> GetMatrixAsync(
@@ -92,7 +147,11 @@ public static class DataStatusEndpoints
                 kv.Value.RowsImported,
                 kv.Value.FileName,
                 kv.Value.Notes,
-                kv.Value.Threshold))
+                kv.Value.Threshold,
+                kv.Value.IsManuallyOverridden,
+                kv.Value.OverrideReason,
+                kv.Value.OverriddenAtUtc,
+                kv.Value.OverriddenByUserId))
             .ToList();
 
         return Results.Ok(new DataCompletenessMatrixResponse(
@@ -159,4 +218,15 @@ public sealed record DataCompletenessCellDto(
     int? RowsImported = null,
     string? FileName = null,
     string? Notes = null,
-    double? Threshold = null);
+    double? Threshold = null,
+    bool IsManuallyOverridden = false,
+    string? OverrideReason = null,
+    DateTimeOffset? OverriddenAtUtc = null,
+    string? OverriddenByUserId = null);
+
+/// <summary>Request-body for POST /api/v1/data-status/override.</summary>
+public sealed record SetOverrideRequest(
+    string PlantId,
+    string SourceType,
+    DateTimeOffset Period,
+    string? Reason);

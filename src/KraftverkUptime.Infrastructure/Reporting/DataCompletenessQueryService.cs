@@ -83,6 +83,16 @@ public sealed class DataCompletenessQueryService : IDataCompletenessQueryService
             .Where(i => i.PeriodFromUtc < toMonth && i.PeriodToUtc > fromMonth)
             .ToListAsync(ct).ConfigureAwait(false);
 
+        // Hent manuelle overstyringer for vinduet. Disse forces til COMPLETE
+        // i status-beregningen (men metadata om import beholdes for tooltip).
+        var overrides = await _db.DataCompletenessOverrides
+            .AsNoTracking()
+            .Where(o => o.PeriodUtc >= fromMonth && o.PeriodUtc < toMonth)
+            .ToListAsync(ct).ConfigureAwait(false);
+        var overrideByKey = overrides.ToDictionary(
+            o => new DataCompletenessKey(o.PlantId, o.SourceType, o.PeriodUtc),
+            o => o);
+
         // Splitt hver import til alle månedene den dekker, og aggreger per
         // (plant, source, måned). "Siste import vinner" hvis flere imports
         // dekker samme måned.
@@ -188,6 +198,7 @@ public sealed class DataCompletenessQueryService : IDataCompletenessQueryService
                 var periodEnd = period.AddMonths(1);
 
                 DataCompletenessCell cell;
+                var hasOverride = overrideByKey.TryGetValue(key, out var ov);
                 if (importsByKey.TryGetValue(key, out var hit))
                 {
                     // Bruk per-måned-beregnet dekning (justert for hvor stor del
@@ -198,7 +209,12 @@ public sealed class DataCompletenessQueryService : IDataCompletenessQueryService
                     var threshold = exp.CompletionThresholdPct > 0
                         ? exp.CompletionThresholdPct
                         : CompleteCoverageThreshold;
-                    var status = coverage < threshold ? "PARTIAL" : "COMPLETE";
+                    // Override forcer COMPLETE, men beholder metadata om dekning
+                    // og import slik at brukeren ser i tooltip/modal hva auto-
+                    // beregnet status var før overstyring.
+                    var status = hasOverride
+                        ? "COMPLETE"
+                        : (coverage < threshold ? "PARTIAL" : "COMPLETE");
                     cell = new DataCompletenessCell(
                         Status: status,
                         LastImportedAt: hit.Last.ImportedAtUtc,
@@ -209,7 +225,29 @@ public sealed class DataCompletenessQueryService : IDataCompletenessQueryService
                         RowsImported: hit.Last.RowsImported,
                         FileName: hit.Last.FileName,
                         Notes: hit.Last.Notes,
-                        Threshold: threshold);
+                        Threshold: threshold,
+                        IsManuallyOverridden: hasOverride,
+                        OverrideReason: ov?.Reason,
+                        OverriddenAtUtc: ov?.OverriddenAtUtc,
+                        OverriddenByUserId: ov?.OverriddenByUserId);
+                }
+                else if (hasOverride)
+                {
+                    // Ingen import, men brukeren har overstyrt — vis som komplett
+                    // med override-metadata. Dekker eks. "kilden ble deaktivert
+                    // midt i måneden, ingen data forventet for resten".
+                    cell = new DataCompletenessCell(
+                        Status: "COMPLETE",
+                        LastImportedAt: null,
+                        CoveragePct: null,
+                        ImportCount: 0,
+                        Threshold: exp.CompletionThresholdPct > 0
+                            ? exp.CompletionThresholdPct
+                            : CompleteCoverageThreshold,
+                        IsManuallyOverridden: true,
+                        OverrideReason: ov!.Reason,
+                        OverriddenAtUtc: ov.OverriddenAtUtc,
+                        OverriddenByUserId: ov.OverriddenByUserId);
                 }
                 else
                 {
@@ -342,6 +380,57 @@ public sealed class DataCompletenessQueryService : IDataCompletenessQueryService
             RowsImported: i.RowsImported,
             CoveragePct: i.CoveragePct,
             UserId: i.UserId)).ToList();
+    }
+
+    public async Task SetOverrideAsync(string plantId, string sourceType,
+        DateTimeOffset periodUtc, string? reason, string userId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        var period = TruncToMonth(periodUtc);
+
+        var existing = await _db.DataCompletenessOverrides
+            .FirstOrDefaultAsync(o =>
+                o.PlantId == plantId && o.SourceType == sourceType && o.PeriodUtc == period, ct)
+            .ConfigureAwait(false);
+
+        if (existing is null)
+        {
+            _db.DataCompletenessOverrides.Add(new DataCompletenessOverride
+            {
+                PlantId = plantId,
+                SourceType = sourceType,
+                PeriodUtc = period,
+                Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim(),
+                OverriddenByUserId = userId,
+                OverriddenAtUtc = _clock.GetUtcNow(),
+            });
+        }
+        else
+        {
+            existing.Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+            existing.OverriddenByUserId = userId;
+            existing.OverriddenAtUtc = _clock.GetUtcNow();
+        }
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+    }
+
+    public async Task RemoveOverrideAsync(string plantId, string sourceType,
+        DateTimeOffset periodUtc, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceType);
+        var period = TruncToMonth(periodUtc);
+
+        var existing = await _db.DataCompletenessOverrides
+            .FirstOrDefaultAsync(o =>
+                o.PlantId == plantId && o.SourceType == sourceType && o.PeriodUtc == period, ct)
+            .ConfigureAwait(false);
+        if (existing is null) return; // idempotent
+
+        _db.DataCompletenessOverrides.Remove(existing);
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
 
     private static DateTimeOffset TruncToMonth(DateTimeOffset t)
