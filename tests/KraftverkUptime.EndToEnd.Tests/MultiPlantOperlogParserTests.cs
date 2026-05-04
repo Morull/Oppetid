@@ -108,6 +108,49 @@ public class MultiPlantOperlogParserTests
     }
 
     [Fact]
+    public void ParseMultiPlant_KunSettpunktsEndringer_TellesIRowsByPlantId()
+    {
+        // Bug fixet 2026-05-04: hvis en plant kun har settpunkt-events (ingen
+        // STARTER_AL/STOPPER_AL/FEIL_AL/HAVARI), ble plant-en helt utelatt fra
+        // EventsByPlantId — og dermed ikke logget til data_imports.
+        // Resultat: status-matrisen viste OVERDUE selv om data var mottatt.
+        // Fix: track raw rows per plant uavhengig av om eventene er state-classified.
+        var csv = string.Join("\n",
+            "2026-04-21T05:53:30.000Z;Grødemfoss;u;GRODEM_SMIEVT_NIVA_SENSOR_PRI_HRV_SP_LIM_HH;settpunkt;;;operatorlog;;;",
+            "2026-04-19T19:54:45.000Z;Grødemfoss;u;GRODEM_SMIEVT_NIVA_SENSOR_PRI_HRV_SP_LIM_HH;settpunkt;;;operatorlog;;;",
+            "2026-01-15T10:58:07.000Z;Grødemfoss;u;GRODEM_G2_KONTROLL_AGC_DIFF_SP_TM;settpunkt;;;operatorlog;;;");
+
+        var result = ParseCsv(csv);
+
+        // Ingen events skal være state-classified
+        result.EventsByPlantId.Should().NotContainKey("grodemfoss",
+            "alle eventene er settpunkt-endringer som ikke produserer state-changes");
+
+        // MEN raw-stats skal inneholde plant-en
+        result.RowsByPlantId.Should().ContainKey("grodemfoss");
+        var stats = result.RowsByPlantId["grodemfoss"];
+        stats.RowCount.Should().Be(3);
+        stats.MinTimestampUtc.Should().Be(new DateTimeOffset(2026, 1, 15, 10, 58, 7, TimeSpan.Zero));
+        stats.MaxTimestampUtc.Should().Be(new DateTimeOffset(2026, 4, 21, 5, 53, 30, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public void ParseMultiPlant_BlandetEvents_RowsByPlantId_TellerAlleRader()
+    {
+        // En plant med både settpunkt og state-events: rad-tellingen er total,
+        // mens EventsByPlantId kun har de state-classified.
+        var csv = string.Join("\n",
+            "2026-04-01T08:00:00.000Z;Drivdal;u;DRIVDAL_G1_KONTROLL_AGC_DB_SP;settpunkt;;;operatorlog;;;",
+            "2026-04-02T08:00:00.000Z;Drivdal;u;DRIVDAL_G1_KONTROLL_STARTER_AL;start;;;alarmlog;event;3;",
+            "2026-04-03T08:00:00.000Z;Drivdal;u;DRIVDAL_G1_KONTROLL_STOPPER_AL;stop;;;alarmlog;event;3;");
+
+        var result = ParseCsv(csv);
+
+        result.EventsByPlantId["drivdal"].Should().HaveCount(2, "kun STARTER + STOPPER er state-events");
+        result.RowsByPlantId["drivdal"].RowCount.Should().Be(3, "alle 3 rader skal telles");
+    }
+
+    [Fact]
     public void Parse_GammelSinglePlantApi_FungererFortsatt_OgFiltrer_PaaBareDenStation()
     {
         // Rader fra annen station i CSV-en skal IKKE bli inkludert når caller

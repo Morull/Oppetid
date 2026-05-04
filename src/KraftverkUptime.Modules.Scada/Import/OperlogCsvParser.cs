@@ -35,7 +35,8 @@ public sealed class OperlogCsvParser
         var events = multi.EventsByPlantId.TryGetValue(plantId, out var list)
             ? list
             : Array.Empty<ClassifiedEvent>();
-        return new OperlogParseResult(plantId, multi.RowsParsed, multi.RowsSkipped, events);
+        var rawStats = multi.RowsByPlantId.TryGetValue(plantId, out var stats) ? stats : null;
+        return new OperlogParseResult(plantId, multi.RowsParsed, multi.RowsSkipped, events, rawStats);
     }
 
     /// <summary>
@@ -72,6 +73,10 @@ public sealed class OperlogCsvParser
         }
 
         var byPlant = new Dictionary<string, List<ClassifiedEvent>>(StringComparer.Ordinal);
+        // Rå rad-stats per plant — telles for ALLE rader som ble routet til en plant,
+        // uavhengig av om eventen produserte state-change. Brukes til data_imports-
+        // logging så status-matrisen ser at vi mottok data for plant-en.
+        var rawStatsByPlant = new Dictionary<string, RawStats>(StringComparer.Ordinal);
         var unknownStations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var rowsParsed = 0;
         var rowsSkipped = 0;
@@ -95,16 +100,40 @@ public sealed class OperlogCsvParser
             var alarmType = iAlarmType >= 0 ? cols[iAlarmType] : "";
             var station = iStation >= 0 ? cols[iStation].Trim() : "";
 
-            var (state, cause) = MapEvent(tag, alarmType);
-            if (state is null) { rowsSkipped++; continue; }
-
-            // Rute hver event til plant via station-callback. Tom station eller
-            // ukjent navn → tell som unknown og skip raden.
+            // Plant-routing først — selv settpunkt-events teller som "data mottatt"
+            // for plant-en, og må derfor knyttes til plant før MapEvent-skipping.
             var plantId = string.IsNullOrEmpty(station) ? null : stationToPlantId(station);
             if (string.IsNullOrEmpty(plantId))
             {
                 rowsSkipped++;
                 if (!string.IsNullOrEmpty(station)) unknownStations.Add(station);
+                continue;
+            }
+
+            // Oppdater rad-stats for plant — alle rader teller, også settpunkt-only.
+            if (rawStatsByPlant.TryGetValue(plantId, out var stats))
+            {
+                stats.Count++;
+                if (startUtc < stats.MinTime) stats.MinTime = startUtc;
+                if (startUtc > stats.MaxTime) stats.MaxTime = startUtc;
+            }
+            else
+            {
+                rawStatsByPlant[plantId] = new RawStats
+                {
+                    Count = 1,
+                    MinTime = startUtc,
+                    MaxTime = startUtc,
+                };
+            }
+
+            var (state, cause) = MapEvent(tag, alarmType);
+            if (state is null)
+            {
+                // Settpunkt-endring eller annen ikke-state-event. Telt i raw-stats
+                // over slik at plant-en ikke vises som "manglende data", men
+                // produserer ingen ClassifiedEvent.
+                rowsSkipped++;
                 continue;
             }
 
@@ -135,13 +164,25 @@ public sealed class OperlogCsvParser
             kv => kv.Key,
             kv => (IReadOnlyList<ClassifiedEvent>)kv.Value,
             StringComparer.Ordinal);
+        var roStats = rawStatsByPlant.ToDictionary(
+            kv => kv.Key,
+            kv => new PlantRawRowStats(kv.Value.Count, kv.Value.MinTime, kv.Value.MaxTime),
+            StringComparer.Ordinal);
 
         return new MultiPlantOperlogParseResult(
             RowsParsed: rowsParsed,
             RowsSkipped: rowsSkipped,
             UnknownStations: unknownStations.Count,
             UnknownStationNames: unknownStations.ToList(),
-            EventsByPlantId: roBuckets);
+            EventsByPlantId: roBuckets,
+            RowsByPlantId: roStats);
+    }
+
+    private sealed class RawStats
+    {
+        public int Count;
+        public DateTimeOffset MinTime;
+        public DateTimeOffset MaxTime;
     }
 
     /// <summary>
@@ -199,16 +240,35 @@ public sealed record OperlogParseResult(
     string PlantId,
     int RowsParsed,
     int RowsSkipped,
-    IReadOnlyList<ClassifiedEvent> Events);
+    IReadOnlyList<ClassifiedEvent> Events,
+    PlantRawRowStats? RawStats = null);
 
 /// <summary>
 /// Resultat fra <see cref="OperlogCsvParser.ParseMultiPlant"/> — én CSV
 /// kan inneholde events fra flere stasjoner. Fordeling per plant ligger i
 /// <see cref="EventsByPlantId"/>.
+///
+/// <see cref="RowsByPlantId"/> teller alle rader som tilhører en plant
+/// (inkludert settpunkt-endringer og andre events som ikke produserer
+/// state-changes). Brukes til å logge "data mottatt for plant" til
+/// data_imports selv når ingen enkelt-event er state-classified —
+/// ellers ville et anlegg med kun settpunkt-events i en periode bli
+/// rapportert som "manglende data" i status-matrisen.
 /// </summary>
 public sealed record MultiPlantOperlogParseResult(
     int RowsParsed,
     int RowsSkipped,
     int UnknownStations,
     IReadOnlyList<string> UnknownStationNames,
-    IReadOnlyDictionary<string, IReadOnlyList<ClassifiedEvent>> EventsByPlantId);
+    IReadOnlyDictionary<string, IReadOnlyList<ClassifiedEvent>> EventsByPlantId,
+    IReadOnlyDictionary<string, PlantRawRowStats> RowsByPlantId);
+
+/// <summary>
+/// Per-plant rad-telling og tidsstempel-grenser for operlog-importer.
+/// Bruksområde: logging til data_imports-tabellen så status-matrisen ser
+/// at "noen rader for denne plant ble mottatt for denne perioden".
+/// </summary>
+public sealed record PlantRawRowStats(
+    int RowCount,
+    DateTimeOffset MinTimestampUtc,
+    DateTimeOffset MaxTimestampUtc);

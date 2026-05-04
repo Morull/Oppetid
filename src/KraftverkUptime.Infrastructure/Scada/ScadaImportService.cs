@@ -163,12 +163,13 @@ public sealed class ScadaImportService : IScadaImportService
             "Operlog-import for {PlantId}: {Parsed} events parsed, {Skipped} skip, {Written} skrevet.",
             plantId, result.RowsParsed, result.RowsSkipped, result.Events.Count);
 
-        // Logg til data_imports. Operlog dekker varierende perioder — vi
-        // henter periode fra event-tidspunkter. Hvis fila er tom, hopper
-        // vi over loggingen (ingen meningsfull periode å rapportere).
-        if (result.Events.Count > 0)
+        // Logg til data_imports basert på rå rader — også settpunkt-events
+        // som ikke produserer state-changes teller som "data mottatt for plant".
+        // RawStats inkluderer alle rader som ble routet til plant-en uavhengig
+        // av om de matcher noen state-mønster.
+        if (result.RawStats is { } stats)
         {
-            await LogOperlogImportAsync(plantId, result.Events, ct).ConfigureAwait(false);
+            await LogOperlogImportAsync(plantId, stats, ct).ConfigureAwait(false);
         }
 
         return new OperlogImportResult(
@@ -201,16 +202,22 @@ public sealed class ScadaImportService : IScadaImportService
         var parser = new OperlogCsvParser();
         var result = parser.ParseMultiPlant(ownerOrgId, reader, stationToPlantId);
 
-        var perPlant = new List<PlantOperlogResult>(result.EventsByPlantId.Count);
-        foreach (var (plantId, events) in result.EventsByPlantId)
+        var perPlant = new List<PlantOperlogResult>(result.RowsByPlantId.Count);
+        // Iter over ALLE plants som hadde rader (inkl. settpunkt-only) — ikke
+        // bare de med state-classified events. Slik logges grodemfoss-måneden
+        // som "data mottatt" selv om ingen events ble klassifisert.
+        foreach (var (plantId, stats) in result.RowsByPlantId)
         {
-            await _eventRepo.UpsertManyAsync(events, ct).ConfigureAwait(false);
-            perPlant.Add(new PlantOperlogResult(plantId, events.Count));
-
+            var events = result.EventsByPlantId.TryGetValue(plantId, out var list)
+                ? list
+                : Array.Empty<KraftverkUptime.Core.Domain.ClassifiedEvent>();
             if (events.Count > 0)
             {
-                await LogOperlogImportAsync(plantId, events, ct).ConfigureAwait(false);
+                await _eventRepo.UpsertManyAsync(events, ct).ConfigureAwait(false);
             }
+            perPlant.Add(new PlantOperlogResult(plantId, events.Count));
+
+            await LogOperlogImportAsync(plantId, stats, ct).ConfigureAwait(false);
         }
 
         _logger.LogInformation(
@@ -238,13 +245,13 @@ public sealed class ScadaImportService : IScadaImportService
     /// </summary>
     private async Task LogOperlogImportAsync(
         string plantId,
-        IReadOnlyCollection<KraftverkUptime.Core.Domain.ClassifiedEvent> events,
+        PlantRawRowStats stats,
         CancellationToken ct)
     {
-        var minTime = events.Min(e => e.StartUtc);
-        var maxTime = events.Max(e => e.StartUtc);
-        var periodFrom = new DateTimeOffset(minTime.Year, minTime.Month, 1, 0, 0, 0, TimeSpan.Zero);
-        var lastMonthStart = new DateTimeOffset(maxTime.Year, maxTime.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        var periodFrom = new DateTimeOffset(
+            stats.MinTimestampUtc.Year, stats.MinTimestampUtc.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        var lastMonthStart = new DateTimeOffset(
+            stats.MaxTimestampUtc.Year, stats.MaxTimestampUtc.Month, 1, 0, 0, 0, TimeSpan.Zero);
         var periodTo = lastMonthStart.AddMonths(1);
 
         try
@@ -256,10 +263,10 @@ public sealed class ScadaImportService : IScadaImportService
                 PeriodToUtc: periodTo,
                 FileName: null,
                 FileHash: null,
-                RowsImported: events.Count,
+                RowsImported: stats.RowCount,
                 CoveragePct: 1.0,
                 UserId: "system",
-                Notes: $"{events.Count} events"
+                Notes: $"{stats.RowCount} rader"
             ), ct).ConfigureAwait(false);
         }
         catch (Exception ex)
