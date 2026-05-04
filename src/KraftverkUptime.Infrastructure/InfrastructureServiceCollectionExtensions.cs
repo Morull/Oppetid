@@ -141,6 +141,7 @@ public static class InfrastructureServiceCollectionExtensions
             KraftverkUptime.Infrastructure.HotFolder.HotFolderOptions>>().Value);
         services.AddSingleton<KraftverkUptime.Infrastructure.HotFolder.HotFolderQueue>();
         services.AddSingleton<KraftverkUptime.Infrastructure.HotFolder.HotFolderDetector>();
+        services.AddSingleton<KraftverkUptime.Infrastructure.HotFolder.HotFolderDedupCache>();
         services.AddHostedService<KraftverkUptime.Infrastructure.HotFolder.HotFolderWatcher>();
         // HttpClient for å POSTE settlement-filer mot lokal Api (samme prosess).
         // Base-URL settes i Program.cs via configure-callback der den kjenner kestrel-port.

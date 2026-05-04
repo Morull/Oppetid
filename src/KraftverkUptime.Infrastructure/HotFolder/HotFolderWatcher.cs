@@ -1,3 +1,4 @@
+using System.Text.Json;
 using KraftverkUptime.Modules.Scada.Import;
 using KraftverkUptime.Modules.Settlement.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,21 +29,29 @@ public sealed class HotFolderWatcher : BackgroundService
     private readonly IServiceProvider _services;
     private readonly HotFolderQueue _queue;
     private readonly HotFolderDetector _detector;
+    private readonly HotFolderDedupCache _dedup;
     private readonly HotFolderOptions _options;
     private readonly ILogger<HotFolderWatcher> _log;
 
     private readonly Dictionary<string, DateTime> _seenFiles = new(StringComparer.OrdinalIgnoreCase);
 
+    private static readonly JsonSerializerOptions DiagJsonOpts = new()
+    {
+        WriteIndented = true,
+    };
+
     public HotFolderWatcher(
         IServiceProvider services,
         HotFolderQueue queue,
         HotFolderDetector detector,
+        HotFolderDedupCache dedup,
         IOptions<HotFolderOptions> options,
         ILogger<HotFolderWatcher> log)
     {
         _services = services;
         _queue = queue;
         _detector = detector;
+        _dedup = dedup;
         _options = options.Value;
         _log = log;
         Current = this;
@@ -169,17 +178,52 @@ public sealed class HotFolderWatcher : BackgroundService
         _queue.MarkProcessing(file.FullName);
         _log.LogInformation("HotFolder: prosesserer {File}", file.Name);
 
-        // Detect type + plant
+        // 1. Hash innholdet før noe annet — dedup-vakt mot at samme fil kommer
+        //    inn flere ganger (drag-drop x2, "Skann nå" trykket gjentatte ganger,
+        //    container-restart med fil fortsatt liggende).
+        string fileHash;
+        try
+        {
+            fileHash = await HotFolderDedupCache.ComputeFileHashAsync(file, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "HotFolder: kunne ikke hashe {File}", file.Name);
+            await QuarantineAsync(file, $"Kunne ikke lese fil: {ex.Message}", diagnostics: null, ct);
+            _queue.Complete(file.FullName, "QUARANTINE", null, null,
+                $"Kunne ikke lese fil: {ex.Message}", DateTimeOffset.UtcNow);
+            return;
+        }
+
+        // 2. Detect type + plant (bygger diagnostics underveis)
         var detection = _detector.Detect(file);
+        var diag = detection.Diagnostics;
+
         if (!detection.Success)
         {
-            await QuarantineAsync(file, detection.ErrorMessage ?? "Ukjent fil-type/anlegg", ct);
+            await QuarantineAsync(file, detection.ErrorMessage ?? "Ukjent fil-type/anlegg", diag, ct);
             _queue.Complete(file.FullName, "QUARANTINE", null, null,
                 detection.ErrorMessage, DateTimeOffset.UtcNow);
             return;
         }
 
-        // Rute til riktig importør via DI scope
+        // 3. Dedup-sjekk: registrer hash. Hvis allerede sett → flytt til duplicates/.
+        //    Sjekken kjøres ETTER detect slik at duplicates-loggen får plant-info.
+        if (!_dedup.TryRegister(fileHash, file.Name,
+                detection.PlantId, detection.SourceType?.ToSourceTypeKey(), out var existing))
+        {
+            _log.LogInformation(
+                "HotFolder: duplikat av {OrigFile} (hash {Hash}, sett første gang {Time}) — hopper over.",
+                existing.FirstFileName, fileHash[..12], existing.FirstSeenUtc);
+            await MoveToDuplicatesAsync(file, existing, ct);
+            _queue.Complete(file.FullName, "DUPLICATE",
+                detection.PlantId, detection.SourceType?.ToSourceTypeKey(),
+                $"Duplikat av '{existing.FirstFileName}' (importert {existing.FirstSeenUtc:dd.MM HH:mm}).",
+                DateTimeOffset.UtcNow);
+            return;
+        }
+
+        // 4. Rute til riktig importør via DI scope
         try
         {
             using var scope = _services.CreateScope();
@@ -195,7 +239,7 @@ public sealed class HotFolderWatcher : BackgroundService
         catch (Exception ex)
         {
             _log.LogError(ex, "HotFolder import feilet for {File}", file.Name);
-            await QuarantineAsync(file, ex.ToString(), ct);
+            await QuarantineAsync(file, ex.ToString(), diag, ct);
             _queue.Complete(file.FullName, "QUARANTINE",
                 detection.PlantId, detection.SourceType?.ToSourceTypeKey(),
                 $"Feil: {ex.Message}", DateTimeOffset.UtcNow);
@@ -289,7 +333,8 @@ public sealed class HotFolderWatcher : BackgroundService
         await Task.CompletedTask;
     }
 
-    private async Task QuarantineAsync(FileInfo file, string errorMessage, CancellationToken ct)
+    private async Task QuarantineAsync(FileInfo file, string errorMessage,
+        DetectionDiagnostics? diagnostics, CancellationToken ct)
     {
         try
         {
@@ -308,10 +353,54 @@ public sealed class HotFolderWatcher : BackgroundService
             }
             File.Move(file.FullName, targetPath);
             await File.WriteAllTextAsync(targetPath + ".error.txt", errorMessage, ct);
+
+            // Skriv diag.json hvis vi har detector-trase. UI henter denne via
+            // /api/v1/hot-folder/quarantine/{fileName}/diagnose for å vise
+            // "hvorfor havnet denne i karantene"-modal.
+            if (diagnostics is not null)
+            {
+                try
+                {
+                    var diagJson = JsonSerializer.Serialize(diagnostics, DiagJsonOpts);
+                    await File.WriteAllTextAsync(targetPath + ".diag.json", diagJson, ct);
+                }
+                catch (Exception diagEx)
+                {
+                    _log.LogWarning(diagEx, "Kunne ikke skrive .diag.json for {File} — fortsetter uten.", file.Name);
+                }
+            }
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Klarte ikke flytte til quarantine: {File}", file.Name);
+        }
+    }
+
+    private async Task MoveToDuplicatesAsync(FileInfo file, DedupRecord existing, CancellationToken ct)
+    {
+        try
+        {
+            var dupRoot = Path.Combine(_options.RootPath, _options.DuplicatesFolderName);
+            var monthBucket = DateTime.UtcNow.ToString("yyyy-MM");
+            var targetDir = Path.Combine(dupRoot, monthBucket);
+            Directory.CreateDirectory(targetDir);
+
+            var stamped = $"dup_{DateTime.UtcNow:yyyyMMddTHHmmssfff}_{file.Name}";
+            var targetPath = Path.Combine(targetDir, stamped);
+            File.Move(file.FullName, targetPath, overwrite: false);
+
+            var note =
+                $"Duplikat av tidligere import.\n" +
+                $"Hash: {existing.Hash}\n" +
+                $"Først sett: {existing.FirstSeenUtc:O}\n" +
+                $"Originalt filnavn: {existing.FirstFileName}\n" +
+                $"Plant: {existing.PlantId ?? "(ukjent)"}\n" +
+                $"Kilde: {existing.SourceType ?? "(ukjent)"}\n";
+            await File.WriteAllTextAsync(targetPath + ".dup.txt", note, ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Klarte ikke flytte til duplicates: {File}", file.Name);
         }
     }
 }

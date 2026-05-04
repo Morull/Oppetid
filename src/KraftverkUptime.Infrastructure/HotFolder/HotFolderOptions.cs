@@ -46,7 +46,8 @@ public sealed class HotFolderOptions
     {
         "README",
         ".lock",
-        "~$",        // Excel/Word lock-files
+        "~$",                    // Excel/Word lock-files
+        ".hotfolder-",           // Dedup-cache + framtidige interne state-filer
     };
 
     /// <summary>
@@ -54,6 +55,26 @@ public sealed class HotFolderOptions
     /// vi prosesserer den. Hindrer at vi leser en fil mens den blir kopiert.
     /// </summary>
     public int FileStabilitySeconds { get; set; } = 5;
+
+    /// <summary>
+    /// Hvor mange dager innholds-hashen til en prosessert fil holdes i
+    /// dedup-cachen. Filer med samme hash (eks. dropped two ganger) hopper
+    /// over import-pipelinen og rapporteres som DUPLIKAT.
+    /// </summary>
+    public int DedupRetentionDays { get; set; } = 14;
+
+    /// <summary>
+    /// Filnavn for JSON-cachen som persistere dedup-records mellom restarts.
+    /// Plasseres i <see cref="RootPath"/>. Filen er utelatt fra import via
+    /// <see cref="ExcludePatterns"/> (matcher prefiks <c>.</c>).
+    /// </summary>
+    public string DedupCacheFileName { get; set; } = ".hotfolder-dedup.json";
+
+    /// <summary>
+    /// Undermappe der duplikat-filer flyttes (separat fra <see cref="DoneFolderName"/>
+    /// for å være tydelig på at innholdet allerede er importert tidligere).
+    /// </summary>
+    public string DuplicatesFolderName { get; set; } = "duplicates";
 
     /// <summary>
     /// Filnavn-prefikser som ruter til anlegg når content-sniff ikke
