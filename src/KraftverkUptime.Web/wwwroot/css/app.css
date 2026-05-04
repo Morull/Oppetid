@@ -193,6 +193,55 @@ html, body {
     letter-spacing: 0.05em;
 }
 
+/* --- Dalane Kraft brand-element i AppBar ---------------------------------- */
+.dk-brand {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    color: inherit;
+    margin-left: 8px;
+    transition: opacity 0.15s;
+}
+.dk-brand:hover { opacity: 0.85; }
+.dk-brand-logo {
+    height: 32px;
+    width: auto;
+    display: block;
+}
+/* Tekst-fallback hvis logo-PNG ikke er på plass i wwwroot/img/.
+   Etterligner brand-typografien uten å bruke faktiske selskaps-assets. */
+.dk-brand-fallback {
+    align-items: center;
+    gap: 8px;
+}
+.dk-brand-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 2px solid;
+    border-image: linear-gradient(135deg, #2A8B5C 0%, #1AA09F 50%, #1F84B7 100%) 1;
+    color: #FFFFFF;
+    font-weight: 800;
+    font-size: 0.95rem;
+    line-height: 1;
+    /* Heksagon-form via clip-path */
+    clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0% 50%);
+    background: linear-gradient(135deg, rgba(42, 139, 92, 0.15), rgba(31, 132, 183, 0.15));
+}
+.dk-brand-text {
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    font-size: 0.95rem;
+    color: #FFFFFF;
+}
+.dk-app-name {
+    color: rgba(255, 255, 255, 0.85);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+}
+
 /* --- Bordkort på rapport-listen ------------------------------------------- */
 .dk-table-wrap {
     border-radius: 14px;

@@ -5,8 +5,21 @@
     <MudAppBar Elevation="1" Dense="true">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"
                        Edge="Edge.Start" OnClick="ToggleDrawer" />
-        <MudText Typo="Typo.h6" Class="ml-2" Style="font-weight:600; letter-spacing:-0.01em;">KraftverkUptime</MudText>
-        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="ml-3 dk-version">v1</MudChip>
+
+        @* Dalane Kraft-logo i topp-baren. img-tag faller tilbake til tekst-versjon
+           hvis logo-fila ikke er på plass i wwwroot/img/. Se LOGO-INSTALL.md for
+           hvordan å laste ned PNG-en fra dalane-kraft.no. *@
+        <a href="/" class="dk-brand">
+            <img src="img/dalane-kraft-logo.png" alt="Dalane Kraft"
+                 class="dk-brand-logo"
+                 onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';" />
+            <span class="dk-brand-fallback" style="display:none;">
+                <span class="dk-brand-mark">D</span>
+                <span class="dk-brand-text">DALANE&nbsp;KRAFT</span>
+            </span>
+        </a>
+        <MudText Typo="Typo.body2" Class="ml-3 dk-app-name" Style="opacity:0.85;">Uptime</MudText>
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="ml-2 dk-version">v1</MudChip>
 
         <MudSpacer />
 
