@@ -38,6 +38,12 @@ public static class HotFolderEndpoints
             .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
             .Produces<HotFolderRetryResult>(StatusCodes.Status200OK);
 
+        group.MapPost("/reimport-done", ReimportDoneAsync)
+            .WithName("HotFolderReimportDone")
+            .WithSummary("Recovery-knapp: flytt alle filer fra done/<YYYY-MM> tilbake til root og slett dedup-cache for ny import. Brukes etter restart der blob-storage er nullstilt.")
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
+            .Produces<HotFolderRetryResult>(StatusCodes.Status200OK);
+
         group.MapGet("/quarantine/{fileName}/diagnose", DiagnoseQuarantineAsync)
             .WithName("HotFolderDiagnoseQuarantine")
             .WithSummary("Hent steg-for-steg-trase for hvorfor en karantenert fil ble avvist.")
@@ -124,6 +130,66 @@ public static class HotFolderEndpoints
             ErrorMessage: errorMessage,
             HasDetailedDiagnostics: diagnostics is not null,
             Diagnostics: diagnostics));
+    }
+
+    private static async Task<IResult> ReimportDoneAsync(
+        HotFolderOptions options,
+        HotFolderDedupCache dedup,
+        CancellationToken ct)
+    {
+        if (!options.Enabled)
+        {
+            return Results.Ok(new HotFolderRetryResult(0, "Hot-folder deaktivert."));
+        }
+
+        var doneRoot = Path.Combine(options.RootPath, options.DoneFolderName);
+        if (!Directory.Exists(doneRoot))
+        {
+            return Results.Ok(new HotFolderRetryResult(0, "Ingen done-mappe."));
+        }
+
+        // Steg 1: nullstill dedup-cache så filene IKKE klassifiseres som duplikater.
+        // Dette er trygt fordi DB-laget har sin egen idempotens-vakt på (file_hash,
+        // plant_id) som forhindrer dobbel-import selv om vi prosesserer samme fil.
+        dedup.Clear();
+
+        // Steg 2: flytt alle import-bare filer fra done/-mappen tilbake til root.
+        // Filer i done/ har stamped prefix (eks. "drivdal_scada_20260503T...") —
+        // det er greit, watcher ignorerer prefiks og detekterer på nytt.
+        var moved = 0;
+        foreach (var file in Directory.EnumerateFiles(doneRoot, "*.*", SearchOption.AllDirectories))
+        {
+            var ext = Path.GetExtension(file).ToLowerInvariant();
+            if (ext is not (".xlsx" or ".xls" or ".csv")) continue;
+
+            var dest = Path.Combine(options.RootPath, Path.GetFileName(file));
+            try
+            {
+                if (File.Exists(dest))
+                {
+                    var stem = Path.GetFileNameWithoutExtension(file);
+                    var newName = $"{stem}_reimport{DateTime.UtcNow:HHmmss}{ext}";
+                    dest = Path.Combine(options.RootPath, newName);
+                }
+                File.Move(file, dest);
+                moved++;
+            }
+            catch
+            {
+                // Fortsett med resten — neste kall fanger eventuelle gjenværende
+            }
+        }
+
+        var watcher = HotFolderWatcher.Current;
+        if (watcher is not null && moved > 0)
+        {
+            await watcher.TriggerScanAsync(ct).ConfigureAwait(false);
+        }
+
+        return Results.Ok(new HotFolderRetryResult(moved,
+            moved > 0
+                ? $"{moved} filer flyttet fra done/ til import-rot, dedup-cache nullstilt. Auto-import scanner nå."
+                : "Ingen filer i done/ å re-importere."));
     }
 
     private static async Task<IResult> RetryQuarantineAsync(

@@ -17,7 +17,12 @@ services:
 
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite:3.33.0
-    command: "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --loose --skipApiVersionCheck"
+    # --location /data tvinger azurite til å lagre i volume-mountet path
+    # i stedet for default /opt/azurite (som er ephemeral i container).
+    # Uten dette nullstilles blob-storage ved hver restart, og rapport-
+    # blobs (UptimeReport JSON) går tapt — brukeren ser da "Behandles"
+    # for alle imports selv om DB-radene fortsatt finnes.
+    command: "azurite --location /data --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --loose --skipApiVersionCheck"
     ports:
       - "10000:10000"
       - "10001:10001"

@@ -89,6 +89,15 @@
                     @(_scanning ? "Skanner…" : "Skann nå")
                 </MudButton>
             </MudTooltip>
+            <MudTooltip Text="Flytt alle filer fra done/ tilbake og re-importer (brukes hvis rapporter mangler etter restart)">
+                <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Restore"
+                           OnClick="ReimportDoneAsync"
+                           Disabled="@_reimporting"
+                           Color="MudBlazor.Color.Warning">
+                    @(_reimporting ? "Importerer…" : "Re-importer alt")
+                </MudButton>
+            </MudTooltip>
             <MudTooltip Text="Oppdater visning">
                 <MudIconButton Icon="@Icons.Material.Filled.Refresh"
                                Size="Size.Small"
@@ -1177,6 +1186,7 @@
     private HotFolderStatusDto? _hotFolder;
     private bool _scanning;
     private bool _retryingQuarantine;
+    private bool _reimporting;
 
     // Diagnose-modal
     private bool _diagOpen;
@@ -1322,6 +1332,37 @@
         finally
         {
             _retryingQuarantine = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Recovery: flytt alle filer fra done/ tilbake til import-rot og nullstill
+    /// dedup-cache. Brukes etter blob-storage-restart for å regenerere
+    /// rapport-blobs fra bevarte CSV/xlsx-filer.
+    /// </summary>
+    private async Task ReimportDoneAsync()
+    {
+        _reimporting = true;
+        StateHasChanged();
+        try
+        {
+            var result = await NedetidApi.ReimportDoneAsync();
+            if (result is null)
+            {
+                Snackbar.Add("Kunne ikke re-importere filer.", Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add(result.Message,
+                    result.FilesMoved > 0 ? Severity.Success : Severity.Info);
+            }
+            await Task.Delay(3000);
+            await LoadStatusAsync();
+        }
+        finally
+        {
+            _reimporting = false;
             StateHasChanged();
         }
     }

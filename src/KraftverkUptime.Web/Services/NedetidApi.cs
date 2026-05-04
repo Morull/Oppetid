@@ -207,6 +207,27 @@ public sealed class NedetidApi
     }
 
     /// <summary>
+    /// Recovery: flytt alle filer fra done/ tilbake til import-rot og nullstill
+    /// dedup-cache. Brukes etter at azurite blob-storage er nullstilt for å
+    /// regenerere rapport-blobs fra bevarte CSV/xlsx-filer på disk.
+    /// </summary>
+    public async Task<HotFolderRetryResultDto?> ReimportDoneAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await _http.PostAsync(
+                new Uri("api/v1/hot-folder/reimport-done", UriKind.Relative), content: null, ct).ConfigureAwait(false);
+            resp.EnsureSuccessStatusCode();
+            return await resp.Content.ReadFromJsonAsync<HotFolderRetryResultDto>(JsonOptions, ct)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Henter detaljert diagnose for en karantenert fil — brukt av "Diagnostikk"-
     /// modal i UI for å vise hvorfor filen ble avvist.
     /// </summary>
