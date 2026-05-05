@@ -146,10 +146,21 @@ public static class NedetidEndpoints
             .GetAvgImbalancePremiumAsync(plantId, fromUtc, toUtc, ct)
             .ConfigureAwait(false);
 
+        // Manuelle overrides for vakt-events i perioden — drifts-leder kan
+        // tvinge "HaddeOverlop" eller "IkkeOverlop" på en spesifikk hendelse.
+        var overrides = await db.VaktEventOverrides
+            .Where(o => o.PlantId == plantId
+                && o.EventStartUtc >= fromUtc
+                && o.EventStartUtc < toUtc
+                && o.Classification != "Auto")
+            .ToDictionaryAsync(o => o.EventStartUtc, o => o.Classification, ct)
+            .ConfigureAwait(false);
+
         var roi = calculator.Calculate(
             events, plant.InstalledCapacityMw, snittSpot, faktor,
             dataset.OverflowHours, overflowDataAvailable: dataset.DataAvailable,
-            snittUbalansetillegg_NokMwh: snittUbalansetillegg);
+            snittUbalansetillegg_NokMwh: snittUbalansetillegg,
+            overrides: overrides);
         var response = BuildVaktRoiResponse(plantId, fromUtc, toUtc, plant.InstalledCapacityMw,
             snittSpot, faktor, snittUbalansetillegg, roi);
 

@@ -13,7 +13,8 @@ public static class ProduksjonAnalyseCalculator
         DateTimeOffset TimeUtc,
         double? PlanMwh,
         double? ElhubMwh,
-        double? SpotprisNokMwh);
+        double? SpotprisNokMwh,
+        double? RkPrisNokMwh = null);
 
     public static ProduksjonAnalyseResult Compute(
         string plantId,
@@ -72,12 +73,33 @@ public static class ProduksjonAnalyseCalculator
             })
             .ToList();
 
+        // Berik hourly med overlop-flag + ubalanse-kost. Ubalanse-kost per time:
+        //   premium = max(0, RK - Spot)        (NOK/MWh oppregulering)
+        //   under_levering = max(0, Plan - Elhub)  (MWh under-levering)
+        //   ubalanse_kost = premium × under_levering
+        // Brukt av driftslinjen på Produksjon-siden for å markere store kost-hendelser.
         var hourlyOutput = hours
-            .Select(h => new ProduksjonHourlyPoint(
-                TimeUtc: h.TimeUtc,
-                PlanMwh: h.PlanMwh,
-                ElhubMwh: h.ElhubMwh,
-                SpotprisNokMwh: h.SpotprisNokMwh))
+            .Select(h =>
+            {
+                var hour = TruncateToHour(h.TimeUtc);
+                var harOverlop = overflow.Contains(hour);
+                var ubalanseKost = 0.0;
+                if (h.RkPrisNokMwh.HasValue && h.SpotprisNokMwh.HasValue
+                    && h.PlanMwh.HasValue && h.ElhubMwh.HasValue)
+                {
+                    var premium = Math.Max(0, h.RkPrisNokMwh.Value - h.SpotprisNokMwh.Value);
+                    var underLevering = Math.Max(0, h.PlanMwh.Value - h.ElhubMwh.Value);
+                    ubalanseKost = premium * underLevering;
+                }
+                return new ProduksjonHourlyPoint(
+                    TimeUtc: h.TimeUtc,
+                    PlanMwh: h.PlanMwh,
+                    ElhubMwh: h.ElhubMwh,
+                    SpotprisNokMwh: h.SpotprisNokMwh,
+                    RkPrisNokMwh: h.RkPrisNokMwh,
+                    HarOverlop: harOverlop,
+                    UbalanseKostNok: ubalanseKost);
+            })
             .ToList();
 
         return new ProduksjonAnalyseResult(

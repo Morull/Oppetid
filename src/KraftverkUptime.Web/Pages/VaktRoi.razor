@@ -6,6 +6,7 @@
 @inject FilterState Filter
 @inject NavigationManager Nav
 @inject CauseFormatter CauseFormatter
+@inject ISnackbar Snackbar
 
 <PageTitle>Vakt-ROI</PageTitle>
 
@@ -315,6 +316,11 @@ else if (!IsPortfolioMode && _response is not null)
                 <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVaktExtra">Ekstra (t)</MudTableSortLabel></MudTh>
                 <MudTh Style="text-align:right">Overløp</MudTh>
                 <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVaktReddetNok">Reddet (NOK)</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:center; width:140px;">
+                    <MudTooltip Text="Override: tving 'hadde overløp' eller 'ikke overløp' uavhengig av SCADA-data.">
+                        <span>Override</span>
+                    </MudTooltip>
+                </MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="Start">@FormatLocal(context.Event.StartUtc)</MudTd>
@@ -326,6 +332,23 @@ else if (!IsPortfolioMode && _response is not null)
                 <MudTd DataLabel="Ekstra" Style="text-align:right">@(context.ErInnenforVakt && context.ErReddbar ? context.EkstraTimerSpart.ToString("F1") : "–")</MudTd>
                 <MudTd DataLabel="Overløp" Style="text-align:right">@DisplayOverflow(context)</MudTd>
                 <MudTd DataLabel="Reddet" Style="text-align:right">@(context.ReddetNok > 0 ? FormatNok(context.ReddetNok) : "–")</MudTd>
+                <MudTd DataLabel="Override" Style="text-align:center;">
+                    @if (context.ErInnenforVakt && context.ErReddbar)
+                    {
+                        <MudSelect T="string" Value="@OverrideValueFor(context)"
+                                   ValueChanged="@(v => SetOverrideAsync(context, v))"
+                                   Margin="Margin.Dense" Dense="true" Variant="Variant.Outlined"
+                                   Style="min-width: 130px;">
+                            <MudSelectItem Value="@("Auto")">Auto</MudSelectItem>
+                            <MudSelectItem Value="@("HaddeOverlop")">Hadde overløp</MudSelectItem>
+                            <MudSelectItem Value="@("IkkeOverlop")">Ikke overløp</MudSelectItem>
+                        </MudSelect>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Default">–</MudText>
+                    }
+                </MudTd>
             </RowTemplate>
         </MudTable>
     </MudPaper>
@@ -351,6 +374,7 @@ else if (!IsPortfolioMode && _response is not null)
     private int _chartVersion;
     private string _vaktSearch = string.Empty;
     private string _lastLoadedPlantId = string.Empty;
+    private Dictionary<DateTimeOffset, string> _overrides = new();
 
     private ApexChartOptions<MonthlyPoint> _trendOptions = new();
 
@@ -499,6 +523,17 @@ else if (!IsPortfolioMode && _response is not null)
             _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "vakt-roi", fromUtc, toUtc).ToString();
             Filter.StoreVaktRoi(_response);
             BuildCharts(_response);
+
+            // Last overrides for å vise riktig dropdown-valg per rad.
+            try
+            {
+                var overrides = await NedetidApi.ListVaktOverridesAsync(Filter.PlantId);
+                _overrides = overrides.ToDictionary(o => o.EventStartUtc, o => o.Classification);
+            }
+            catch
+            {
+                _overrides = new Dictionary<DateTimeOffset, string>();
+            }
         }
         catch (Exception ex)
         {
@@ -588,6 +623,35 @@ else if (!IsPortfolioMode && _response is not null)
             _ => p.Month.ToString(System.Globalization.CultureInfo.InvariantCulture),
         };
         return $"{name} {p.Year}";
+    }
+
+    private string OverrideValueFor(VaktRoiEventDto e)
+        => _overrides.TryGetValue(e.Event.StartUtc, out var v) ? v : "Auto";
+
+    private async Task SetOverrideAsync(VaktRoiEventDto e, string classification)
+    {
+        try
+        {
+            await NedetidApi.UpsertVaktOverrideAsync(
+                Filter.PlantId, e.Event.StartUtc, classification, comment: null);
+
+            if (classification == "Auto") _overrides.Remove(e.Event.StartUtc);
+            else _overrides[e.Event.StartUtc] = classification;
+
+            Snackbar.Add(
+                classification == "Auto"
+                    ? "Override fjernet — bruker SCADA-data."
+                    : $"Override satt: {classification}.",
+                Severity.Success);
+
+            // Re-load Vakt-ROI med ny override anvendt på serveren.
+            Filter.InvalidateCaches();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Kunne ikke lagre override: {ex.Message}", Severity.Error);
+        }
     }
 
     private string PeriodLabel

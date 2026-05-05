@@ -91,6 +91,12 @@ public sealed class VaktRoiCalculator
     /// for hver MWh under-leveranse. Default 0 = ingen ubalanse-komponent
     /// (gir samme oppførsel som v2). Spec: SPEC-VAKT-ROI-UBALANSE.md.
     /// </param>
+    /// <param name="overrides">
+    /// Manuelle overrides per leder-event-StartUtc. Verdier: "HaddeOverlop"
+    /// (tving full produksjons-redding), "IkkeOverlop" (sett produksjons-
+    /// komponent til 0). Events uten override (eller med "Auto") bruker
+    /// SCADA-overflow-data som vanlig.
+    /// </param>
     public IReadOnlyList<VaktRoiResultat> Calculate(
         IReadOnlyList<DowntimeEvent> events,
         double installertEffektMw,
@@ -98,7 +104,8 @@ public sealed class VaktRoiCalculator
         double kapasitetsfaktor = 0.5,
         IReadOnlySet<DateTimeOffset>? overflowHours = null,
         bool overflowDataAvailable = false,
-        double snittUbalansetillegg_NokMwh = 0)
+        double snittUbalansetillegg_NokMwh = 0,
+        IReadOnlyDictionary<DateTimeOffset, string>? overrides = null)
     {
         ArgumentNullException.ThrowIfNull(events);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(installertEffektMw);
@@ -107,6 +114,7 @@ public sealed class VaktRoiCalculator
         ArgumentOutOfRangeException.ThrowIfNegative(snittUbalansetillegg_NokMwh);
 
         overflowHours ??= new HashSet<DateTimeOffset>();
+        overrides ??= new Dictionary<DateTimeOffset, string>();
 
         // Pass 1: klassifiser hvert event (utenfor-vakt / ikke-reddbar / reddbar)
         // og lag en arbeidsliste med counterfactualEnd per reddbar event.
@@ -202,12 +210,36 @@ public sealed class VaktRoiCalculator
                 if (overflowHours.Contains(h)) savedOverflowHours++;
             }
 
+            // Manuell override per leder-event: drifts-leder kan tvinge full
+            // overflow-kreditt eller null kreditt uavhengig av SCADA-data.
+            // Lagres i core.vakt_event_overrides per (plant_id, event_start_utc).
+            var overrideClassification = overrides.TryGetValue(leaderStart, out var oc) ? oc : null;
+            var overflowOverridden = false;
+            switch (overrideClassification)
+            {
+                case "HaddeOverlop":
+                    // Tving full produksjons-redding: alle ekstra-timer regnes
+                    // som overflow (counterfactual-vindu minus outage, gulv-kvantisert).
+                    savedOverflowHours = 0;
+                    for (var h = leaderStartHour; h < counterfactualHour; h = h.AddHours(1))
+                    {
+                        if (!outageHourSet.Contains(h)) savedOverflowHours++;
+                    }
+                    overflowOverridden = true;
+                    break;
+                case "IkkeOverlop":
+                    savedOverflowHours = 0;
+                    overflowOverridden = true;
+                    break;
+            }
+
             groupRoi[key] = new GroupRoi(
                 Members: members,
                 LeaderStart: leaderStart,
                 CounterfactualEnd: counterfactualEnd,
                 SavedHours: savedHours,
-                SavedOverflowHours: savedOverflowHours);
+                SavedOverflowHours: savedOverflowHours,
+                OverflowOverridden: overflowOverridden);
         }
 
         // Pass 4: bygg per-event resultater. Leader får full gruppe-ROI;
@@ -309,6 +341,12 @@ public sealed class VaktRoiCalculator
                     $" (Leder for {group.Members.Count} events i samme vakt-vindu — ROI samles her.)";
             }
 
+            if (group.OverflowOverridden)
+            {
+                forklaring +=
+                    " ⚠ Manuelt overstyrt av drifts-leder (override aktiv på denne hendelsen).";
+            }
+
             result.Add(new VaktRoiResultat
             {
                 Event = e,
@@ -321,7 +359,8 @@ public sealed class VaktRoiCalculator
                 ReddetProduksjon_NOK = reddetProduksjonNok,
                 ReddetUbalanse_NOK = reddetUbalanseNok,
                 OverflowTimerInCounterfactual = overflowTimer,
-                OverflowDataMissing = !overflowDataAvailable && ekstraTimer > 0,
+                // Hvis override er aktiv, regnes ikke data som "missing" uansett.
+                OverflowDataMissing = !group.OverflowOverridden && !overflowDataAvailable && ekstraTimer > 0,
                 Forklaring = forklaring,
             });
         }
@@ -336,7 +375,8 @@ public sealed class VaktRoiCalculator
         DateTimeOffset LeaderStart,
         DateTimeOffset CounterfactualEnd,
         double SavedHours,
-        int SavedOverflowHours);
+        int SavedOverflowHours,
+        bool OverflowOverridden);
 
     /// <summary>
     /// Teller hele timer i [<paramref name="fromUtc"/>, <paramref name="toUtc"/>)

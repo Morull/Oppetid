@@ -114,8 +114,8 @@ public class OverflowQueryServiceTests
         var samples = new List<ScadaSample>
         {
             new(PlantId, OverflowSignalId, T(1, 8), 0.0, 0),       // ingen overløp
-            new(PlantId, OverflowSignalId, T(1, 9), 0.0005, 0),    // under terskel
-            new(PlantId, OverflowSignalId, T(1, 10), 0.5, 0),      // overløp
+            new(PlantId, OverflowSignalId, T(1, 9), 0.3, 0),       // under terskel (0.5 m³/s)
+            new(PlantId, OverflowSignalId, T(1, 10), 0.6, 0),      // overløp
             new(PlantId, OverflowSignalId, T(1, 11), 1.2, 0),      // overløp
             new(PlantId, OverflowSignalId, T(1, 12), null, 2),     // null/bad → ignoreres
             new(PlantId, OverflowSignalId, T(1, 13), 2.0, 0),      // overløp
@@ -180,7 +180,7 @@ public class OverflowQueryServiceTests
 
         var samples = new List<ScadaSample>
         {
-            new(PlantId, terminalSignal, T(1, 5), 0.5, 0),
+            new(PlantId, terminalSignal, T(1, 5), 0.6, 0),  // over terskel (0.5 m³/s)
             new(PlantId, terminalSignal, T(1, 6), 1.0, 0),
         };
 

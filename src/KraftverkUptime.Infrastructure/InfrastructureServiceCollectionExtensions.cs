@@ -120,6 +120,9 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<KraftverkUptime.Modules.Reporting.Portefolje.IPortfolioVaktRoiQueryService,
                           KraftverkUptime.Infrastructure.Reporting.PortfolioVaktRoiQueryService>();
 
+        // --- Tilsig-basert "ville-overflow"-estimator (alternativ til SCADA-direkte) ---
+        services.AddScoped<KraftverkUptime.Infrastructure.Reporting.InflowOverflowQueryService>();
+
         // --- Capture rate (Spec CAPTURE-RATE) ---
         services.AddScoped<KraftverkUptime.Modules.Reporting.CaptureRate.ICaptureRateQueryService,
                           KraftverkUptime.Infrastructure.Reporting.CaptureRateQueryService>();

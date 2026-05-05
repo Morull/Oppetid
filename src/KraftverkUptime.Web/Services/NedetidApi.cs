@@ -60,6 +60,32 @@ public sealed class NedetidApi
         return resp ?? throw new InvalidOperationException("Tom respons fra /portfolio/kpis.");
     }
 
+    /// <summary>Lister vakt-overrides for et anlegg.</summary>
+    public async Task<IReadOnlyList<VaktOverrideDto>> ListVaktOverridesAsync(
+        string plantId, CancellationToken ct = default)
+    {
+        var url = $"api/v1/plants/{Uri.EscapeDataString(plantId)}/vakt-overrides";
+        var items = await _http.GetFromJsonAsync<List<VaktOverrideDto>>(url, JsonOptions, ct)
+            .ConfigureAwait(false);
+        return items ?? (IReadOnlyList<VaktOverrideDto>)Array.Empty<VaktOverrideDto>();
+    }
+
+    /// <summary>
+    /// Setter override for én vakt-event. Classification: "Auto",
+    /// "HaddeOverlop" eller "IkkeOverlop".
+    /// </summary>
+    public async Task<VaktOverrideDto> UpsertVaktOverrideAsync(
+        string plantId, DateTimeOffset eventStartUtc, string classification,
+        string? comment, CancellationToken ct = default)
+    {
+        var url = $"api/v1/plants/{Uri.EscapeDataString(plantId)}/vakt-overrides";
+        var body = new { eventStartUtc, classification, comment };
+        var resp = await _http.PutAsJsonAsync(url, body, JsonOptions, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<VaktOverrideDto>(JsonOptions, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Tom respons fra upsert-vakt-override.");
+    }
+
     /// <summary>
     /// Aggregert Vakt-ROI på tvers av alle anlegg. Brukes av portefølje-
     /// dashboardet på <c>/vakt-roi</c> (uten plantId).
@@ -476,6 +502,14 @@ public sealed record PortfolioVaktRoiMonthlyPoint(
     double TotalReddetNok,
     int ReddbareEvents);
 
+public sealed record VaktOverrideDto(
+    string PlantId,
+    DateTimeOffset EventStartUtc,
+    string Classification,
+    string? Comment,
+    DateTimeOffset SetAt,
+    string? SetBy);
+
 public sealed record EffektivitetResponse(
     string PlantId,
     DateTimeOffset FromUtc,
@@ -555,7 +589,10 @@ public sealed record ProduksjonHourlyDto(
     DateTimeOffset TimeUtc,
     double? PlanMwh,
     double? ElhubMwh,
-    double? SpotprisNokMwh);
+    double? SpotprisNokMwh,
+    double? RkPrisNokMwh = null,
+    bool HarOverlop = false,
+    double UbalanseKostNok = 0);
 
 public sealed record ProduksjonMonthlyDto(
     int Year,

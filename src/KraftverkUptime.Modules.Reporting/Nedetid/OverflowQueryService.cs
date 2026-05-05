@@ -24,11 +24,19 @@ namespace KraftverkUptime.Modules.Reporting.Nedetid;
 public sealed class OverflowQueryService : IOverflowQueryService
 {
     /// <summary>
-    /// Terskel for å skille reell overløps-vannføring fra floating-point støy
-    /// i SCADA-eksporten. 0.001 m³/s = 1 l/s, godt under enhver reell
-    /// minstevannføring og tar høyde for sensorrydding rundt null.
+    /// Terskel for å skille reell overløps-vannføring fra sensor-støy.
+    ///
+    /// Hevet fra 0.001 til 0.5 m³/s 2026-05-05 etter konkret feilmåling på
+    /// Stemmevatn 9. mars 2026 (4 timer "overløp" på 0.16-2.28 m³/s under
+    /// trip-event ble klassifisert som ekte overløp og ga 12 408 NOK i
+    /// reddet produksjon — drifts-leder bekreftet at det var sensorglitch).
+    ///
+    /// 0.5 m³/s = 500 l/s, godt over typisk minstevannføring og kalibrerings-
+    /// drift, men under et reelt overløp som ville vart i flere timer.
+    /// Hvis du opplever at REELLE overløp ikke teller (lite anlegg med lav
+    /// max-flow), juster denne ned per-anlegg-baserte overrides senere.
     /// </summary>
-    public const double OverflowThresholdM3PerS = 0.001;
+    public const double OverflowThresholdM3PerS = 0.5;
 
     private readonly ISignalMapRepository _signalMaps;
     private readonly IScadaSampleRepository _samples;

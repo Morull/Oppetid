@@ -197,6 +197,21 @@ public static class DatabaseBootstrapper
             );
             CREATE INDEX IF NOT EXISTS ix_cause_aliases_owner
                 ON core.cause_aliases (owner_org_id);
+
+            -- Vakt-event overrides: drifts-leder kan tvinge "hadde overløp" /
+            -- "ikke overløp" på en vakt-hendelse uavhengig av SCADA-data.
+            CREATE TABLE IF NOT EXISTS core.vakt_event_overrides (
+                plant_id varchar(64) NOT NULL,
+                event_start_utc timestamptz NOT NULL,
+                classification varchar(32) NOT NULL,
+                comment varchar(500) NULL,
+                owner_org_id varchar(64) NOT NULL,
+                set_by varchar(128) NULL,
+                set_at timestamptz NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (plant_id, event_start_utc)
+            );
+            CREATE INDEX IF NOT EXISTS ix_vakt_event_overrides_plant
+                ON core.vakt_event_overrides (plant_id);
             """;
 
         try

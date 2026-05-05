@@ -90,10 +90,20 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
             var snittUbalansetillegg = await _nedetid.GetAvgImbalancePremiumAsync(plant.Id, fromUtc, toUtc, ct)
                 .ConfigureAwait(false);
 
+            // Per-anlegg overrides for vakt-events i perioden.
+            var overrides = await _db.VaktEventOverrides
+                .Where(o => o.PlantId == plant.Id
+                    && o.EventStartUtc >= fromUtc
+                    && o.EventStartUtc < toUtc
+                    && o.Classification != "Auto")
+                .ToDictionaryAsync(o => o.EventStartUtc, o => o.Classification, ct)
+                .ConfigureAwait(false);
+
             var roi = _calculator.Calculate(
                 events, plant.InstalledCapacityMw, snittSpot, faktor,
                 dataset.OverflowHours, overflowDataAvailable: dataset.DataAvailable,
-                snittUbalansetillegg_NokMwh: snittUbalansetillegg);
+                snittUbalansetillegg_NokMwh: snittUbalansetillegg,
+                overrides: overrides);
 
             var plantReddetNok = roi.Sum(r => r.ReddetNok);
             var plantReddbare = roi.Count(r => r.ErInnenforVakt && r.ErReddbar);

@@ -1,0 +1,209 @@
+@using KraftverkUptime.Web.Services
+
+@*
+    Driftslinje for produksjons-siden — heatmap-kalender med én rad per dag
+    og 24 ruter per rad. Fargekoder per time:
+      - Grønn skala : produksjon (mørkere = nær plan)
+      - Cyan        : overløp (vannet renner forbi turbinen)
+      - Lilla skala : ubalanse-kost (mørkere = større kost)
+      - Rød border  : "stor" ubalanse-kost (over terskel)
+      - Grå         : ingen plan + ingen produksjon
+      - Hvit/blank  : mangler data
+
+    Hover viser tooltip med Plan/Elhub/Spot/RK + ubalanse-kost.
+*@
+
+<div class="dk-card pa-4">
+    <div class="d-flex justify-space-between align-center mb-3">
+        <MudText Typo="Typo.h3">Driftslinje med hendelser</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">
+            Hover en time for detaljer. Lilla = ubalanse-kost · Cyan = overløp · Grønn = produksjon.
+        </MudText>
+    </div>
+
+    @if (Days.Count == 0)
+    {
+        <MudText Typo="Typo.body2">Ingen data i perioden.</MudText>
+    }
+    else
+    {
+        <div class="dk-timeline">
+            <div class="dk-timeline-headerRow">
+                <div class="dk-timeline-dayLabel"></div>
+                @for (var h = 0; h < 24; h++)
+                {
+                    var hour = h;
+                    <div class="dk-timeline-hourLabel">@(hour % 3 == 0 ? hour.ToString("D2") : "")</div>
+                }
+            </div>
+            @foreach (var day in Days)
+            {
+                <div class="dk-timeline-row">
+                    <div class="dk-timeline-dayLabel">@day.Date.ToString("dd.MM")</div>
+                    @foreach (var cell in day.Cells)
+                    {
+                        if (cell is null)
+                        {
+                            <div class="dk-timeline-cell dk-timeline-cellEmpty"></div>
+                        }
+                        else
+                        {
+                            <div class="dk-timeline-cell @(cell.IsHighCost ? "dk-timeline-cellHighCost" : "")"
+                                 style="@($"background-color:{cell.Color};")"
+                                 title="@cell.Tooltip">
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="dk-timeline-legend mt-3">
+            <div class="dk-timeline-legendGroup">
+                <div class="dk-timeline-legendGroupTitle">Status per time</div>
+                <div class="dk-timeline-legendGroupItems">
+                    <div class="dk-timeline-legendItem">
+                        <span class="dk-timeline-legendSwatch" style="background-color:#2A9D8F;"></span>
+                        <span>Produksjon (mørkere = nær plan)</span>
+                    </div>
+                    <div class="dk-timeline-legendItem">
+                        <span class="dk-timeline-legendSwatch" style="background-color:#00BCD4;"></span>
+                        <span>Overløp</span>
+                    </div>
+                    <div class="dk-timeline-legendItem">
+                        <span class="dk-timeline-legendSwatch" style="background-color:#7E57C2;"></span>
+                        <span>Ubalanse-kost (mørkere = større)</span>
+                    </div>
+                    <div class="dk-timeline-legendItem">
+                        <span class="dk-timeline-legendSwatch" style="background-color:#7E57C2; outline: 2px solid #E76F51;"></span>
+                        <span>Stor ubalanse-kost (&gt; @FormatNok(HighCostThresholdNok) NOK)</span>
+                    </div>
+                    <div class="dk-timeline-legendItem">
+                        <span class="dk-timeline-legendSwatch" style="background-color:#9AA5B0;"></span>
+                        <span>Ingen drift / ingen plan</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<ProduksjonHourlyDto> Hours { get; set; } = Array.Empty<ProduksjonHourlyDto>();
+
+    /// <summary>NOK-terskel for å regne en time som "stor" ubalanse-kost (rød border).</summary>
+    [Parameter] public double HighCostThresholdNok { get; set; } = 5_000;
+
+    private IReadOnlyList<DayRow> Days { get; set; } = Array.Empty<DayRow>();
+
+    protected override void OnParametersSet()
+    {
+        Days = BuildDays();
+    }
+
+    private IReadOnlyList<DayRow> BuildDays()
+    {
+        if (Hours.Count == 0) return Array.Empty<DayRow>();
+
+        // Skaleringsterskel for ubalanse-kost-fargen: bruker 90-percentil i
+        // perioden slik at fargen tilpasser seg det faktiske kost-nivået.
+        var costsAbove0 = Hours.Where(h => h.UbalanseKostNok > 0)
+            .Select(h => h.UbalanseKostNok).OrderBy(v => v).ToList();
+        var maxCostScale = costsAbove0.Count > 0
+            ? costsAbove0[(int)(costsAbove0.Count * 0.9)]
+            : 1.0;
+
+        var byHour = Hours.ToDictionary(h => h.TimeUtc.UtcDateTime, h => h);
+        var days = Hours.Select(h => h.TimeUtc.UtcDateTime.Date)
+            .Distinct().OrderBy(d => d).ToList();
+
+        var rows = new List<DayRow>(days.Count);
+        foreach (var day in days)
+        {
+            var cells = new HourCell?[24];
+            for (var h = 0; h < 24; h++)
+            {
+                var dt = new DateTimeOffset(day.AddHours(h), TimeSpan.Zero);
+                if (!byHour.TryGetValue(dt.UtcDateTime, out var hour))
+                {
+                    cells[h] = null;
+                    continue;
+                }
+
+                var (color, label) = ChooseCellStyle(hour, maxCostScale);
+                var isHighCost = hour.UbalanseKostNok > HighCostThresholdNok;
+
+                var lines = new List<string>(6)
+                {
+                    $"{dt.UtcDateTime:yyyy-MM-dd HH:mm} UTC",
+                    label,
+                };
+                if (hour.PlanMwh.HasValue)
+                    lines.Add($"Plan: {hour.PlanMwh:F2} MWh");
+                if (hour.ElhubMwh.HasValue)
+                    lines.Add($"Elhub: {hour.ElhubMwh:F2} MWh");
+                if (hour.SpotprisNokMwh.HasValue)
+                    lines.Add($"Spot: {hour.SpotprisNokMwh:F0} NOK/MWh");
+                if (hour.RkPrisNokMwh.HasValue)
+                    lines.Add($"RK: {hour.RkPrisNokMwh:F0} NOK/MWh");
+                if (hour.UbalanseKostNok > 0)
+                    lines.Add($"Ubalanse-kost: {FormatNok(hour.UbalanseKostNok)} NOK");
+                if (hour.HarOverlop)
+                    lines.Add("⚠ Overløp på terminal-dam");
+
+                cells[h] = new HourCell(color, string.Join('\n', lines), isHighCost);
+            }
+            rows.Add(new DayRow(day, cells));
+        }
+        return rows;
+    }
+
+    /// <summary>
+    /// Bestemmer celle-farge + tekst-label for én time.
+    /// Prioritet (overstyrer hverandre):
+    ///   1. Stor ubalanse-kost  → lilla (mørkere skala = større kost)
+    ///   2. Overløp             → cyan
+    ///   3. Produksjon          → grønn (mørkere = nær plan)
+    ///   4. Ingen drift         → grå
+    /// </summary>
+    private (string Color, string Label) ChooseCellStyle(ProduksjonHourlyDto h, double maxCostScale)
+    {
+        if (h.UbalanseKostNok > 0)
+        {
+            var ratio = Math.Min(1.0, h.UbalanseKostNok / Math.Max(1.0, maxCostScale));
+            var lightness = 70 - (int)(ratio * 30); // 70% (lyse) → 40% (mørk lilla)
+            return ($"hsl(265, 50%, {lightness}%)",
+                    $"Ubalanse-kost: {FormatNok(h.UbalanseKostNok)} NOK");
+        }
+
+        if (h.HarOverlop)
+        {
+            return ("#00BCD4", "Overløp på terminal-dam");
+        }
+
+        if (h.ElhubMwh.HasValue && h.ElhubMwh.Value > 0)
+        {
+            // Mørkere grønn jo nærmere planen elhub er.
+            var planTreff = (h.PlanMwh ?? 0) > 0
+                ? Math.Min(1.0, h.ElhubMwh.Value / h.PlanMwh!.Value) : 1.0;
+            var lightness = 65 - (int)(planTreff * 25); // 65% → 40%
+            return ($"hsl(170, 40%, {lightness}%)",
+                    $"Drift: {h.ElhubMwh:F2} MWh");
+        }
+
+        return ("#9AA5B0", "Ingen drift");
+    }
+
+    private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
+    {
+        NumberGroupSeparator = " ",
+        NumberDecimalSeparator = ",",
+        NumberGroupSizes = new[] { 3 },
+    };
+
+    private static string FormatNok(double nok) => nok.ToString("N0", NorskTall);
+
+    private sealed record HourCell(string Color, string Tooltip, bool IsHighCost);
+    private sealed record DayRow(DateTime Date, HourCell?[] Cells);
+}

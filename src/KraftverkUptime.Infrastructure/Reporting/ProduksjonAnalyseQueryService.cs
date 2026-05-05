@@ -72,7 +72,8 @@ public sealed class ProduksjonAnalyseQueryService : IProduksjonAnalyseService
                 TimeUtc: h.TimeUtc,
                 PlanMwh: h.Row.ProduksjonplanMwh,
                 ElhubMwh: h.Row.MwhElhub,
-                SpotprisNokMwh: h.Row.SpotprisNokMwh))
+                SpotprisNokMwh: h.Row.SpotprisNokMwh,
+                RkPrisNokMwh: h.Row.RkPrisNokMwh))
             .ToList();
 
         // Hent overløp-data fra terminal-dam (kaskade-modell). Feil eller

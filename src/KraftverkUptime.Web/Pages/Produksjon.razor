@@ -180,6 +180,14 @@ else if (_data is not null)
             </MudPaper>
         }
 
+        @* ---- Driftslinje med hendelser (overløp + ubalanse-kost per time) ---- *@
+        @if (_data.Hourly.Count > 0)
+        {
+            <div class="mb-4">
+                <ProduksjonTimeline Hours="_data.Hourly" />
+            </div>
+        }
+
         @* ---- Måneds-tabell for å se trend ---- *@
         @if (_data.Monthly.Count > 0)
         {

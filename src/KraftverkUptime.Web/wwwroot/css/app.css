@@ -306,6 +306,13 @@ body.dk-dark .dk-subbar {
     outline-offset: -1px;
     z-index: 2;
 }
+/* Stor ubalanse-kost: rød ramme rundt cellen + lett glød. */
+.dk-timeline-cellHighCost {
+    outline: 2px solid #E76F51;
+    outline-offset: -1px;
+    box-shadow: 0 0 6px rgba(231, 111, 81, 0.4);
+    z-index: 1;
+}
 
 /* --- Anleggs-kort med eksplisitt drop-strip ------------------------------ */
 /* Tidligere var hele kortet drop-zone, slik at klikk på navnet utløste

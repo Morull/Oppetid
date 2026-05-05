@@ -63,12 +63,21 @@ public sealed record ProduksjonAnalyseResult(
     IReadOnlyList<ProduksjonHourlyPoint> Hourly,
     IReadOnlyList<ProduksjonMonthly> Monthly);
 
-/// <summary>Én time — rå data for graf-visning (Plan vs Elhub vs spot).</summary>
+/// <summary>
+/// Én time — rå data for graf-visning og driftslinje. Inkluderer:
+///   - PlanMwh / ElhubMwh / SpotprisNokMwh: standard plan-vs-faktisk
+///   - RkPrisNokMwh: regulerkraft-pris (for ubalanse-kost-beregning)
+///   - HarOverlop: terminal-dam hadde overløp i denne timen
+///   - UbalanseKostNok: estimert ubalanse-kost = max(0, RK - Spot) × |Plan - Elhub|
+/// </summary>
 public sealed record ProduksjonHourlyPoint(
     DateTimeOffset TimeUtc,
     double? PlanMwh,
     double? ElhubMwh,
-    double? SpotprisNokMwh);
+    double? SpotprisNokMwh,
+    double? RkPrisNokMwh = null,
+    bool HarOverlop = false,
+    double UbalanseKostNok = 0);
 
 public sealed record ProduksjonMonthly(
     int Year,
