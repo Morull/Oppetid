@@ -1,6 +1,8 @@
 @page "/reports"
+@implements IDisposable
 @inject ReportsApi Api
 @inject NavigationManager Nav
+@inject FilterState Filter
 
 <PageTitle>Rapporter</PageTitle>
 
@@ -9,44 +11,16 @@
     <div class="dk-hero-sub">Importerte avregninger og klassifiserte KPI-rapporter per anlegg.</div>
 </div>
 
-<MudPaper Class="pa-4 mb-4 dk-card" Elevation="0">
-    <MudGrid Spacing="2">
-        <MudItem xs="12" sm="4">
-            <MudSelect T="string" @bind-Value="_selectedPlantId" @bind-Value:after="ReloadAsync"
-                       Label="Anlegg" Variant="Variant.Outlined" Dense="true">
-                @if (_plants is not null)
-                {
-                    @foreach (var p in _plants)
-                    {
-                        <MudSelectItem Value="@p.Id">@p.Name (@p.Id)</MudSelectItem>
-                    }
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="6" sm="3">
-            <MudDatePicker Label="Fra" @bind-Date="_from" @bind-Date:after="ReloadAsync"
-                           Clearable="true" Variant="Variant.Outlined" />
-        </MudItem>
-        <MudItem xs="6" sm="3">
-            <MudDatePicker Label="Til" @bind-Date="_to" @bind-Date:after="ReloadAsync"
-                           Clearable="true" Variant="Variant.Outlined" />
-        </MudItem>
-        <MudItem xs="12" sm="2">
-            <MudButton Variant="Variant.Outlined" Color="Color.Default" FullWidth="true"
-                       StartIcon="@Icons.Material.Filled.Restore"
-                       OnClick="ClearFiltersAsync">Nullstill</MudButton>
-        </MudItem>
-    </MudGrid>
-</MudPaper>
+@* Anlegg + periode styres av global velger i AppBar (FilterState). *@
 
 @if (_error is not null)
 {
     <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
 }
 
-@if (string.IsNullOrWhiteSpace(_selectedPlantId))
+@if (string.IsNullOrWhiteSpace(Filter.PlantId))
 {
-    <MudAlert Severity="Severity.Info">Velg et anlegg for å se importerte avregninger.</MudAlert>
+    <MudAlert Severity="Severity.Info">Velg et anlegg i topp-baren for å se importerte avregninger.</MudAlert>
 }
 else
 {
@@ -102,11 +76,7 @@ else
 }
 
 @code {
-    private IReadOnlyList<PlantDto>? _plants;
     private List<SettlementImportSummary>? _items;
-    private string _selectedPlantId = string.Empty;
-    private DateTime? _from;
-    private DateTime? _to;
     private string? _error;
     private string _searchText = string.Empty;
 
@@ -132,42 +102,43 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        try
-        {
-            _plants = await Api.ListPlantsAsync();
-            if (_plants.Count > 0)
-            {
-                _selectedPlantId = _plants[0].Id;
-                await ReloadAsync();
-            }
-        }
+        Filter.OnChange += OnFilterChanged;
+        await ReloadAsync();
+    }
+
+    public void Dispose()
+    {
+        Filter.OnChange -= OnFilterChanged;
+    }
+
+    private async void OnFilterChanged()
+    {
+        try { await ReloadAsync(); }
         catch (Exception ex)
         {
-            _error = $"Kunne ikke hente anleggsliste: {ex.Message}";
+            _error = $"Kunne ikke oppdatere rapport-liste: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
         }
     }
 
     private async Task ReloadAsync()
     {
         _error = null;
-        if (string.IsNullOrWhiteSpace(_selectedPlantId))
+        if (string.IsNullOrWhiteSpace(Filter.PlantId))
         {
             _items = null;
+            await InvokeAsync(StateHasChanged);
             return;
         }
 
         try
         {
-            DateTimeOffset? from = _from.HasValue ? _from.Value.ToUtcOffsetSafe() : null;
-            // Til-dato er eksklusiv → legg til 1 dag etter normalisering for å unngå Kind-mismatch
-            DateTimeOffset? to = _to.HasValue ? _to.Value.AddDays(1).ToUtcOffsetSafe() : null;
+            DateTimeOffset? from = Filter.FromDate.HasValue
+                ? Filter.FromDate.Value.ToUtcOffsetSafe() : null;
+            DateTimeOffset? to = Filter.ToDate.HasValue
+                ? Filter.ToDate.Value.ToUtcOffsetSafe() : null;
 
-            if (from.HasValue ^ to.HasValue)
-            {
-                return; // vent til begge er satt
-            }
-
-            var result = await Api.ListSettlementsAsync(_selectedPlantId, from, to);
+            var result = await Api.ListSettlementsAsync(Filter.PlantId, from, to);
             _items = result.ToList();
         }
         catch (Exception ex)
@@ -175,13 +146,7 @@ else
             _error = $"Kunne ikke hente rapport-liste: {ex.Message}";
             _items = new List<SettlementImportSummary>();
         }
-    }
-
-    private async Task ClearFiltersAsync()
-    {
-        _from = null;
-        _to = null;
-        await ReloadAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private void OnRowClick(TableRowClickEventArgs<SettlementImportSummary> args)

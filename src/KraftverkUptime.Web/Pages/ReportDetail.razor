@@ -1,4 +1,5 @@
 @page "/reports/{PlantId}/{IdempotencyKey}"
+@implements IDisposable
 @using ApexCharts
 @using KraftverkUptime.Web.Components
 @inject ReportsApi Api
@@ -491,6 +492,30 @@ else
     // oppdatere parametere. Blazor-ApexCharts cacher intern chart-state og
     // viser ikke nye annotasjoner/bånd uten dette.
     private int _chartVersion;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Filter.OnChange += OnFilterChanged;
+        await Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        Filter.OnChange -= OnFilterChanged;
+    }
+
+    /// <summary>
+    /// Hvis brukeren bytter anlegg i AppBar mens vi viser en spesifikk rapport,
+    /// naviger til /reports slik at de kan velge en rapport for det nye anlegget.
+    /// SyncFilterState (kalt etter rapport-load) fyrer også OnChange men da
+    /// matcher Filter.PlantId == PlantId og vi hopper over.
+    /// </summary>
+    private void OnFilterChanged()
+    {
+        if (string.IsNullOrEmpty(Filter.PlantId)) return;
+        if (string.Equals(Filter.PlantId, PlantId, StringComparison.OrdinalIgnoreCase)) return;
+        Nav.NavigateTo("/reports");
+    }
 
     protected override async Task OnParametersSetAsync()
     {
