@@ -53,6 +53,25 @@ public static class DrivdalSignalMapSeeder
 
         ("DRIVDAL_G1_KONTROLL_AGC_DB_SP",           "Cluster1.DRIVDAL_G1_KONTROLL_AGC_DB_SP",           "None",    SignalRole.Other),
         ("DRIVDAL_KRST_KONTROLL_KOM_AL",            "Cluster1.DRIVDAL_KRST_KONTROLL_KOM_AL",            "None",    SignalRole.CommunicationAlarm),
+
+        // 16 nye tags fra 37-tags-eksporten 2026-05-04 (var i sample_facts uten signal_map-rad).
+        ("DRIVDAL_G1_GEN_F_PV",                                "Cluster1.DRIVDAL_G1_GEN_F_PV",                                "Hz",   SignalRole.GeneratorFrequency),
+        ("DRIVDAL_G1_GEN_PROD_I_AR_PV",                        "Cluster1.DRIVDAL_G1_GEN_PROD_I_AR_PV",                        "kWh",  SignalRole.Other),
+        ("DRIVDAL_G1_TURB_LEDEAPP_POS_PV",                     "Cluster1.DRIVDAL_G1_TURB_LEDEAPP_POS_PV",                     "%",    SignalRole.GuideVanePosition),
+        // Set-point / regulator-tags — whitelist-only, brukes ikke aktivt i KPI-er
+        ("DRIVDAL_G1_KONTROLL_AUTOSTART_NIVA_SP_SP_LAST",      "Cluster1.DRIVDAL_G1_KONTROLL_AUTOSTART_NIVA_SP_SP_LAST",      "None", SignalRole.Other),
+        ("DRIVDAL_G1_KONTROLL_AUTOSTART_NIVA_SP_TM_PV",        "Cluster1.DRIVDAL_G1_KONTROLL_AUTOSTART_NIVA_SP_TM_PV",        "None", SignalRole.Other),
+        ("DRIVDAL_G1_KONTROLL_AUTOSTOPP_P_SP_SP_LAST",         "Cluster1.DRIVDAL_G1_KONTROLL_AUTOSTOPP_P_SP_SP_LAST",         "None", SignalRole.Other),
+        ("DRIVDAL_G1_KONTROLL_AUTOSTOPP_P_SP_TM_PV",           "Cluster1.DRIVDAL_G1_KONTROLL_AUTOSTOPP_P_SP_TM_PV",           "None", SignalRole.Other),
+        ("DRIVDAL_G1_KONTROLL_AUTOSTOPP_TID_SP_SP_LAST",       "Cluster1.DRIVDAL_G1_KONTROLL_AUTOSTOPP_TID_SP_SP_LAST",       "None", SignalRole.Other),
+        ("DRIVDAL_G1_KONTROLL_AUTOSTOPP_TID_SP_TM_PV",         "Cluster1.DRIVDAL_G1_KONTROLL_AUTOSTOPP_TID_SP_TM_PV",         "None", SignalRole.Other),
+        ("DRIVDAL_G1_KONTROLL_REG_NIVA_SP_SP_LAST",            "Cluster1.DRIVDAL_G1_KONTROLL_REG_NIVA_SP_SP_LAST",            "None", SignalRole.Other),
+        ("DRIVDAL_G1_KONTROLL_REG_NIVA_SP_TM_PV",              "Cluster1.DRIVDAL_G1_KONTROLL_REG_NIVA_SP_TM_PV",              "None", SignalRole.Other),
+        ("DRIVDAL_G1_KONTROLL_REG_P_SP_SP_LAST",               "Cluster1.DRIVDAL_G1_KONTROLL_REG_P_SP_SP_LAST",               "None", SignalRole.Other),
+        ("DRIVDAL_G1_KONTROLL_REG_P_SP_TM_PV",                 "Cluster1.DRIVDAL_G1_KONTROLL_REG_P_SP_TM_PV",                 "None", SignalRole.Other),
+        // Inntak-tags (DRIVDAL_INNTAK_NIVA_OVERLOP_VF_PV finnes allerede over)
+        ("DRIVDAL_INNTAK_NIVA_NEDSTROM_KOTE_PV",               "Cluster1.DRIVDAL_INNTAK_NIVA_NEDSTROM_KOTE_PV",               "moh",  SignalRole.DownstreamLevel),
+        ("DRIVDAL_INNTAK_RIST_FALLTAP_PV",                     "Cluster1.DRIVDAL_INNTAK_RIST_FALLTAP_PV",                     "cm",   SignalRole.Other),
     ];
 
     public static async Task SeedAsync(IServiceProvider services, CancellationToken ct = default)

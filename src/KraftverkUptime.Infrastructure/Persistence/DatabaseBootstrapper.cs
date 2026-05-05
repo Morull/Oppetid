@@ -90,9 +90,16 @@ public static class DatabaseBootstrapper
             // Dekker 9 anlegg; haukland + lindland håndteres av sine egne seedere.
             await PlantTopologySeeder.SeedAsync(services, ct).ConfigureAwait(false);
 
-            // Seed Drivdal-signal-map (22 tags). Idempotent. Andre anlegg legges
+            // Seed Drivdal-signal-map (37 tags). Idempotent. Andre anlegg legges
             // inn manuelt eller via egen seeder etter samme mønster.
             await DrivdalSignalMapSeeder.SeedAsync(services, ct).ConfigureAwait(false);
+
+            // Seed Grødemfoss-signal-map (20 tags, kun G2 — G1 havarert).
+            await GrodemfossSignalMapSeeder.SeedAsync(services, ct).ConfigureAwait(false);
+
+            // Seed Honnefoss-signal-map (113 tags, 4-dam-kaskade + REVSVT/NODLANDVT-
+            // tags fra Liavatn-vassdraget med dam_id=null). Idempotent.
+            await HonnefossSignalMapSeeder.SeedAsync(services, ct).ConfigureAwait(false);
 
             // Seed Haukland-signal-map (195 tags) + 4-dam-kaskade. Idempotent.
             // Erstatter den default 'haukland_main'-dammen som backfill opprettet
