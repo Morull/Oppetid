@@ -2,109 +2,137 @@
 @inject ReportsApi ReportsApi
 
 @*
-    Signalliste for et anlegg med:
-    - Roller-gruppert oversikt over hva vi har
-    - Markert hvis vi MANGLER viktige roller som andre anlegg har konfigurert
-    - Antall mappede tags + dam-tilknytning per rolle
+    Signalliste for et anlegg, organisert etter HVOR brukt:
+      🟢 KPI-kritiske      — direkte input til Vakt-ROI/Effektivitet/Produksjon
+      🟡 Lagret traceability — lagret men ikke direkte konsumert i KPI-er
+      ⚪ Ikke brukt          — Other-rolle, kan droppes fra neste eksport
+
+    Mangler-banner øverst hvis vi mangler viktige roller andre anlegg har.
 *@
 
-<MudPaper Class="pa-4" Elevation="1">
-    <div class="d-flex justify-space-between align-center mb-3">
-        <MudText Typo="Typo.h3">Signaler i dette anlegget</MudText>
-        @if (_signals is not null)
-        {
-            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
-                @_signals.Count tags · @_uniqueRoles roller
-            </MudText>
-        }
-    </div>
+<div class="d-flex justify-space-between align-center mb-3">
+    <MudText Typo="Typo.h3">Signaler i dette anlegget</MudText>
+    @if (_signals is not null)
+    {
+        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+            @_signals.Count tags totalt
+        </MudText>
+    }
+</div>
 
-    @if (_loading)
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Small" />
+    <MudText Typo="Typo.caption" Class="ml-2 d-inline">Laster signal-katalog…</MudText>
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_signals is null || _signals.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        Ingen signaler er konfigurert for dette anlegget. Kjør SCADA-import først.
+    </MudAlert>
+}
+else
+{
+    @* Manglende viktige roller — fremheves øverst *@
+    @if (_missingImportant.Count > 0)
     {
-        <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Small" />
-        <MudText Typo="Typo.caption" Class="ml-2 d-inline">Laster signal-katalog…</MudText>
-    }
-    else if (_error is not null)
-    {
-        <MudAlert Severity="Severity.Error">@_error</MudAlert>
-    }
-    else if (_signals is null || _signals.Count == 0)
-    {
-        <MudAlert Severity="Severity.Info">
-            Ingen signaler er konfigurert i signal_map for dette anlegget. Kjør
-            SCADA-import først, eller legg til mapping via PlantAdmin.
+        <MudAlert Severity="Severity.Warning" Class="mb-3" Variant="Variant.Outlined">
+            <MudText Typo="Typo.body2" Style="font-weight: 500;">
+                Mangler @_missingImportant.Count viktig@(_missingImportant.Count == 1 ? "" : "e") rolle@(_missingImportant.Count == 1 ? "" : "r")
+                som andre anlegg har konfigurert:
+            </MudText>
+            <ul class="mt-2 mb-0" style="padding-left: 1.25rem;">
+                @foreach (var role in _missingImportant)
+                {
+                    <li>
+                        <strong>@RoleDisplay(role.Role)</strong> — @RoleDescription(role.Role)
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary"
+                                 Class="ml-2 d-inline">
+                            (finnes på @role.PlantsWithRole av @role.TotalPlants anlegg)
+                        </MudText>
+                    </li>
+                }
+            </ul>
         </MudAlert>
     }
-    else
-    {
-        @* Manglende viktige roller som andre anlegg har — fremheves øverst *@
-        @if (_missingImportant.Count > 0)
+
+    @* ============== Seksjon 1: KPI-kritiske roller ============== *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1" Style="border-left: 4px solid #2A9D8F;">
+        <div class="d-flex align-center mb-3" style="gap: 8px;">
+            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="MudBlazor.Color.Success" />
+            <MudText Typo="Typo.h4">Brukes i KPI-beregning</MudText>
+            <MudChip T="string" Size="MudBlazor.Size.Small" Color="MudBlazor.Color.Success">
+                @_kpiRoles.Count @(_kpiRoles.Count == 1 ? "rolle" : "roller") · @_kpiRoles.Sum(r => r.Count) tags
+            </MudChip>
+        </div>
+        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-3">
+            Direkte input til Vakt-ROI, Effektivitet, Produksjon, Capture-rate eller datakvalitet.
+            <strong>Disse må eksporteres</strong> for at KPI-er skal være korrekte.
+        </MudText>
+        @if (_kpiRoles.Count == 0)
         {
-            <MudAlert Severity="Severity.Warning" Class="mb-3" Variant="Variant.Outlined">
-                <MudText Typo="Typo.body2" Style="font-weight: 500;">
-                    Mangler @_missingImportant.Count viktig@(_missingImportant.Count == 1 ? "" : "e") rolle@(_missingImportant.Count == 1 ? "" : "r")
-                    som andre anlegg har konfigurert:
-                </MudText>
-                <ul class="mt-2 mb-0" style="padding-left: 1.25rem;">
-                    @foreach (var role in _missingImportant)
-                    {
-                        <li>
-                            <strong>@RoleDisplay(role.Role)</strong> — @RoleDescription(role.Role)
-                            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary"
-                                     Class="ml-2 d-inline">
-                                (finnes på @role.PlantsWithRole av @role.TotalPlants anlegg)
-                            </MudText>
-                        </li>
-                    }
-                </ul>
+            <MudAlert Severity="Severity.Warning" Dense="true">
+                Ingen KPI-kritiske roller mappet — anlegget vil få null-verdier i de fleste KPI-er.
             </MudAlert>
         }
+        else
+        {
+            @RenderRoleTable(_kpiRoles, isImportantSection: true)
+        }
+    </MudPaper>
 
-        @* Roller-gruppert tabell *@
-        <MudTable Items="@_roleSummary" Hover="true" Dense="true" Elevation="0"
-                  Filter="MatchesSearch">
-            <ToolBarContent>
-                <MudTextField @bind-Value="_search" Placeholder="Søk rolle eller tag-ID…"
-                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
-                              Margin="Margin.Dense" Immediate="true" />
-            </ToolBarContent>
-            <HeaderContent>
-                <MudTh>Rolle</MudTh>
-                <MudTh>Beskrivelse</MudTh>
-                <MudTh Style="text-align:right">Antall tags</MudTh>
-                <MudTh>Tilknyttet dam</MudTh>
-                <MudTh>Eksempel-tag</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd>
-                    <MudChip T="string" Size="MudBlazor.Size.Small"
-                             Color="@(IsImportantRole(context.Role) ? MudBlazor.Color.Primary : MudBlazor.Color.Default)">
-                        @RoleDisplay(context.Role)
-                    </MudChip>
-                </MudTd>
-                <MudTd>
-                    <MudText Typo="Typo.body2">@RoleDescription(context.Role)</MudText>
-                </MudTd>
-                <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
-                    @context.Count
-                </MudTd>
-                <MudTd>
-                    @if (context.DamIds.Count > 0)
-                    {
-                        @string.Join(", ", context.DamIds)
-                    }
-                    else
-                    {
-                        <span style="color: var(--mud-palette-text-secondary);">–</span>
-                    }
-                </MudTd>
-                <MudTd Style="font-family: monospace; font-size: 0.85em;">
-                    @context.ExampleTag
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
+    @* ============== Seksjon 2: Lagret traceability ============== *@
+    @if (_traceabilityRoles.Count > 0)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="1" Style="border-left: 4px solid #F39C12;">
+            <div class="d-flex align-center mb-3" style="gap: 8px;">
+                <MudIcon Icon="@Icons.Material.Filled.Storage" Color="MudBlazor.Color.Warning" />
+                <MudText Typo="Typo.h4">Lagret for analyse/tilstand</MudText>
+                <MudChip T="string" Size="MudBlazor.Size.Small" Color="MudBlazor.Color.Warning">
+                    @_traceabilityRoles.Count roller · @_traceabilityRoles.Sum(r => r.Count) tags
+                </MudChip>
+            </div>
+            <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-3">
+                Lagres for fremtidig analyse og tilstandsovervåking, men ikke direkte konsumert
+                i nåværende KPI-er. Behold hvis du vil ha tilstand, drop hvis du sparer båndbredde.
+            </MudText>
+            @RenderRoleTable(_traceabilityRoles, isImportantSection: false)
+        </MudPaper>
     }
-</MudPaper>
+
+    @* ============== Seksjon 3: Ikke brukt — kan droppes ============== *@
+    @if (_unusedTags.Count > 0)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="0" Style="border: 1px dashed #BDBDBD; background: rgba(189, 189, 189, 0.05);">
+            <div class="d-flex align-center mb-3" style="gap: 8px;">
+                <MudIcon Icon="@Icons.Material.Filled.RemoveCircleOutline" Color="MudBlazor.Color.Default" />
+                <MudText Typo="Typo.h4">Ikke brukt — kan droppes fra eksport</MudText>
+                <MudChip T="string" Size="MudBlazor.Size.Small" Color="MudBlazor.Color.Default">
+                    @_unusedTags.Count tags
+                </MudChip>
+            </div>
+            <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-3">
+                Disse tagene er whitelistet (rolle = <code>Other</code>) men brukes ikke aktivt
+                i KPI-er. <strong>Dropp dem fra neste SCADA-eksport</strong> for å redusere
+                fil-størrelse — KPI-tallene endres ikke.
+            </MudText>
+            <MudExpansionPanels Elevation="0" Outlined="true">
+                <MudExpansionPanel Text="@($"Vis {_unusedTags.Count} ubrukte tag-IDer")" Dense="true">
+                    <div style="font-family: monospace; font-size: 0.85em; line-height: 1.6;">
+                        @foreach (var tag in _unusedTags.OrderBy(t => t))
+                        {
+                            <div>@tag</div>
+                        }
+                    </div>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        </MudPaper>
+    }
+}
 
 @code {
     [Parameter, EditorRequired] public string PlantId { get; set; } = string.Empty;
@@ -114,11 +142,49 @@
     private string _search = string.Empty;
 
     private IReadOnlyList<SignalMapDto>? _signals;
-    private List<RoleSummary> _roleSummary = new();
+    private List<RoleSummary> _kpiRoles = new();
+    private List<RoleSummary> _traceabilityRoles = new();
+    private List<string> _unusedTags = new();
     private List<MissingRole> _missingImportant = new();
-    private int _uniqueRoles;
 
     private string _lastLoadedPlantId = string.Empty;
+
+    /// <summary>
+    /// KPI-kritiske roller: direkte input til Vakt-ROI/Effektivitet/Produksjon/
+    /// Capture-rate/Datakvalitet. Hvis disse mangler får KPI-en null-verdi.
+    /// </summary>
+    private static readonly string[] KpiCriticalRoles = new[]
+    {
+        "GeneratorActivePower",   // Vakt-ROI tap, Produksjon, klassifikator
+        "TurbineWaterFlow",       // Effektivitet
+        "TurbineEfficiency",      // Effektivitet η(P)
+        "OverflowFlow",           // Vakt-ROI overflow-deteksjon
+        "ReservoirFillFactor",    // Tilsig-modell
+        "ReservoirVolume",        // Tilsig-modell
+        "TotalDamFlow",           // Tilsig-modell
+        "UpstreamLevel",          // Kaskade-modell + ROI
+        "LowestRegulatedLevel",   // Magasin-kapasitet
+        "CommunicationAlarm",     // Datakvalitets-deteksjon
+    };
+
+    /// <summary>
+    /// Roller som lagres for traceability/tilstandsovervåking men ikke
+    /// brukes direkte i KPI-beregninger. Operativt nyttige.
+    /// </summary>
+    private static readonly string[] TraceabilityRoles = new[]
+    {
+        "GeneratorRpm",            // Synkron-deteksjon (klassifikator)
+        "GeneratorFrequency",      // Stabilitets-indikator
+        "GuideVanePosition",       // Operativ kontroll
+        "TurbinePadrag",           // Settpunkt
+        "HydraulicPressure",       // Tilstand
+        "DownstreamLevel",         // Falltap
+        "GridFallLoss",            // Inntaksrist-blokkering
+        "ConditionTemperature",    // Lager/vikling-temp
+        "ElectricalMeasurement",   // Strøm/spenning/cosφ
+        "GateFlow",                // Per-luke
+        "GatePosition",            // Per-luke
+    };
 
     protected override async Task OnParametersSetAsync()
     {
@@ -134,24 +200,19 @@
         _error = null;
         try
         {
-            // Hent dette anleggets signaler.
             _signals = await ReportsApi.ListSignalMapsAsync(PlantId);
 
-            // Hent alle anlegg + tellelogikk for "viktige roller på andre anlegg".
-            // Dette krever en runde med ListSignalMapsAsync per anlegg — men siden
-            // det kun er 11 anlegg er det greit. Cache i Filter-state senere ved
-            // ytelses-issue.
+            // Fan ut til alle anlegg for "manglende viktige"-deteksjon.
             var allPlants = await ReportsApi.ListPlantsAsync();
             var rolesPerPlant = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
             foreach (var p in allPlants)
             {
-                var sigs = p.Id == PlantId
-                    ? _signals
+                var sigs = p.Id == PlantId ? _signals
                     : await ReportsApi.ListSignalMapsAsync(p.Id);
                 rolesPerPlant[p.Id] = sigs.Select(s => s.Role).ToHashSet(StringComparer.Ordinal);
             }
 
-            BuildRoleSummary();
+            BuildSections();
             BuildMissingImportant(rolesPerPlant, allPlants.Count);
         }
         catch (Exception ex)
@@ -164,30 +225,45 @@
         }
     }
 
-    private void BuildRoleSummary()
+    private void BuildSections()
     {
         if (_signals is null)
         {
-            _roleSummary = new();
-            _uniqueRoles = 0;
+            _kpiRoles = new(); _traceabilityRoles = new(); _unusedTags = new();
             return;
         }
 
-        _roleSummary = _signals
+        var kpiSet = KpiCriticalRoles.ToHashSet(StringComparer.Ordinal);
+        var traceSet = TraceabilityRoles.ToHashSet(StringComparer.Ordinal);
+
+        // Bygg rolle-summary per gruppe
+        var grouped = _signals
             .GroupBy(s => s.Role, StringComparer.Ordinal)
-            .OrderBy(g => RoleSortOrder(g.Key))
-            .ThenBy(g => g.Key)
             .Select(g => new RoleSummary(
                 Role: g.Key,
                 Count: g.Count(),
                 DamIds: g.Where(s => !string.IsNullOrEmpty(s.DamId))
-                         .Select(s => s.DamId!)
-                         .Distinct()
-                         .OrderBy(d => d)
-                         .ToList(),
-                ExampleTag: g.First().SignalId))
+                         .Select(s => s.DamId!).Distinct()
+                         .OrderBy(d => d).ToList(),
+                ExampleTag: g.First().SignalId,
+                AllTags: g.Select(s => s.SignalId).OrderBy(t => t).ToList()))
             .ToList();
-        _uniqueRoles = _roleSummary.Count;
+
+        _kpiRoles = grouped
+            .Where(r => kpiSet.Contains(r.Role))
+            .OrderBy(r => Array.IndexOf(KpiCriticalRoles, r.Role))
+            .ToList();
+
+        _traceabilityRoles = grouped
+            .Where(r => traceSet.Contains(r.Role))
+            .OrderBy(r => r.Role)
+            .ToList();
+
+        // Alle tags med Other-rolle (eller andre ukjente roller utenfor våre lister)
+        _unusedTags = _signals
+            .Where(s => !kpiSet.Contains(s.Role) && !traceSet.Contains(s.Role))
+            .Select(s => s.SignalId)
+            .ToList();
     }
 
     private void BuildMissingImportant(
@@ -196,60 +272,67 @@
         var ourRoles = rolesPerPlant.GetValueOrDefault(PlantId, new HashSet<string>(StringComparer.Ordinal));
         _missingImportant = new();
 
-        foreach (var role in ImportantRoles)
+        foreach (var role in KpiCriticalRoles)
         {
-            if (ourRoles.Contains(role)) continue; // vi har den
+            if (ourRoles.Contains(role)) continue;
             var plantsWithRole = rolesPerPlant
                 .Count(kv => kv.Key != PlantId && kv.Value.Contains(role));
-            if (plantsWithRole == 0) continue; // ingen andre har den heller
+            if (plantsWithRole == 0) continue;
 
             _missingImportant.Add(new MissingRole(role, plantsWithRole, totalPlants));
         }
 
-        // Sorter: roller som flest andre har først (mest sannsynlig viktig for oss)
         _missingImportant = _missingImportant
             .OrderByDescending(m => m.PlantsWithRole)
             .ToList();
     }
 
-    private bool MatchesSearch(RoleSummary r)
-    {
-        if (string.IsNullOrWhiteSpace(_search)) return true;
-        var s = _search.Trim();
-        return r.Role.Contains(s, StringComparison.OrdinalIgnoreCase)
-            || RoleDisplay(r.Role).Contains(s, StringComparison.OrdinalIgnoreCase)
-            || RoleDescription(r.Role).Contains(s, StringComparison.OrdinalIgnoreCase)
-            || r.ExampleTag.Contains(s, StringComparison.OrdinalIgnoreCase);
-    }
-
     /// <summary>
-    /// Roller som er kritiske for KPI-er (Vakt-ROI, Effektivitet, Capture-rate,
-    /// Produksjon). Hvis et anlegg mangler disse OG andre anlegg har dem, er
-    /// det sannsynligvis en mapping-gap som bør fylles.
+    /// Render én tabell med rolle-rader. <paramref name="isImportantSection"/>
+    /// styrer chip-fargen (grønn for KPI, gul for traceability).
     /// </summary>
-    private static readonly string[] ImportantRoles = new[]
-    {
-        "GeneratorActivePower",   // Vakt-ROI, Produksjon
-        "TurbineWaterFlow",       // Effektivitet
-        "TurbineEfficiency",      // Effektivitet
-        "OverflowFlow",           // Vakt-ROI overflow-deteksjon
-        "ReservoirFillFactor",    // Tilsig-modell
-        "ReservoirVolume",        // Tilsig-modell
-        "TotalDamFlow",           // Tilsig-modell
-        "UpstreamLevel",          // Kaskade-modell
-        "LowestRegulatedLevel",   // Magasin-kapasitet
-        "CommunicationAlarm",     // Datakvalitets-deteksjon
-    };
-
-    private static bool IsImportantRole(string role)
-        => Array.IndexOf(ImportantRoles, role) >= 0;
-
-    private static int RoleSortOrder(string role)
-    {
-        // Viktige roller først, så alfabetisk
-        var idx = Array.IndexOf(ImportantRoles, role);
-        return idx >= 0 ? idx : ImportantRoles.Length + role.GetHashCode();
-    }
+    private RenderFragment RenderRoleTable(List<RoleSummary> roles, bool isImportantSection)
+        => __builder =>
+        {
+            <MudTable Items="roles" Hover="true" Dense="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Rolle</MudTh>
+                    <MudTh>Beskrivelse</MudTh>
+                    <MudTh Style="text-align:right">Antall tags</MudTh>
+                    <MudTh>Tilknyttet dam</MudTh>
+                    <MudTh>Eksempel-tag</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>
+                        <MudChip T="string" Size="MudBlazor.Size.Small"
+                                 Color="@(isImportantSection ? MudBlazor.Color.Success : MudBlazor.Color.Warning)">
+                            @RoleDisplay(context.Role)
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>
+                        <MudText Typo="Typo.body2">@RoleDescription(context.Role)</MudText>
+                    </MudTd>
+                    <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
+                        @context.Count
+                    </MudTd>
+                    <MudTd>
+                        @if (context.DamIds.Count > 0)
+                        {
+                            @string.Join(", ", context.DamIds)
+                        }
+                        else
+                        {
+                            <span style="color: var(--mud-palette-text-secondary);">–</span>
+                        }
+                    </MudTd>
+                    <MudTd Style="font-family: monospace; font-size: 0.85em;">
+                        <MudTooltip Text="@(context.AllTags.Count > 1 ? $"{context.AllTags.Count} tags i denne rollen" : "")">
+                            <span>@context.ExampleTag</span>
+                        </MudTooltip>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        };
 
     private static string RoleDisplay(string role) => role switch
     {
@@ -280,31 +363,33 @@
 
     private static string RoleDescription(string role) => role switch
     {
-        "GeneratorActivePower" => "Effekt produsert av generator (kW). Brukt i Vakt-ROI og produksjons-analyse.",
-        "GeneratorRpm" => "Generator turtall (rpm). Brukes til synkron-deteksjon.",
-        "GeneratorFrequency" => "Generator frekvens (Hz). Indikator på driftstilstand.",
-        "TurbineWaterFlow" => "Vannmengde gjennom turbinen (m³/s). Sentral for effektivitets-beregning.",
-        "TurbineEfficiency" => "Beregnet virkningsgrad fra SCADA. η(P)-kurver bygger på denne.",
-        "GuideVanePosition" => "Ledeapparat-åpning (%). Påvirker turbinens vannforbruk.",
-        "TurbinePadrag" => "Padrag-settpunkt (%). Settpunkt for effekt.",
-        "HydraulicPressure" => "Hydraulisk olje-/rørgate-trykk. Tilstands-indikator.",
-        "UpstreamLevel" => "Magasin-vannstand i moh. Brukes til kaskade-beregning.",
-        "DownstreamLevel" => "Vannstand etter turbin/utløp. Brukes til falltap-beregning.",
-        "ReservoirFillFactor" => "Fyllgrad i % (0-100). Brukes til tilsig-/overløp-modell.",
-        "ReservoirVolume" => "Magasin-volum i Mill.m³. Brukes til tilsig-estimat.",
-        "LowestRegulatedLevel" => "Nedbørs-kapasitet (mm) fra HRV. Indikerer hvor mye magasinet kan ta inn.",
-        "OverflowFlow" => "Overløp ut av magasinet (m³/s). Kritisk for Vakt-ROI: vannet er tapt om vi ikke produserer.",
-        "TotalDamFlow" => "Sum av alt utløp fra dam (luker + overløp). Brukes til tilsig-estimat.",
-        "GateFlow" => "Vannføring gjennom én spesifikk luke. Per-luke-overvåking.",
-        "GatePosition" => "Luke-åpning (cm eller %). Operativ kontroll av magasin-nivå.",
-        "GridFallLoss" => "Falltap over inntaksrist (mm). Indikator på rist-blokkering.",
-        "ConditionTemperature" => "Lager-/vikling-/olje-temperatur. Tilstandsovervåking.",
-        "ElectricalMeasurement" => "Strøm, spenning, cos φ. Generell elektrisk overvåking.",
-        "CommunicationAlarm" => "Datahull-flagg. True når SCADA mister forbindelse til anlegget.",
-        "Other" => "Whitelistet tag uten spesifikk rolle. Lagres for traceability.",
-        _ => "Ingen beskrivelse tilgjengelig.",
+        "GeneratorActivePower" => "Effekt produsert av generator (kW). Vakt-ROI tap-beregning, klassifikator.",
+        "GeneratorRpm" => "Turtall (rpm). Synkron-deteksjon i klassifikator.",
+        "GeneratorFrequency" => "Frekvens (Hz). Stabilitets-indikator.",
+        "TurbineWaterFlow" => "Vannføring gjennom turbin (m³/s). Sentral i Effektivitet η(P).",
+        "TurbineEfficiency" => "Beregnet virkningsgrad fra SCADA. η(P)-kurver.",
+        "GuideVanePosition" => "Ledeapparat-åpning (%). Operativt.",
+        "TurbinePadrag" => "Padrag-settpunkt (%). Operativt.",
+        "HydraulicPressure" => "Hydraulisk trykk. Tilstandsovervåking.",
+        "UpstreamLevel" => "Magasin-vannstand (moh). Kaskade-modell + ROI.",
+        "DownstreamLevel" => "Nedstrøms vannstand. Falltap.",
+        "ReservoirFillFactor" => "Fyllgrad (0-100 %). Brukt i tilsig-modell.",
+        "ReservoirVolume" => "Volum (Mill.m³). Tilsig-modell + ledig kapasitet.",
+        "LowestRegulatedLevel" => "Nedbørs-kapasitet (mm). Magasin-kapasitet.",
+        "OverflowFlow" => "Overløp (m³/s). Kritisk i Vakt-ROI.",
+        "TotalDamFlow" => "Sum utløp fra dam. Tilsig-estimat.",
+        "GateFlow" => "Luke-vannføring per luke.",
+        "GatePosition" => "Luke-åpning per luke.",
+        "GridFallLoss" => "Falltap over inntaksrist (mm).",
+        "ConditionTemperature" => "Lager/vikling/olje-temperatur.",
+        "ElectricalMeasurement" => "Strøm/spenning/cos φ.",
+        "CommunicationAlarm" => "Datahull-flagg fra SCADA.",
+        "Other" => "Whitelist uten spesifikk rolle.",
+        _ => "Ingen beskrivelse.",
     };
 
-    private sealed record RoleSummary(string Role, int Count, List<string> DamIds, string ExampleTag);
+    private sealed record RoleSummary(
+        string Role, int Count, List<string> DamIds,
+        string ExampleTag, List<string> AllTags);
     private sealed record MissingRole(string Role, int PlantsWithRole, int TotalPlants);
 }
