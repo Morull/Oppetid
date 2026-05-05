@@ -196,6 +196,54 @@ public class VaktRoiCalculatorTests
         roi[0].OverflowDataMissing.Should().BeFalse();
     }
 
+    /// <summary>
+    /// Drifts-leders presisering 2026-05-05: Hvis en hendelse starter i ordinær
+    /// arbeidstid (08-15 hverdag) og varer over inn i vakt-vinduet, regnes det
+    /// IKKE som vakt-redning — drifts-personellet jobber overtid for å fikse
+    /// det. Eksempel: hendelse starter 13:00 og varer til 20:00 → ingen ROI
+    /// fordi drifts-personellet håndterer overtid (typisk opp til 23:00).
+    /// </summary>
+    [Fact]
+    public void Trip_Starter_I_Arbeidstid_Varer_Inn_I_Vakt_Vindu_Gir_Ingen_ROI()
+    {
+        // Onsdag 4. feb 2026 13:00 → 20:00 lokal.
+        // Vakt-vinduet starter 15:00 hverdag, så event krysser inn i vakt-tid.
+        // Men siden eventet startet i arbeidstid, har drifts-personellet
+        // ansvar for å håndtere det via overtid — vakta blir ikke kalt ut.
+        var ev = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 2, 4, 13),  // arbeidstid
+            EndUtc = OsloLokal(2026, 2, 4, 20),    // 7 t outage, krysser 15:00-grensen
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            CauseCode = "operlog:fault",
+            TapMwh = 7.0, TapNok = 5950, TimerSettlement = 7,
+        };
+
+        // Selv med rikelig overflow-data og ubalansetillegg skal ROI være 0
+        var counterfactual = OsloLokal(2026, 2, 5, 8);
+        var overflow = OverflowAlleTimer(ev.StartUtc, counterfactual);
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { ev },
+            installertEffektMw: 2.2,
+            snittSpotprisNokMwh: 850,
+            kapasitetsfaktor: 0.5,
+            overflowHours: overflow,
+            overflowDataAvailable: true,
+            snittUbalansetillegg_NokMwh: 200);
+
+        var r = roi[0];
+        r.ErInnenforVakt.Should().BeFalse(
+            "event startet i arbeidstid (13:00 hverdag) — drifts-personell håndterer overtid");
+        r.ReddetNok.Should().Be(0);
+        r.ReddetProduksjon_NOK.Should().Be(0);
+        r.ReddetUbalanse_NOK.Should().Be(0);
+        r.EkstraTimerSpart.Should().Be(0);
+        r.Forklaring.Should().Contain("ordinær arbeidstid");
+    }
+
     [Fact]
     public void Planlagt_Vedlikehold_Innenfor_Vakt_Er_IKKE_Reddbart()
     {

@@ -93,6 +93,13 @@ public static class DatabaseBootstrapper
             // med Stølsvatn/Gjelevatn/Skårstemmevatn/Stemmevatn (terminal).
             await HauklandSignalMapSeeder.SeedAsync(services, ct).ConfigureAwait(false);
 
+            // Seed Lindland-signal-map (117 tags) + 4-dam-kaskade. Idempotent.
+            // Erstatter 'lindland_main'-default med Heigravatn/Eiavatn/Barstadvatn
+            // (uregulert)/Rosslandshølen (terminal). Multi-generator (G1+G2)
+            // håndteres som single-generator i v1; egen Generator-entity venter
+            // på SPEC-LINDLAND-MAPPING phase 2.
+            await LindlandSignalMapSeeder.SeedAsync(services, ct).ConfigureAwait(false);
+
             // Backfill data_imports fra eksisterende settlement_imports-historikk
             // (SPEC-IMPORT-COMPLETENESS steg 3). Idempotent — NOT EXISTS-filter.
             await DataImportsBackfillSeeder.SeedAsync(services, ct).ConfigureAwait(false);
