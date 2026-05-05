@@ -46,7 +46,9 @@ else
         {
             var plantId = p.Id;
             <MudItem xs="12" sm="6" md="4">
-                <MudCard Elevation="2" Class="h-100 dk-plant-card" Style="position:relative;">
+                <MudCard Elevation="2" Class="h-100 dk-plant-card"
+                         Style="position:relative; cursor: pointer;"
+                         @onclick="@(() => Nav.NavigateTo($"anlegg/{plantId}"))">
                     <MudCardHeader>
                         <CardHeaderAvatar>
                             <MudAvatar Color="MudBlazor.Color.Primary" Variant="Variant.Filled">
@@ -54,9 +56,7 @@ else
                             </MudAvatar>
                         </CardHeaderAvatar>
                         <CardHeaderContent>
-                            <MudLink Href="@($"anlegg/{plantId}")" Underline="Underline.Hover">
-                                <MudText Typo="Typo.h4">@p.Name</MudText>
-                            </MudLink>
+                            <MudText Typo="Typo.h4">@p.Name</MudText>
                             <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">@p.Id</MudText>
                         </CardHeaderContent>
                     </MudCardHeader>
@@ -88,7 +88,9 @@ else
                             </div>
                         </MudStack>
                     </MudCardContent>
-                    <MudCardActions>
+                    @* Knappene må stoppe propagation slik at klikk på dem ikke
+                       også trigger kort-klikket (som ville gå til detalj-siden). *@
+                    <MudCardActions @onclick:stopPropagation="true">
                         <MudButton Variant="Variant.Text" Color="MudBlazor.Color.Primary"
                                    StartIcon="@Icons.Material.Filled.Assessment"
                                    Href="@($"reports?plant={plantId}")">
