@@ -24,6 +24,7 @@ public sealed class KraftverkDbContext : DbContext
     public DbSet<SettlementImport> SettlementImports => Set<SettlementImport>();
     public DbSet<DowntimeAnnotationEntry> DowntimeAnnotations => Set<DowntimeAnnotationEntry>();
     public DbSet<DowntimeCategoryEntry> DowntimeCategories => Set<DowntimeCategoryEntry>();
+    public DbSet<CauseAliasEntry> CauseAliases => Set<CauseAliasEntry>();
     public DbSet<SignalMapEntry> SignalMaps => Set<SignalMapEntry>();
     public DbSet<SampleFactEntry> SampleFacts => Set<SampleFactEntry>();
     public DbSet<ClassifiedEventEntry> ClassifiedEvents => Set<ClassifiedEventEntry>();
@@ -130,6 +131,15 @@ public sealed class KraftverkDbContext : DbContext
             b.Property(x => x.UnitStateOverride).HasConversion<string>().HasMaxLength(32).IsRequired();
             b.Property(x => x.Description).HasMaxLength(2000); // nullable
             b.HasIndex(x => x.SortOrder);
+        });
+
+        modelBuilder.Entity<CauseAliasEntry>(b =>
+        {
+            b.ToTable("cause_aliases");
+            b.HasKey(x => x.CauseCode);
+            b.Property(x => x.CauseCode).HasMaxLength(128);
+            b.Property(x => x.OwnerOrgId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.DisplayText).HasMaxLength(200).IsRequired();
         });
 
         // SCADA foundation — ref ANALYSE-NEDETID-SCADA.md + Spec KASKADE-DAMMER

@@ -60,6 +60,24 @@ public sealed class NedetidApi
         return resp ?? throw new InvalidOperationException("Tom respons fra /portfolio/kpis.");
     }
 
+    /// <summary>
+    /// Aggregert Vakt-ROI på tvers av alle anlegg. Brukes av portefølje-
+    /// dashboardet på <c>/vakt-roi</c> (uten plantId).
+    /// </summary>
+    public async Task<PortfolioVaktRoiResponse> GetPortfolioVaktRoiAsync(
+        DateTimeOffset fromUtc, DateTimeOffset toUtc,
+        double kapasitetsfaktor = 0.5, int topN = 10, CancellationToken ct = default)
+    {
+        var qs = $"from={Uri.EscapeDataString(fromUtc.UtcDateTime.ToString("o"))}"
+               + $"&to={Uri.EscapeDataString(toUtc.UtcDateTime.ToString("o"))}"
+               + $"&kapasitetsfaktor={kapasitetsfaktor.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}"
+               + $"&topN={topN}";
+        var resp = await _http
+            .GetFromJsonAsync<PortfolioVaktRoiResponse>($"api/v1/portfolio/vakt-roi?{qs}", JsonOptions, ct)
+            .ConfigureAwait(false);
+        return resp ?? throw new InvalidOperationException("Tom respons fra /portfolio/vakt-roi.");
+    }
+
     public async Task<CaptureRateResultDto> GetCaptureRateAsync(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
     {
@@ -418,6 +436,45 @@ public sealed record PortfolioPlantKpi(
     double InstalledCapacityMw,
     int HourCount,
     IReadOnlyDictionary<string, double?> Kpis);
+
+// Portefølje Vakt-ROI -- speiler IPortfolioVaktRoiQueryService-kontrakten.
+public sealed record PortfolioVaktRoiResponse(
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    double Kapasitetsfaktor,
+    int PlantCount,
+    int PlantsWithData,
+    double TotalReddetNok,
+    int TotalReddbareEvents,
+    int TotalEvents,
+    IReadOnlyList<PortfolioVaktRoiPlantSummary> PerPlant,
+    IReadOnlyList<PortfolioVaktRoiTopEvent> TopEvents,
+    IReadOnlyList<PortfolioVaktRoiMonthlyPoint> MonthlyTrend);
+
+public sealed record PortfolioVaktRoiPlantSummary(
+    string PlantId,
+    string PlantName,
+    double InstalledCapacityMw,
+    double ReddetNok,
+    int ReddbareEvents,
+    int TotaleEvents);
+
+public sealed record PortfolioVaktRoiTopEvent(
+    string PlantId,
+    string PlantName,
+    DateTimeOffset StartUtc,
+    DateTimeOffset EndUtc,
+    double VarighetTimer,
+    string Kategori,
+    string? CauseCode,
+    double ReddetNok,
+    double EkstraTimerSpart);
+
+public sealed record PortfolioVaktRoiMonthlyPoint(
+    int Year,
+    int Month,
+    double TotalReddetNok,
+    int ReddbareEvents);
 
 public sealed record EffektivitetResponse(
     string PlantId,

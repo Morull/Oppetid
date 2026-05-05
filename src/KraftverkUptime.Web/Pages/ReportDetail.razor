@@ -6,6 +6,7 @@
 @inject IDialogService DialogService
 @inject FilterState Filter
 @inject NavigationManager Nav
+@inject CauseFormatter CauseFormatter
 
 <PageTitle>Rapport – @PlantId</PageTitle>
 
@@ -86,11 +87,15 @@ else
         }
     </MudGrid>
 
-    @* ---------- Graf 1: Tilstandsfordeling (donut) ------------------------ *@
+    @* ---------- Graf 1: Driftstilstand-fordeling (donut) ------------------ *@
     <MudGrid Class="mb-6">
         <MudItem xs="12" md="5">
             <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.h3" Class="mb-3">Tilstandsfordeling</MudText>
+                <MudText Typo="Typo.h3" Class="mb-3">
+                    <MudTooltip Text="Driftstilstand = HVA enheten er i akkurat nå (InService, ForcedOutage, Vedlikehold osv.). Årsaken (HVORFOR) vises som cause-kode i tabellen under.">
+                        <span>Driftstilstand-fordeling</span>
+                    </MudTooltip>
+                </MudText>
                 @if (_stateSlices.Count > 0)
                 {
                     <ApexChart @key="_chartVersion" TItem="StateSlice" Options="_donutOptions" Height="320">
@@ -305,7 +310,11 @@ else
                               SortLabel="Sortér">
                         <HeaderContent>
                             <MudTh>Tid (UTC)</MudTh>
-                            <MudTh>Tilstand</MudTh>
+                            <MudTh>
+                                <MudTooltip Text="Driftstilstand (HVA): UnitState fra klassifikator. Hover over chip-en for å se cause-kode (HVORFOR).">
+                                    Driftstilstand
+                                </MudTooltip>
+                            </MudTh>
                             <MudTh Style="text-align:right">MWh Elhub</MudTh>
                             <MudTh Style="text-align:right">Plan</MudTh>
                             <MudTh Style="text-align:right">Avvik</MudTh>
@@ -315,8 +324,8 @@ else
                         </HeaderContent>
                         <RowTemplate>
                             <MudTd DataLabel="Tid">@context.TimeUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</MudTd>
-                            <MudTd DataLabel="Tilstand">
-                                <MudTooltip Text="@($"CauseCode: {context.CauseCode} (confidence {context.Confidence:F2})")">
+                            <MudTd DataLabel="Driftstilstand">
+                                <MudTooltip Text="@($"Årsak: {CauseFormatter.Display(context.CauseCode)} ({context.CauseCode}) — confidence {context.Confidence:F2}")">
                                     <MudChip T="string" Size="MudBlazor.Size.Small" Color="@StateColor(context.State)">@StateDisplayName(context.State)</MudChip>
                                 </MudTooltip>
                             </MudTd>
@@ -489,6 +498,11 @@ else
         _notFound = false;
         _report = null;
 
+        // Last cause-aliaser i bakgrunnen — UI rendres med rå koder først,
+        // erstattes ved neste re-render etter at CauseFormatter er klar.
+        _ = CauseFormatter.EnsureLoadedAsync()
+            .ContinueWith(_ => InvokeAsync(StateHasChanged), TaskScheduler.Default);
+
         try
         {
             _report = await Api.GetReportAsync(PlantId, IdempotencyKey);
@@ -636,6 +650,11 @@ async Task GoToReport(string idempotencyKey)
         {
             return;
         }
+
+        // Invalidér Nedetid + Vakt-ROI-cache slik at navigering dit henter
+        // ferske data med den nye annoteringen anvendt (samme datakilde går
+        // gjennom AnnotationOverlayService i NedetidQueryService).
+        Filter.InvalidateCaches();
 
         // Reload både annoteringene og selve rapporten (som har overlay applied).
         await LoadAnnotationsAsync();
@@ -980,9 +999,13 @@ async Task GoToReport(string idempotencyKey)
     private void SyncFilterState(UptimeReportSummary report)
     {
         Filter.PlantId = report.PlantId;
-        Filter.FromDate = DateTime.SpecifyKind(
+        var from = DateTime.SpecifyKind(
             report.PeriodStartUtc.UtcDateTime.ToLocalTime().Date, DateTimeKind.Unspecified);
-        Filter.ToDate = DateTime.SpecifyKind(
+        var to = DateTime.SpecifyKind(
             report.PeriodEndUtc.UtcDateTime.ToLocalTime().Date.AddDays(1), DateTimeKind.Unspecified);
+        // Settlement-rapporter er typisk hele måneder, men kan også være andre
+        // perioder. Sett granularitet til Egendefinert slik at AppBar-velgerens
+        // ←/→-piler ikke flyttes utilsiktet vekk fra rapportens periode.
+        Filter.SetPeriod(from, to, PeriodGranularity.Egendefinert);
     }
 }

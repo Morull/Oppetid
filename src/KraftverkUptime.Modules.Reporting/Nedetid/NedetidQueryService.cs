@@ -1,4 +1,6 @@
 using KraftverkUptime.Core.Domain;
+using KraftverkUptime.Modules.Annotations.Overlay;
+using KraftverkUptime.Modules.Annotations.Repositories;
 using KraftverkUptime.Modules.Classification.Dtos;
 using KraftverkUptime.Modules.Reporting.Storage;
 using KraftverkUptime.Modules.Scada.Repositories;
@@ -11,30 +13,40 @@ namespace KraftverkUptime.Modules.Reporting.Nedetid;
 /// Standard-implementasjonen av <see cref="INedetidQueryService"/>:
 ///   1. Lister alle settlement-imports for plantet som overlapper [from, to)
 ///   2. Henter UptimeReport for hver import (med klassifiserte timer)
-///   3. Slår sammen alle Classified-radene til én sortert liste
-///   4. Henter operlog-events fra <see cref="IClassifiedEventRepository"/>
-///   5. Aggregerer via <see cref="DowntimeEventAggregator"/>
-///   6. Filtrerer events som ligger helt utenfor [from, to)
-///
-/// Tar avhengighet av Settlement- og Scada-modulenes repository-kontrakter,
-/// men ikke av deres EF-implementasjoner. Det holder modulen lett-testbar.
+///   3. <b>Annotation overlay</b>: lar manuelle annoteringer overstyre
+///      klassifikator-output (samme tjeneste som ReportDetail bruker via
+///      <c>GET /report</c>). Krevd 2026-05-05 for å sikre at en redigering
+///      i Rapport reflekteres umiddelbart i Nedetid og Vakt-ROI.
+///   4. Slår sammen alle Classified-radene til én sortert liste
+///   5. Henter operlog-events fra <see cref="IClassifiedEventRepository"/>
+///   6. Aggregerer via <see cref="DowntimeEventAggregator"/>
+///   7. Filtrerer events som ligger helt utenfor [from, to)
 /// </summary>
 public sealed class NedetidQueryService : INedetidQueryService
 {
     private readonly ISettlementImportRecorder _imports;
     private readonly IUptimeReportStore _reports;
     private readonly IClassifiedEventRepository _operlog;
+    private readonly AnnotationOverlayService _annotationOverlay;
+    private readonly IDowntimeAnnotationRepository _annotationRepo;
+    private readonly IDowntimeCategoryRepository _categoryRepo;
     private readonly ILogger<NedetidQueryService> _log;
 
     public NedetidQueryService(
         ISettlementImportRecorder imports,
         IUptimeReportStore reports,
         IClassifiedEventRepository operlog,
+        AnnotationOverlayService annotationOverlay,
+        IDowntimeAnnotationRepository annotationRepo,
+        IDowntimeCategoryRepository categoryRepo,
         ILogger<NedetidQueryService> log)
     {
         _imports = imports ?? throw new ArgumentNullException(nameof(imports));
         _reports = reports ?? throw new ArgumentNullException(nameof(reports));
         _operlog = operlog ?? throw new ArgumentNullException(nameof(operlog));
+        _annotationOverlay = annotationOverlay ?? throw new ArgumentNullException(nameof(annotationOverlay));
+        _annotationRepo = annotationRepo ?? throw new ArgumentNullException(nameof(annotationRepo));
+        _categoryRepo = categoryRepo ?? throw new ArgumentNullException(nameof(categoryRepo));
         _log = log ?? throw new ArgumentNullException(nameof(log));
     }
 
@@ -72,7 +84,14 @@ public sealed class NedetidQueryService : INedetidQueryService
                 .ConfigureAwait(false);
             if (report is null) continue;
 
-            foreach (var h in report.Classified)
+            // Anvend annotation overlay før vi plukker ut Classified-radene.
+            // Annotering kan flytte event mellom kategorier (eks. "TripFeil"
+            // → "PlanlagtVedlikehold") og dermed påvirke nedetid + Vakt-ROI.
+            var overlaid = await _annotationOverlay
+                .ApplyAsync(report, _annotationRepo, _categoryRepo, ct)
+                .ConfigureAwait(false);
+
+            foreach (var h in overlaid.Classified)
             {
                 if (h.TimeUtc < fromUtc || h.TimeUtc >= toUtc) continue;
                 hoursByTime[h.TimeUtc] = h; // siste import vinner
@@ -111,6 +130,8 @@ public sealed class NedetidQueryService : INedetidQueryService
         // Gjenbruker imports + report-store. Trekker klassifiserte rader fra
         // de samme report-blobbene som ListEventsAsync — DB- og blob-trafikken
         // dupliseres dessverre, men v3 introduserer ikke en ny modell akkurat nå.
+        // RK-spread er ikke påvirket av annoteringer (avhenger av spotpris/RK-pris,
+        // ikke UnitState/CauseCode), så vi hopper over overlay her.
         var imports = await _imports
             .ListForPlantAsync(plantId, fromUtc, toUtc, limit: 500, ct)
             .ConfigureAwait(false);

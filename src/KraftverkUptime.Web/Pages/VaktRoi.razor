@@ -2,47 +2,60 @@
 @page "/vakt-roi/{PlantId}"
 @using ApexCharts
 @implements IDisposable
-@inject ReportsApi ReportsApi
 @inject NedetidApi NedetidApi
 @inject FilterState Filter
+@inject NavigationManager Nav
+@inject CauseFormatter CauseFormatter
 
 <PageTitle>Vakt-ROI</PageTitle>
 
 <MudGrid Class="mb-4">
-    <MudItem xs="12" md="8">
-        <MudText Typo="Typo.h1">Vakt-ROI</MudText>
+    <MudItem xs="12" md="9">
+        <MudText Typo="Typo.h1">Vakt-ROI @(IsPortfolioMode ? "— portefølje" : "")</MudText>
         <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
-            Hvor mye produksjons-tap reddet vakt-ordningen i perioden — counterfactual: vente til neste arbeidsdag 08:00.
+            @if (IsPortfolioMode)
+            {
+                <text>Aggregert reddet beløp på tvers av alle 11 anlegg for valgt periode. Klikk en hendelse eller anlegg for å gå til detaljvisning.</text>
+            }
+            else
+            {
+                <text>Hvor mye produksjons-tap reddet vakt-ordningen i perioden — counterfactual: vente til neste arbeidsdag 08:00.</text>
+            }
         </MudText>
+    </MudItem>
+    <MudItem xs="12" md="3" Class="d-flex justify-end align-end">
+        @if (IsPortfolioMode)
+        {
+            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                Velg anlegg i topp-baren for per-anleggs detaljvisning.
+            </MudText>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Dashboard"
+                       Href="/vakt-roi">Tilbake til portefølje</MudButton>
+        }
     </MudItem>
 </MudGrid>
 
-@* ---- Filter ---- *@
-<MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudGrid>
-        <MudItem xs="12" sm="3">
-            <MudSelect T="string" Value="Filter.PlantId" ValueChanged="OnPlantChanged" Label="Anlegg" Variant="Variant.Outlined" Margin="Margin.Dense">
-                @foreach (var p in _plants)
-                {
-                    <MudSelectItem Value="@p.Id">@p.Name (@p.Id)</MudSelectItem>
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <DateRangeFilter From="Filter.FromDate" To="Filter.ToDate" OnChanged="@OnRangeChanged" />
-        </MudItem>
-        <MudItem xs="12" sm="2">
-            <MudNumericField T="double" @bind-Value="_kapasitetsfaktor" Label="Kap.faktor"
-                             Min="0.1" Max="1.0" Step="0.05" Format="F2"
-                             Variant="Variant.Outlined" Margin="Margin.Dense" />
-        </MudItem>
-        <MudItem xs="12" sm="2">
-            <MudNumericField T="double" @bind-Value="_aarligVaktKost" Label="Årlig vakt-kost (NOK)"
-                             Step="50000" Format="N0"
-                             Variant="Variant.Outlined" Margin="Margin.Dense" />
-        </MudItem>
-    </MudGrid>
-</MudPaper>
+@if (!IsPortfolioMode)
+{
+    @* Vakt-spesifikke parametre — kun for per-plant-modus. *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="double" @bind-Value="_kapasitetsfaktor" Label="Kapasitetsfaktor"
+                                 Min="0.1" Max="1.0" Step="0.05" Format="F2"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="double" @bind-Value="_aarligVaktKost" Label="Årlig vakt-kost (NOK)"
+                                 Step="50000" Format="N0"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+}
 
 @if (_error is not null)
 {
@@ -53,8 +66,129 @@ else if (_loading)
     <MudProgressCircular Indeterminate="true" />
     <MudText Class="ml-2">Henter data…</MudText>
 }
-else if (_response is not null)
+else if (IsPortfolioMode && _portfolio is not null)
 {
+    @* ============== PORTEFØLJE-MODUS ============== *@
+
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Total reddet</MudText>
+                <MudText Typo="Typo.h3">@FormatNok(_portfolio.TotalReddetNok)</MudText>
+                <MudText Typo="Typo.caption">NOK på tvers av @_portfolio.PlantsWithData av @_portfolio.PlantCount anlegg</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Reddbare events</MudText>
+                <MudText Typo="Typo.h3">@_portfolio.TotalReddbareEvents</MudText>
+                <MudText Typo="Typo.caption">av @_portfolio.TotalEvents totale events i perioden</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #F39C12;">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Snitt per anlegg</MudText>
+                <MudText Typo="Typo.h3">@FormatNok(SnittPerAnleggMedData())</MudText>
+                <MudText Typo="Typo.caption">NOK reddet per anlegg med data</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #6E59A5;">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Topp-anlegg</MudText>
+                <MudText Typo="Typo.h3">@(TopPlant()?.PlantName ?? "—")</MudText>
+                <MudText Typo="Typo.caption">@FormatNok(TopPlant()?.ReddetNok ?? 0) NOK reddet</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* ---- Topp-N hendelser ---- *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.h3" Class="mb-3">Topp @_portfolio.TopEvents.Count hendelser sortert på reddet beløp</MudText>
+        @if (_portfolio.TopEvents.Count == 0)
+        {
+            <MudText>Ingen reddbare hendelser i perioden.</MudText>
+        }
+        else
+        {
+            <MudTable Items="_portfolio.TopEvents" Hover="true" Dense="true" Elevation="0"
+                      OnRowClick="@((TableRowClickEventArgs<PortfolioVaktRoiTopEvent> args) => GoToPlantDetail(args.Item))"
+                      Style="cursor: pointer;">
+                <HeaderContent>
+                    <MudTh>Anlegg</MudTh>
+                    <MudTh>Start</MudTh>
+                    <MudTh>Slutt</MudTh>
+                    <MudTh Style="text-align:right">Varighet (t)</MudTh>
+                    <MudTh>Kategori</MudTh>
+                    <MudTh>
+                        <MudTooltip Text="Årsak = HVORFOR enheten er i tilstanden. Drifts-leder kan gi cause-koden brukervennlig tekst på /admin/kategorier.">
+                            Årsak
+                        </MudTooltip>
+                    </MudTh>
+                    <MudTh Style="text-align:right">Ekstra (t)</MudTh>
+                    <MudTh Style="text-align:right">Reddet (NOK)</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.PlantName</MudTd>
+                    <MudTd>@FormatLocal(context.StartUtc)</MudTd>
+                    <MudTd>@FormatLocal(context.EndUtc)</MudTd>
+                    <MudTd Style="text-align:right">@context.VarighetTimer.ToString("F1")</MudTd>
+                    <MudTd>@DisplayKategori(context.Kategori)</MudTd>
+                    <MudTd>
+                        <MudTooltip Text="@(context.CauseCode ?? "")">
+                            <span>@CauseFormatter.Display(context.CauseCode)</span>
+                        </MudTooltip>
+                    </MudTd>
+                    <MudTd Style="text-align:right">@context.EkstraTimerSpart.ToString("F1")</MudTd>
+                    <MudTd Style="text-align:right; font-weight: 500;">@FormatNok(context.ReddetNok)</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+
+    @* ---- Månedlig trend-graf ---- *@
+    @if (_portfolio.MonthlyTrend.Count > 0)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="1">
+            <MudText Typo="Typo.h3" Class="mb-3">Reddet NOK per måned (alle anlegg samlet)</MudText>
+            <ApexChart @key="_chartVersion" TItem="PortfolioVaktRoiMonthlyPoint"
+                       Options="_portfolioTrendOptions" Height="280">
+                <ApexPointSeries TItem="PortfolioVaktRoiMonthlyPoint"
+                                 Items="_portfolio.MonthlyTrend"
+                                 Name="Reddet NOK"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="p => MonthLabel(p)"
+                                 YValue="p => (decimal)p.TotalReddetNok" />
+            </ApexChart>
+        </MudPaper>
+    }
+
+    @* ---- Per-anlegg-tabell ---- *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.h3" Class="mb-3">Per anlegg (sortert på reddet)</MudText>
+        <MudTable Items="_portfolio.PerPlant" Hover="true" Dense="true" Elevation="0"
+                  OnRowClick="@((TableRowClickEventArgs<PortfolioVaktRoiPlantSummary> args) => GoToPlantSummary(args.Item))"
+                  Style="cursor: pointer;">
+            <HeaderContent>
+                <MudTh>Anlegg</MudTh>
+                <MudTh Style="text-align:right">Effekt (MW)</MudTh>
+                <MudTh Style="text-align:right">Reddbare events</MudTh>
+                <MudTh Style="text-align:right">Totale events</MudTh>
+                <MudTh Style="text-align:right">Reddet (NOK)</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.PlantName</MudTd>
+                <MudTd Style="text-align:right">@context.InstalledCapacityMw.ToString("F1")</MudTd>
+                <MudTd Style="text-align:right">@context.ReddbareEvents</MudTd>
+                <MudTd Style="text-align:right">@context.TotaleEvents</MudTd>
+                <MudTd Style="text-align:right; font-weight: 500;">@FormatNok(context.ReddetNok)</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+else if (!IsPortfolioMode && _response is not null)
+{
+    @* ============== PER-PLANT-MODUS (uendret) ============== *@
+
     @* ---- KPI-kort ---- *@
     <MudGrid Class="mb-4">
         <MudItem xs="12" sm="6" md="3">
@@ -200,18 +334,28 @@ else if (_response is not null)
 @code {
     [Parameter] public string? PlantId { get; set; }
 
-    private IReadOnlyList<PlantDto> _plants = Array.Empty<PlantDto>();
     private double _kapasitetsfaktor = 0.5;
     private double _aarligVaktKost = 200_000;
     private bool _loading;
     private string? _error;
+
+    // Per-plant state
     private VaktRoiResponse? _response;
     private string? _csvUrl;
     private List<MonthlyPoint> _monthlyTrend = new();
+
+    // Portfolio state
+    private PortfolioVaktRoiResponse? _portfolio;
+    private ApexChartOptions<PortfolioVaktRoiMonthlyPoint> _portfolioTrendOptions = new();
+
     private int _chartVersion;
     private string _vaktSearch = string.Empty;
+    private string _lastLoadedPlantId = string.Empty;
 
     private ApexChartOptions<MonthlyPoint> _trendOptions = new();
+
+    // Mode-flagg: hvis URL er /vakt-roi (uten plantId) viser vi portefølje-dashboard.
+    private bool IsPortfolioMode => string.IsNullOrEmpty(PlantId);
 
     // Sort-funksjoner for vakt-roi events
     private static readonly Func<VaktRoiEventDto, object> SortByVaktStart    = e => e.Event.StartUtc;
@@ -234,61 +378,110 @@ else if (_response is not null)
 
     protected override async Task OnInitializedAsync()
     {
-        Filter.OnChange += StateHasChanged;
-        try
+        Filter.OnChange += OnFilterChanged;
+
+        // Per-plant: route-parameter overstyrer FilterState ved direkte navigering.
+        // Portefølje: vi rører ikke Filter.PlantId — brukeren kan fortsatt ha et
+        // anlegg valgt i AppBar (ignorert her).
+        if (!IsPortfolioMode && !string.IsNullOrEmpty(PlantId) && PlantId != Filter.PlantId)
         {
-            _plants = await ReportsApi.ListPlantsAsync();
-
-            // Route-parameter overstyrer Filter; ellers behold delt state eller
-            // default til første anlegg.
-            if (!string.IsNullOrEmpty(PlantId))
-            {
-                Filter.PlantId = PlantId;
-            }
-            else if (string.IsNullOrEmpty(Filter.PlantId) && _plants.Count > 0)
-            {
-                Filter.PlantId = _plants[0].Id;
-            }
-
-            Filter.SetIfEmpty(Filter.PlantId,
-                fromDate: DateTime.UtcNow.AddYears(-1).Date,
-                toDate: DateTime.UtcNow.Date);
-
-            if (Filter.HasFreshVaktRoi())
-            {
-                _response = Filter.CachedVaktRoi;
-                BuildCharts(_response!);
-                _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "vakt-roi",
-                    Filter.FromDate!.Value.ToUtcOffsetSafe(),
-                    Filter.ToDate!.Value.ToUtcOffsetSafe()).ToString();
-            }
-            else if (Filter.ErKlar)
-            {
-                await LoadAsync();
-            }
+            Filter.PlantId = PlantId;
         }
-        catch (Exception ex)
-        {
-            _error = $"Klarte ikke laste anleggsliste: {ex.Message}";
-        }
+
+        _ = CauseFormatter.EnsureLoadedAsync()
+            .ContinueWith(_ => InvokeAsync(StateHasChanged), TaskScheduler.Default);
+
+        await LoadFromFilterAsync();
     }
 
     public void Dispose()
     {
-        Filter.OnChange -= StateHasChanged;
+        Filter.OnChange -= OnFilterChanged;
     }
 
-    private Task OnPlantChanged(string newPlantId)
+    private async void OnFilterChanged()
     {
-        Filter.PlantId = newPlantId;
-        return Task.CompletedTask;
+        try
+        {
+            // I portefølje-modus: hvis brukeren bytter anlegg i AppBar, naviger
+            // til per-plant-visning slik at velgeren faktisk gjør noe meningsfylt.
+            if (IsPortfolioMode
+                && !string.IsNullOrEmpty(Filter.PlantId)
+                && Filter.PlantId != _lastLoadedPlantId)
+            {
+                _lastLoadedPlantId = Filter.PlantId;
+                Nav.NavigateTo($"vakt-roi/{Filter.PlantId}");
+                return;
+            }
+
+            await LoadFromFilterAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente vakt-ROI-data: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
-    private async Task OnRangeChanged((DateTime From, DateTime To) range)
+    private async Task LoadFromFilterAsync()
     {
-        Filter.FromDate = DateTime.SpecifyKind(range.From, DateTimeKind.Unspecified);
-        Filter.ToDate = DateTime.SpecifyKind(range.To, DateTimeKind.Unspecified);
+        if (!Filter.FromDate.HasValue || !Filter.ToDate.HasValue)
+        {
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (IsPortfolioMode)
+        {
+            // I portefølje-modus venter vi ikke på Filter.PlantId — vi henter alle.
+            // Lagrer det Filter.PlantId-en som var aktiv så vi kan oppdage senere endringer.
+            _lastLoadedPlantId = Filter.PlantId ?? string.Empty;
+            await LoadPortfolioAsync();
+            return;
+        }
+
+        if (!Filter.ErKlar)
+        {
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (Filter.HasFreshVaktRoi())
+        {
+            _response = Filter.CachedVaktRoi;
+            BuildCharts(_response!);
+            _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "vakt-roi",
+                Filter.FromDate!.Value.ToUtcOffsetSafe(),
+                Filter.ToDate!.Value.ToUtcOffsetSafe()).ToString();
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
         await LoadAsync();
+    }
+
+    private async Task LoadPortfolioAsync()
+    {
+        _loading = true;
+        _error = null;
+        _portfolio = null;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
+            var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
+            _portfolio = await NedetidApi.GetPortfolioVaktRoiAsync(fromUtc, toUtc, _kapasitetsfaktor, topN: 10);
+            BuildPortfolioCharts(_portfolio);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente portefølje-Vakt-ROI: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task LoadAsync()
@@ -297,6 +490,7 @@ else if (_response is not null)
         _loading = true;
         _error = null;
         _response = null;
+        await InvokeAsync(StateHasChanged);
         try
         {
             var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
@@ -313,6 +507,7 @@ else if (_response is not null)
         finally
         {
             _loading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -340,12 +535,59 @@ else if (_response is not null)
         };
     }
 
+    private void BuildPortfolioCharts(PortfolioVaktRoiResponse r)
+    {
+        _chartVersion++;
+        _portfolioTrendOptions = new ApexChartOptions<PortfolioVaktRoiMonthlyPoint>
+        {
+            Xaxis = new XAxis { Type = XAxisType.Category },
+            Yaxis = new List<YAxis>
+            {
+                new() { Title = new AxisTitle { Text = "NOK" }, DecimalsInFloat = 0 }
+            },
+            Colors = new List<string> { "#2A9D8F" },
+        };
+    }
+
     private double EstimertAarligReddet()
     {
         if (_response is null) return 0;
         var dager = (_response.ToUtc - _response.FromUtc).TotalDays;
         if (dager <= 0) return 0;
         return _response.TotalReddetNok * (365.25 / dager);
+    }
+
+    private double SnittPerAnleggMedData()
+    {
+        if (_portfolio is null || _portfolio.PlantsWithData == 0) return 0;
+        return _portfolio.TotalReddetNok / _portfolio.PlantsWithData;
+    }
+
+    private PortfolioVaktRoiPlantSummary? TopPlant()
+        => _portfolio?.PerPlant.FirstOrDefault();
+
+    private void GoToPlantDetail(PortfolioVaktRoiTopEvent? evt)
+    {
+        if (evt is null) return;
+        Nav.NavigateTo($"vakt-roi/{evt.PlantId}");
+    }
+
+    private void GoToPlantSummary(PortfolioVaktRoiPlantSummary? p)
+    {
+        if (p is null) return;
+        Nav.NavigateTo($"vakt-roi/{p.PlantId}");
+    }
+
+    private static string MonthLabel(PortfolioVaktRoiMonthlyPoint p)
+    {
+        var name = p.Month switch
+        {
+            1 => "Jan", 2 => "Feb", 3 => "Mar", 4 => "Apr",
+            5 => "Mai", 6 => "Jun", 7 => "Jul", 8 => "Aug",
+            9 => "Sep", 10 => "Okt", 11 => "Nov", 12 => "Des",
+            _ => p.Month.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        };
+        return $"{name} {p.Year}";
     }
 
     private string PeriodLabel

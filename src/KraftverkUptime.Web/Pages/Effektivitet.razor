@@ -1,8 +1,9 @@
 @page "/effektivitet"
 @page "/effektivitet/{PlantId}"
 @using ApexCharts
-@inject ReportsApi ReportsApi
+@implements IDisposable
 @inject NedetidApi NedetidApi
+@inject FilterState Filter
 
 <PageTitle>Effektivitet</PageTitle>
 
@@ -18,23 +19,7 @@
     </MudItem>
 </MudGrid>
 
-@* ---- Filter ---- *@
-<MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudGrid>
-        <MudItem xs="12" sm="4">
-            <MudSelect T="string" Value="_plantId" ValueChanged="OnPlantChanged"
-                       Label="Anlegg" Variant="Variant.Outlined" Margin="Margin.Dense">
-                @foreach (var p in _plants)
-                {
-                    <MudSelectItem Value="@p.Id">@p.Name (@p.Id)</MudSelectItem>
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="8">
-            <DateRangeFilter From="_fromDate" To="_toDate" OnChanged="@OnRangeChanged" />
-        </MudItem>
-    </MudGrid>
-</MudPaper>
+@* Anlegg + periode styres av global velger i AppBar (FilterState). *@
 
 @if (_error is not null)
 {
@@ -108,7 +93,7 @@ else if (_response is not null)
                         <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Merverdi vs spot</MudText>
                         <MudText Typo="Typo.h3">@FormatNok(_captureRate.MerverdiNok)</MudText>
                         <MudText Typo="Typo.caption">
-                            <MudLink Href="@($"/capture-rate/{_plantId}")">Se detaljer →</MudLink>
+                            <MudLink Href="@($"/capture-rate/{Filter.PlantId}")">Se detaljer →</MudLink>
                         </MudText>
                     </MudPaper>
                 </MudItem>
@@ -164,11 +149,6 @@ else if (_response is not null)
 @code {
     [Parameter] public string? PlantId { get; set; }
 
-    private IReadOnlyList<PlantDto> _plants = Array.Empty<PlantDto>();
-    private string _plantId = string.Empty;
-    private DateTime? _fromDate;
-    private DateTime? _toDate;
-
     private bool _loading;
     private string? _error;
     private EffektivitetResponse? _response;
@@ -178,61 +158,56 @@ else if (_response is not null)
 
     protected override async Task OnInitializedAsync()
     {
+        Filter.OnChange += OnFilterChanged;
+
+        if (!string.IsNullOrEmpty(PlantId) && PlantId != Filter.PlantId)
+        {
+            Filter.PlantId = PlantId;
+        }
+
+        if (Filter.ErKlar)
+        {
+            await LoadAsync();
+        }
+    }
+
+    public void Dispose()
+    {
+        Filter.OnChange -= OnFilterChanged;
+    }
+
+    private async void OnFilterChanged()
+    {
         try
         {
-            _plants = await ReportsApi.ListPlantsAsync();
-
-            _plantId = !string.IsNullOrEmpty(PlantId)
-                ? PlantId
-                : (_plants.Count > 0 ? _plants[0].Id : string.Empty);
-
-            // Default-periode: forrige måned
-            var now = DateTime.UtcNow;
-            var firstOfThisMonth = new DateTime(now.Year, now.Month, 1);
-            _fromDate = firstOfThisMonth.AddMonths(-1);
-            _toDate = firstOfThisMonth;
-
-            if (!string.IsNullOrEmpty(_plantId))
-            {
-                await LoadAsync();
-            }
+            if (Filter.ErKlar) await LoadAsync();
+            else await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
-            _error = $"Klarte ikke laste anleggsliste: {ex.Message}";
+            _error = $"Kunne ikke hente effektivitets-data: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
         }
-    }
-
-    private Task OnPlantChanged(string newPlantId)
-    {
-        _plantId = newPlantId;
-        return Task.CompletedTask;
-    }
-
-    private async Task OnRangeChanged((DateTime From, DateTime To) range)
-    {
-        _fromDate = range.From;
-        _toDate = range.To;
-        await LoadAsync();
     }
 
     private async Task LoadAsync()
     {
-        if (string.IsNullOrEmpty(_plantId) || !_fromDate.HasValue || !_toDate.HasValue) return;
+        if (!Filter.ErKlar) return;
         _loading = true;
         _error = null;
         _response = null;
         _captureRate = null;
+        await InvokeAsync(StateHasChanged);
         try
         {
-            var fromUtc = _fromDate.ToUtcOffsetSafe();
-            var toUtc = _toDate.ToUtcOffsetSafe();
-            _response = await NedetidApi.GetEffektivitetAsync(_plantId, fromUtc, toUtc);
+            var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
+            var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
+            _response = await NedetidApi.GetEffektivitetAsync(Filter.PlantId, fromUtc, toUtc);
 
             // Capture rate er sekundær — feiler den, viser vi bare effektivitets-data.
             try
             {
-                _captureRate = await NedetidApi.GetCaptureRateAsync(_plantId, fromUtc, toUtc);
+                _captureRate = await NedetidApi.GetCaptureRateAsync(Filter.PlantId, fromUtc, toUtc);
             }
             catch
             {
@@ -268,6 +243,7 @@ else if (_response is not null)
         finally
         {
             _loading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 

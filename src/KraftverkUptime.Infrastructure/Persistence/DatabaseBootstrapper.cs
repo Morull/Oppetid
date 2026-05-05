@@ -84,6 +84,12 @@ public static class DatabaseBootstrapper
             // via PlantAdmin etter at appen er oppe.
             await DefaultDamSeeder.SeedAsync(services, ct).ConfigureAwait(false);
 
+            // Oppgrader default-dammene til å matche SCADA-skjemaene per anlegg
+            // (navn for single-dam-anlegg, fulle kaskader for multi-dam). Kjører
+            // ETTER DefaultDamSeeder slik at den kan finne/erstatte _main-radene.
+            // Dekker 9 anlegg; haukland + lindland håndteres av sine egne seedere.
+            await PlantTopologySeeder.SeedAsync(services, ct).ConfigureAwait(false);
+
             // Seed Drivdal-signal-map (22 tags). Idempotent. Andre anlegg legges
             // inn manuelt eller via egen seeder etter samme mønster.
             await DrivdalSignalMapSeeder.SeedAsync(services, ct).ConfigureAwait(false);
@@ -103,6 +109,10 @@ public static class DatabaseBootstrapper
             // Backfill data_imports fra eksisterende settlement_imports-historikk
             // (SPEC-IMPORT-COMPLETENESS steg 3). Idempotent — NOT EXISTS-filter.
             await DataImportsBackfillSeeder.SeedAsync(services, ct).ConfigureAwait(false);
+
+            // Cause-aliaser: visnings-tekst per cause-kode (SPEC-CAUSE-ALIASER).
+            // Idempotent — backfiller kun manglende defaults.
+            await CauseAliasSeeder.SeedAsync(services, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -168,6 +178,18 @@ public static class DatabaseBootstrapper
             -- trigger-forklaring). Idempotent ALTER med IF NOT EXISTS.
             ALTER TABLE core.downtime_categories
                 ADD COLUMN IF NOT EXISTS description varchar(2000) NULL;
+
+            -- Cause-aliaser: brukerredigerbar oversettelse fra intern cause-kode
+            -- til visnings-tekst i UI (eks. "operlog:nodstopp" → "Nødstopp utløst").
+            CREATE TABLE IF NOT EXISTS core.cause_aliases (
+                cause_code varchar(128) PRIMARY KEY,
+                owner_org_id varchar(64) NOT NULL,
+                display_text varchar(200) NOT NULL,
+                created_at timestamptz NOT NULL DEFAULT NOW(),
+                updated_at timestamptz NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS ix_cause_aliases_owner
+                ON core.cause_aliases (owner_org_id);
             """;
 
         try

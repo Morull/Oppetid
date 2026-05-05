@@ -2,10 +2,13 @@
 @page "/nedetid/{PlantId}"
 @using ApexCharts
 @implements IDisposable
-@inject ReportsApi ReportsApi
 @inject NedetidApi NedetidApi
+@inject AnnotationsApi AnnotationsApi
 @inject FilterState Filter
 @inject NavigationManager Nav
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject CauseFormatter CauseFormatter
 
 <PageTitle>Nedetids-analyse</PageTitle>
 
@@ -18,22 +21,7 @@
     </MudItem>
 </MudGrid>
 
-@* ---- Periode + plant-velger ---- *@
-<MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudGrid>
-        <MudItem xs="12" sm="4">
-            <MudSelect T="string" Value="Filter.PlantId" ValueChanged="OnPlantChanged" Label="Anlegg" Variant="Variant.Outlined" Margin="Margin.Dense">
-                @foreach (var p in _plants)
-                {
-                    <MudSelectItem Value="@p.Id">@p.Name (@p.Id)</MudSelectItem>
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="8">
-            <DateRangeFilter From="Filter.FromDate" To="Filter.ToDate" OnChanged="@OnRangeChanged" />
-        </MudItem>
-    </MudGrid>
-</MudPaper>
+@* Anlegg + periode styres av global velger i AppBar (FilterState). *@
 
 @if (_error is not null)
 {
@@ -177,10 +165,15 @@ else if (_response is not null)
                 <MudTh><MudTableSortLabel SortBy="@SortByEventEnd">Slutt</MudTableSortLabel></MudTh>
                 <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEventDuration">Varighet (t)</MudTableSortLabel></MudTh>
                 <MudTh><MudTableSortLabel SortBy="@SortByEventCategory">Kategori</MudTableSortLabel></MudTh>
-                <MudTh>Cause</MudTh>
+                <MudTh>
+                    <MudTooltip Text="Årsak = HVORFOR enheten er i tilstanden (operlog/SCADA-cause-kode). Drifts-leder kan gi koden brukervennlig tekst på /admin/kategorier.">
+                        Årsak
+                    </MudTooltip>
+                </MudTh>
                 <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEventTapMwh">Tap (MWh)</MudTableSortLabel></MudTh>
                 <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEventTapNok">Tap (NOK)</MudTableSortLabel></MudTh>
                 <MudTh>Operlog</MudTh>
+                <MudTh Style="text-align:center; width:48px;">Rediger</MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="Start">@FormatLocal(context.StartUtc)</MudTd>
@@ -189,10 +182,23 @@ else if (_response is not null)
                 <MudTd DataLabel="Kategori">
                     <MudChip T="string" Size="MudBlazor.Size.Small" Color="@KategoriColor(context.Kategori)">@DisplayKategori(context.Kategori)</MudChip>
                 </MudTd>
-                <MudTd DataLabel="Cause">@(context.CauseCode ?? "–")</MudTd>
+                <MudTd DataLabel="Årsak">
+                    <MudTooltip Text="@(context.CauseCode ?? "")">
+                        <span>@CauseFormatter.Display(context.CauseCode)</span>
+                    </MudTooltip>
+                </MudTd>
                 <MudTd DataLabel="Tap (MWh)" Style="text-align:right">@context.TapMwh.ToString("F2")</MudTd>
                 <MudTd DataLabel="Tap (NOK)" Style="text-align:right">@FormatNok(context.TapNok)</MudTd>
                 <MudTd DataLabel="Operlog">@(context.HarOperlogMatch ? "✓" : "")</MudTd>
+                <MudTd DataLabel="Rediger" Style="text-align:center;">
+                    <MudTooltip Text="@(IsAnnotated(context) ? "Rediger annotering" : "Annotér hendelse")">
+                        <MudIconButton
+                            Icon="@(IsAnnotated(context) ? Icons.Material.Filled.EditNote : Icons.Material.Outlined.Edit)"
+                            Size="MudBlazor.Size.Small"
+                            Color="@(IsAnnotated(context) ? MudBlazor.Color.Primary : MudBlazor.Color.Default)"
+                            OnClick="@(() => OpenAnnotationDialogAsync(context))" />
+                    </MudTooltip>
+                </MudTd>
             </RowTemplate>
         </MudTable>
     </MudPaper>
@@ -220,13 +226,13 @@ else if (_response is not null)
 @code {
     [Parameter] public string? PlantId { get; set; }
 
-    private IReadOnlyList<PlantDto> _plants = Array.Empty<PlantDto>();
     private bool _loading;
     private string? _error;
     private NedetidResponse? _response;
     private DataQualitySummaryDto? _dataQuality;
     private string? _csvUrl;
     private string _eventSearch = string.Empty;
+    private IReadOnlyList<AnnotationCategoryDto> _annotationCategories = Array.Empty<AnnotationCategoryDto>();
 
     // Sort-funksjoner for events-tabell (default sortering = Start synkende)
     private static readonly Func<NedetidEventDto, object> SortByEventStart    = e => e.StartUtc;
@@ -244,6 +250,79 @@ else if (_response is not null)
             || (e.CauseCode?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
             || e.State.Contains(s, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// True hvis hendelsen kommer fra en manuell annotering (cause-code-prefiks
+    /// "annotation:"). AnnotationOverlayService setter dette når en time er
+    /// overstyrt — slik kan UIet vise edit-knappen som "rediger" istedenfor
+    /// "annotér".
+    /// </summary>
+    private static bool IsAnnotated(NedetidEventDto e)
+        => e.CauseCode?.StartsWith("annotation:", StringComparison.Ordinal) == true;
+
+    /// <summary>
+    /// Åpner annoterings-dialogen forhåndsfylt med hendelsens periode. Hvis en
+    /// eksisterende annotering dekker hele perioden, blir den lastet inn for
+    /// redigering; ellers åpnes dialogen i opprett-modus.
+    /// </summary>
+    private async Task OpenAnnotationDialogAsync(NedetidEventDto evt)
+    {
+        if (_annotationCategories.Count == 0)
+        {
+            try
+            {
+                _annotationCategories = await AnnotationsApi.ListCategoriesAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Kunne ikke laste annoterings-kategorier: {ex.Message}", Severity.Error);
+                return;
+            }
+        }
+
+        // Søk eksisterende annotering som dekker hele eventet — hvis funnet,
+        // åpner dialogen i edit-modus; ellers create-modus med periode pre-fylt.
+        AnnotationDto? existing = null;
+        try
+        {
+            var annotations = await AnnotationsApi.ListAsync(
+                Filter.PlantId, evt.StartUtc, evt.EndUtc);
+            existing = annotations.FirstOrDefault(
+                a => a.StartUtc <= evt.StartUtc && a.EndUtc >= evt.EndUtc);
+        }
+        catch
+        {
+            // Hvis listing feiler, åpner vi dialogen som "ny" — overlap-deteksjon
+            // i dialogen vil fortsatt advare ved lagring.
+        }
+
+        var classification = $"{DisplayKategori(evt.Kategori)} ({evt.VarighetTimer:F1} t)";
+        var parameters = new DialogParameters<AnnotationDialog>
+        {
+            { x => x.PlantId, Filter.PlantId },
+            { x => x.Categories, _annotationCategories },
+            { x => x.InitialStart, evt.StartUtc },
+            { x => x.InitialEnd, evt.EndUtc },
+            { x => x.Existing, existing },
+            { x => x.CurrentClassification, classification }
+        };
+        var options = new DialogOptions
+        {
+            CloseOnEscapeKey = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.Small,
+        };
+
+        var title = existing is null ? "Annotér hendelse" : "Rediger annotering";
+        var dialog = await DialogService.ShowAsync<AnnotationDialog>(title, parameters, options);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled) return;
+
+        // Lagring fullført — invalidér Nedetid + Vakt-ROI-cache slik at neste
+        // navigering også henter ferske data, og last på nytt her.
+        Filter.InvalidateCaches();
+        await LoadAsync();
+    }
     private List<WeeklyPoint> _weeklyTrend = new();
     private int _chartVersion;
 
@@ -252,66 +331,64 @@ else if (_response is not null)
 
     protected override async Task OnInitializedAsync()
     {
-        Filter.OnChange += StateHasChanged;
-        try
+        Filter.OnChange += OnFilterChanged;
+
+        // Route-parameter PlantId overstyrer FilterState ved direkte navigering
+        // til /nedetid/{plantId}. Etterpå er FilterState autoritativ.
+        if (!string.IsNullOrEmpty(PlantId) && PlantId != Filter.PlantId)
         {
-            _plants = await ReportsApi.ListPlantsAsync();
-
-            // Route-parameter PlantId overstyrer FilterState (eksplisitt forespørsel
-            // fra brukeren). Ellers: behold eksisterende plant fra delt state, eller
-            // velg første anlegg som default ved første side-besøk i sesjonen.
-            if (!string.IsNullOrEmpty(PlantId))
-            {
-                Filter.PlantId = PlantId;
-            }
-            else if (string.IsNullOrEmpty(Filter.PlantId) && _plants.Count > 0)
-            {
-                Filter.PlantId = _plants[0].Id;
-            }
-
-            // Datoer fylles kun hvis ikke allerede satt fra annen side (f.eks. via
-            // synk fra ReportDetail) — slik at kontekst-overgang er sømløs.
-            Filter.SetIfEmpty(Filter.PlantId,
-                fromDate: DateTime.UtcNow.AddYears(-1).Date,
-                toDate: DateTime.UtcNow.Date);
-
-            // Hvis vi navigerte hit fra en annen side med samme filter, gjenbruk
-            // cachet respons istedenfor å kalle API på nytt.
-            if (Filter.HasFreshNedetid())
-            {
-                _response = Filter.CachedNedetid;
-                BuildCharts(_response!);
-                _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "nedetid",
-                    Filter.FromDate!.Value.ToUtcOffsetSafe(),
-                    Filter.ToDate!.Value.ToUtcOffsetSafe()).ToString();
-            }
-            else if (Filter.ErKlar)
-            {
-                await LoadAsync();
-            }
+            Filter.PlantId = PlantId;
         }
-        catch (Exception ex)
-        {
-            _error = $"Klarte ikke laste anleggsliste: {ex.Message}";
-        }
+
+        // Last cause-aliaser i bakgrunnen — UI rendres med rå koder først,
+        // erstattes ved neste re-render etter at CauseFormatter er klar.
+        _ = CauseFormatter.EnsureLoadedAsync()
+            .ContinueWith(_ => InvokeAsync(StateHasChanged), TaskScheduler.Default);
+
+        await LoadFromFilterAsync();
     }
 
     public void Dispose()
     {
-        Filter.OnChange -= StateHasChanged;
+        Filter.OnChange -= OnFilterChanged;
     }
 
-    private Task OnPlantChanged(string newPlantId)
+    private async void OnFilterChanged()
     {
-        Filter.PlantId = newPlantId;
-        return Task.CompletedTask;
+        try
+        {
+            await LoadFromFilterAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente nedetids-data: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
-    /// <summary>Setter perioden fra DateRangeFilter og laster automatisk.</summary>
-    private async Task OnRangeChanged((DateTime From, DateTime To) range)
+    /// <summary>
+    /// Last data basert på gjeldende FilterState. Bruker cache hvis filter er
+    /// uendret siden sist henting.
+    /// </summary>
+    private async Task LoadFromFilterAsync()
     {
-        Filter.FromDate = DateTime.SpecifyKind(range.From, DateTimeKind.Unspecified);
-        Filter.ToDate = DateTime.SpecifyKind(range.To, DateTimeKind.Unspecified);
+        if (!Filter.ErKlar)
+        {
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (Filter.HasFreshNedetid())
+        {
+            _response = Filter.CachedNedetid;
+            BuildCharts(_response!);
+            _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "nedetid",
+                Filter.FromDate!.Value.ToUtcOffsetSafe(),
+                Filter.ToDate!.Value.ToUtcOffsetSafe()).ToString();
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
         await LoadAsync();
     }
 
@@ -322,6 +399,7 @@ else if (_response is not null)
         _error = null;
         _response = null;
         _dataQuality = null;
+        await InvokeAsync(StateHasChanged);
         try
         {
             var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
@@ -343,6 +421,7 @@ else if (_response is not null)
         finally
         {
             _loading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 

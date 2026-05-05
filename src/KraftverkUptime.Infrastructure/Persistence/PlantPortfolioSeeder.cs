@@ -39,7 +39,7 @@ public static class PlantPortfolioSeeder
     [
         ("Løgjen",     0,    PlantType.Regulated),  // magasin
         ("Drivdal",    2.3,  PlantType.Regulated),
-        ("Grødemfoss", 2.8,  PlantType.Regulated),  // Smievatn er magasin/inntak
+        ("Grødemfoss", 2.8,  PlantType.Regulated),  // Smievatn → kun G2 (G1 havarert, ikke reparert)
         ("Haukland",   4.9,  PlantType.Regulated),  // kaskade
         ("Honnefoss",  3.1,  PlantType.Regulated),  // Kydland + Spjodevatn-magasin
         ("Lindland",   8.9,  PlantType.RunOfRiver), // 24t-lag → fungerer som elvekraft

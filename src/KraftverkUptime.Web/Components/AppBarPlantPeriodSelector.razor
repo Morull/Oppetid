@@ -1,0 +1,180 @@
+@*
+   Global anlegg- + periode-velger som vises i en sub-bar under topp-baren.
+   - Anlegg-dropdown: setter FilterState.PlantId for alle sider som tar PlantId
+   - Periode-display med ←/→-piler: flytter ett trinn av valgt granularitet
+   - Hurtigknapper: Måned (default), Kvartal, År, Hittil i år, Egendefinert
+   - Egendefinert: åpner inline range-picker
+
+   Komponenten driver kun FilterState — sidene lytter på Filter.OnChange
+   og re-loader ved endringer.
+*@
+
+@inject FilterState Filter
+@implements IDisposable
+
+@if (Filter.Plants.Count == 0)
+{
+    @* Plants ikke lastet ennå (eller ingen anlegg i systemet). Viser ingenting *@
+    @* heller enn en tom dropdown — MainLayout laster plants på første render. *@
+}
+else
+{
+    <MudPaper Elevation="0" Class="dk-subbar pa-2 px-4 d-flex align-center"
+              Style="gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--mud-palette-divider);">
+
+        @* ---- Anlegg-dropdown ---- *@
+        <div class="d-flex align-center" style="gap: 6px;">
+            <MudIcon Icon="@Icons.Material.Filled.Factory" Size="Size.Small"
+                     Color="Color.Default" />
+            <MudSelect T="string" Value="@Filter.PlantId" ValueChanged="OnPlantChanged"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                       Style="min-width: 200px;">
+                @foreach (var p in Filter.Plants)
+                {
+                    <MudSelectItem Value="@p.Id">@p.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+
+        @* ---- Periode-pil ←/→ + display ---- *@
+        <div class="d-flex align-center" style="gap: 2px;">
+            <MudTooltip Text="Forrige periode">
+                <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft"
+                               OnClick="OnPrev"
+                               Disabled="@(!CanStep)"
+                               Size="Size.Small" />
+            </MudTooltip>
+            <MudText Typo="Typo.body1" Style="min-width: 140px; text-align: center; font-weight: 500;">
+                @PeriodLabel
+            </MudText>
+            <MudTooltip Text="Neste periode">
+                <MudIconButton Icon="@Icons.Material.Filled.ChevronRight"
+                               OnClick="OnNext"
+                               Disabled="@(!CanStep)"
+                               Size="Size.Small" />
+            </MudTooltip>
+        </div>
+
+        @* ---- Hurtigknapper ---- *@
+        <MudButtonGroup Variant="Variant.Outlined" Size="Size.Small">
+            <MudButton OnClick="@(() => SetGranularity(PeriodGranularity.Maned))"
+                       Color="@(Filter.Granularity == PeriodGranularity.Maned ? Color.Primary : Color.Default)"
+                       Variant="@(Filter.Granularity == PeriodGranularity.Maned ? Variant.Filled : Variant.Outlined)">
+                Måned
+            </MudButton>
+            <MudButton OnClick="@(() => SetGranularity(PeriodGranularity.Kvartal))"
+                       Color="@(Filter.Granularity == PeriodGranularity.Kvartal ? Color.Primary : Color.Default)"
+                       Variant="@(Filter.Granularity == PeriodGranularity.Kvartal ? Variant.Filled : Variant.Outlined)">
+                Kvartal
+            </MudButton>
+            <MudButton OnClick="@(() => SetGranularity(PeriodGranularity.Ar))"
+                       Color="@(Filter.Granularity == PeriodGranularity.Ar ? Color.Primary : Color.Default)"
+                       Variant="@(Filter.Granularity == PeriodGranularity.Ar ? Variant.Filled : Variant.Outlined)">
+                År
+            </MudButton>
+            <MudButton OnClick="@(() => SetGranularity(PeriodGranularity.HittilIAr))"
+                       Color="@(Filter.Granularity == PeriodGranularity.HittilIAr ? Color.Primary : Color.Default)"
+                       Variant="@(Filter.Granularity == PeriodGranularity.HittilIAr ? Variant.Filled : Variant.Outlined)">
+                Hittil i år
+            </MudButton>
+            <MudButton OnClick="@ToggleCustomPicker"
+                       Color="@(Filter.Granularity == PeriodGranularity.Egendefinert ? Color.Primary : Color.Default)"
+                       Variant="@(Filter.Granularity == PeriodGranularity.Egendefinert ? Variant.Filled : Variant.Outlined)"
+                       StartIcon="@Icons.Material.Filled.DateRange">
+                Egendefinert
+            </MudButton>
+        </MudButtonGroup>
+
+        @* ---- Inline range-picker (vises kun hvis brukeren vil sette egendefinert range) ---- *@
+        @if (_customOpen)
+        {
+            <MudDateRangePicker @bind-DateRange="_customRange"
+                                Variant="Variant.Outlined"
+                                Margin="Margin.Dense"
+                                PlaceholderStart="Fra"
+                                PlaceholderEnd="Til"
+                                Style="min-width: 280px;" />
+            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                       OnClick="ApplyCustomRange"
+                       Disabled="@(_customRange?.Start is null || _customRange?.End is null)">
+                Bruk
+            </MudButton>
+        }
+    </MudPaper>
+}
+
+@code {
+    private bool _customOpen;
+    private DateRange? _customRange;
+
+    protected override void OnInitialized()
+    {
+        Filter.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        Filter.OnChange -= StateHasChanged;
+    }
+
+    private string PeriodLabel
+    {
+        get
+        {
+            if (!Filter.FromDate.HasValue || !Filter.ToDate.HasValue) return "Velg periode";
+            return PeriodCalculator.Format(
+                Filter.FromDate.Value, Filter.ToDate.Value, Filter.Granularity);
+        }
+    }
+
+    private bool CanStep =>
+        Filter.Granularity == PeriodGranularity.Maned ||
+        Filter.Granularity == PeriodGranularity.Kvartal ||
+        Filter.Granularity == PeriodGranularity.Ar;
+
+    private void OnPlantChanged(string newPlantId)
+    {
+        Filter.PlantId = newPlantId;
+    }
+
+    private void OnPrev()
+    {
+        if (!Filter.FromDate.HasValue || !Filter.ToDate.HasValue) return;
+        var (from, to) = PeriodCalculator.MoveBack(
+            Filter.FromDate.Value, Filter.ToDate.Value, Filter.Granularity);
+        Filter.SetPeriod(from, to, Filter.Granularity);
+    }
+
+    private void OnNext()
+    {
+        if (!Filter.FromDate.HasValue || !Filter.ToDate.HasValue) return;
+        var (from, to) = PeriodCalculator.MoveForward(
+            Filter.FromDate.Value, Filter.ToDate.Value, Filter.Granularity);
+        Filter.SetPeriod(from, to, Filter.Granularity);
+    }
+
+    private void SetGranularity(PeriodGranularity g)
+    {
+        _customOpen = false;
+        var (from, to) = PeriodCalculator.ForGranularity(g, DateTime.Today);
+        Filter.SetPeriod(from, to, g);
+    }
+
+    private void ToggleCustomPicker()
+    {
+        _customRange = (Filter.FromDate.HasValue && Filter.ToDate.HasValue)
+            ? new DateRange(Filter.FromDate.Value, Filter.ToDate.Value.AddDays(-1))
+            : null;
+        _customOpen = !_customOpen;
+    }
+
+    private void ApplyCustomRange()
+    {
+        if (_customRange?.Start is null || _customRange?.End is null) return;
+        // Til-dato i FilterState er eksklusiv; DateRangePicker er inklusiv.
+        var from = _customRange.Start.Value;
+        var to = _customRange.End.Value.AddDays(1);
+        Filter.SetPeriod(from, to, PeriodGranularity.Egendefinert);
+        _customOpen = false;
+    }
+}

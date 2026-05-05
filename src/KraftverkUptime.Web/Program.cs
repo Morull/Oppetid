@@ -22,6 +22,7 @@ builder.Services.AddScoped<ReportsApi>();
 builder.Services.AddScoped<AnnotationsApi>();
 builder.Services.AddScoped<NedetidApi>();
 builder.Services.AddSingleton<FilterState>();
+builder.Services.AddSingleton<CauseFormatter>();
 
 // Brukerkontekst – v1 injiserer en lokal stub; v2 bytter til MSAL-autentisert variant.
 builder.Services.AddScoped<IUserContextProvider, AnonymousUserContextProvider>();

@@ -1,5 +1,6 @@
 @page "/admin/kategorier"
 @inject AnnotationsApi Api
+@inject CauseFormatter CauseFormatter
 @inject ISnackbar Snackbar
 
 <PageTitle>Hendelses-kategorier</PageTitle>
@@ -112,6 +113,96 @@ else
     </MudPaper>
 }
 
+@* ============== Cause-aliaser ============== *@
+<MudGrid Class="mt-8 mb-4">
+    <MudItem xs="12" md="9">
+        <MudText Typo="Typo.h2">Cause-aliaser</MudText>
+        <MudText Typo="Typo.subtitle2" Color="MudBlazor.Color.Secondary">
+            Bytt ut interne <strong>cause-koder</strong> (eks. <code>operlog:nodstopp</code>)
+            med en mer brukervennlig tekst i Nedetid/Rapport/Vakt-ROI-tabellene.
+            Aliaser er per organisasjon — du kan trygt endre uten å påvirke
+            klassifikator-logikken.
+        </MudText>
+    </MudItem>
+    <MudItem xs="12" md="3" Class="d-flex justify-end align-center">
+        <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenCreateAliasAsync">
+            Nytt alias
+        </MudButton>
+    </MudItem>
+</MudGrid>
+
+@if (_aliasError is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_aliasError</MudAlert>
+}
+
+@if (_aliases is null)
+{
+    <MudProgressCircular Indeterminate="true" />
+    <MudText Class="ml-2 d-inline">Henter aliaser…</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-8" Elevation="1">
+        <MudTable Items="_aliases" Hover="true" Dense="true" Elevation="0"
+                  Filter="MatchesAliasSearch">
+            <ToolBarContent>
+                <MudTextField @bind-Value="_aliasSearch" Placeholder="Søk kode eller tekst…"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Margin="Margin.Dense" Immediate="true" />
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh>Intern cause-kode</MudTh>
+                <MudTh>Visnings-tekst</MudTh>
+                <MudTh Style="text-align:right;">Sist oppdatert</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd Style="font-family: monospace;">@context.CauseCode</MudTd>
+                <MudTd>@context.DisplayText</MudTd>
+                <MudTd Style="text-align:right;">@context.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd")</MudTd>
+                <MudTd Style="text-align:right;">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="MudBlazor.Size.Small"
+                                   OnClick="@(() => OpenEditAliasAsync(context))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="MudBlazor.Size.Small"
+                                   Color="MudBlazor.Color.Error"
+                                   OnClick="@(() => DeleteAliasAsync(context))" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@if (_aliasEditOpen)
+{
+    <MudDialog @bind-Visible="_aliasEditOpen"
+               Options="@(new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true })">
+        <TitleContent>
+            @(_aliasIsCreating ? "Nytt cause-alias" : $"Rediger {_aliasForm.CauseCode}")
+        </TitleContent>
+        <DialogContent>
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_aliasForm.CauseCode" Label="Intern cause-kode"
+                              Disabled="@(!_aliasIsCreating)"
+                              HelperText="@(_aliasIsCreating ? "Eks: operlog:nodstopp eller scada:com_alarm" : "Koden endres ikke etter opprettelse.")"
+                              Variant="Variant.Outlined" />
+                <MudTextField @bind-Value="_aliasForm.DisplayText" Label="Visnings-tekst"
+                              Required="true" Variant="Variant.Outlined"
+                              HelperText="Hva som vises i Nedetid/Rapport/Vakt-ROI-tabellene." />
+            </MudStack>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _aliasEditOpen = false)">Avbryt</MudButton>
+            <MudButton Color="MudBlazor.Color.Primary" Variant="Variant.Filled"
+                       OnClick="OnSaveAliasAsync" Disabled="@_aliasSaving">
+                @(_aliasSaving ? "Lagrer…" : "Lagre")
+            </MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
 @* ---- Edit/Create-dialog ---- *@
 @if (_editing is not null)
 {
@@ -204,9 +295,103 @@ else
         public string? Description { get; set; }
     }
 
+    // ---- Cause-aliaser ------------------------------------------------------
+    private List<CauseAliasDto>? _aliases;
+    private string? _aliasError;
+    private string _aliasSearch = string.Empty;
+    private bool _aliasEditOpen;
+    private bool _aliasIsCreating;
+    private bool _aliasSaving;
+    private AliasForm _aliasForm = new();
+
+    private sealed class AliasForm
+    {
+        public string CauseCode { get; set; } = string.Empty;
+        public string DisplayText { get; set; } = string.Empty;
+    }
+
+    private bool MatchesAliasSearch(CauseAliasDto a)
+    {
+        if (string.IsNullOrWhiteSpace(_aliasSearch)) return true;
+        var s = _aliasSearch.Trim();
+        return a.CauseCode.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || a.DisplayText.Contains(s, StringComparison.OrdinalIgnoreCase);
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await ReloadAsync();
+        await ReloadAliasesAsync();
+    }
+
+    private async Task ReloadAliasesAsync()
+    {
+        try
+        {
+            var rows = await Api.ListCauseAliasesAsync();
+            _aliases = rows.OrderBy(a => a.CauseCode).ToList();
+        }
+        catch (Exception ex)
+        {
+            _aliasError = $"Kunne ikke hente cause-aliaser: {ex.Message}";
+        }
+    }
+
+    private Task OpenCreateAliasAsync()
+    {
+        _aliasIsCreating = true;
+        _aliasForm = new AliasForm();
+        _aliasEditOpen = true;
+        return Task.CompletedTask;
+    }
+
+    private Task OpenEditAliasAsync(CauseAliasDto a)
+    {
+        _aliasIsCreating = false;
+        _aliasForm = new AliasForm { CauseCode = a.CauseCode, DisplayText = a.DisplayText };
+        _aliasEditOpen = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnSaveAliasAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_aliasForm.CauseCode) || string.IsNullOrWhiteSpace(_aliasForm.DisplayText))
+        {
+            Snackbar.Add("Cause-kode og tekst er påkrevd.", Severity.Warning);
+            return;
+        }
+        _aliasSaving = true;
+        try
+        {
+            await Api.UpsertCauseAliasAsync(_aliasForm.CauseCode.Trim(), _aliasForm.DisplayText.Trim());
+            Snackbar.Add(_aliasIsCreating ? "Alias opprettet." : "Alias oppdatert.", Severity.Success);
+            _aliasEditOpen = false;
+            await ReloadAliasesAsync();
+            await CauseFormatter.RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Lagring feilet: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _aliasSaving = false;
+        }
+    }
+
+    private async Task DeleteAliasAsync(CauseAliasDto a)
+    {
+        try
+        {
+            await Api.DeleteCauseAliasAsync(a.CauseCode);
+            Snackbar.Add($"Alias for '{a.CauseCode}' slettet.", Severity.Success);
+            await ReloadAliasesAsync();
+            await CauseFormatter.RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Sletting feilet: {ex.Message}", Severity.Error);
+        }
     }
 
     private async Task ReloadAsync()

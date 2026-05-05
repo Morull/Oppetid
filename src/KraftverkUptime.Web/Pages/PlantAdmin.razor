@@ -1,8 +1,10 @@
 @page "/plants/{PlantId}/admin"
+@implements IDisposable
 @inject ReportsApi Api
 @inject NedetidApi NedetidApi
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@inject FilterState Filter
 
 <PageTitle>@($"Admin: {_form?.Name ?? PlantId}")</PageTitle>
 
@@ -544,6 +546,14 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        Filter.OnChange += OnFilterChanged;
+
+        // Sync FilterState med URL slik at AppBar viser riktig anlegg.
+        if (!string.IsNullOrEmpty(PlantId) && PlantId != Filter.PlantId)
+        {
+            Filter.PlantId = PlantId;
+        }
+
         try
         {
             var plant = await Api.GetPlantAsync(PlantId);
@@ -573,6 +583,21 @@ else
         finally
         {
             _loading = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        Filter.OnChange -= OnFilterChanged;
+    }
+
+    private void OnFilterChanged()
+    {
+        // Når brukeren bytter anlegg via global velger, naviger til den nye
+        // adminsiden — periode-endringer påvirker ikke denne siden.
+        if (!string.IsNullOrEmpty(Filter.PlantId) && Filter.PlantId != PlantId)
+        {
+            Nav.NavigateTo($"plants/{Filter.PlantId}/admin");
         }
     }
 

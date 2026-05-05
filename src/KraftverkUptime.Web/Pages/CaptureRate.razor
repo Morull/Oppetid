@@ -1,8 +1,9 @@
 @page "/capture-rate"
 @page "/capture-rate/{PlantId}"
 @using ApexCharts
-@inject ReportsApi ReportsApi
+@implements IDisposable
 @inject NedetidApi NedetidApi
+@inject FilterState Filter
 
 <PageTitle>Capture rate</PageTitle>
 
@@ -17,23 +18,7 @@
     </MudItem>
 </MudGrid>
 
-@* ---- Filter ---- *@
-<MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudGrid>
-        <MudItem xs="12" sm="4">
-            <MudSelect T="string" Value="_plantId" ValueChanged="OnPlantChanged"
-                       Label="Anlegg" Variant="Variant.Outlined" Margin="Margin.Dense">
-                @foreach (var p in _plants)
-                {
-                    <MudSelectItem Value="@p.Id">@p.Name (@p.Id)</MudSelectItem>
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="8">
-            <DateRangeFilter From="_fromDate" To="_toDate" OnChanged="@OnRangeChanged" />
-        </MudItem>
-    </MudGrid>
-</MudPaper>
+@* Anlegg + periode styres av global velger i AppBar (FilterState). *@
 
 @if (_error is not null)
 {
@@ -224,11 +209,6 @@ else if (_aggregate is not null)
 @code {
     [Parameter] public string? PlantId { get; set; }
 
-    private IReadOnlyList<PlantDto> _plants = Array.Empty<PlantDto>();
-    private string _plantId = string.Empty;
-    private DateTime? _fromDate;
-    private DateTime? _toDate;
-
     private bool _loading;
     private string? _error;
     private CaptureRateResultDto? _aggregate;
@@ -245,66 +225,64 @@ else if (_aggregate is not null)
 
     protected override async Task OnInitializedAsync()
     {
+        Filter.OnChange += OnFilterChanged;
+
+        // Route-parameter PlantId overstyrer FilterState ved direkte navigering.
+        if (!string.IsNullOrEmpty(PlantId) && PlantId != Filter.PlantId)
+        {
+            Filter.PlantId = PlantId;
+        }
+
+        if (Filter.ErKlar)
+        {
+            await LoadAsync();
+        }
+    }
+
+    public void Dispose()
+    {
+        Filter.OnChange -= OnFilterChanged;
+    }
+
+    private async void OnFilterChanged()
+    {
         try
         {
-            _plants = await ReportsApi.ListPlantsAsync();
-            _plantId = !string.IsNullOrEmpty(PlantId)
-                ? PlantId
-                : (_plants.Count > 0 ? _plants[0].Id : string.Empty);
-
-            // Default-periode: hittil-i-år
-            var now = DateTime.UtcNow;
-            _fromDate = new DateTime(now.Year, 1, 1);
-            _toDate = new DateTime(now.Year, now.Month, 1);
-
-            if (!string.IsNullOrEmpty(_plantId))
-            {
-                await LoadAsync();
-            }
+            if (Filter.ErKlar) await LoadAsync();
+            else await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
-            _error = $"Klarte ikke laste anleggsliste: {ex.Message}";
+            _error = $"Kunne ikke hente capture rate-data: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
         }
-    }
-
-    private Task OnPlantChanged(string newPlantId)
-    {
-        _plantId = newPlantId;
-        return Task.CompletedTask;
-    }
-
-    private async Task OnRangeChanged((DateTime From, DateTime To) range)
-    {
-        _fromDate = range.From;
-        _toDate = range.To;
-        await LoadAsync();
     }
 
     private async Task LoadAsync()
     {
-        if (string.IsNullOrEmpty(_plantId) || !_fromDate.HasValue || !_toDate.HasValue) return;
+        if (!Filter.ErKlar) return;
         _loading = true;
         _error = null;
         _aggregate = null;
         _previous = null;
         _monthly = Array.Empty<MonthlyCaptureRateDto>();
         _daily = Array.Empty<DailyCaptureRateDto>();
+        await InvokeAsync(StateHasChanged);
         try
         {
-            var fromUtc = _fromDate.ToUtcOffsetSafe();
-            var toUtc = _toDate.ToUtcOffsetSafe();
+            var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
+            var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
 
             // Forrige-periode-vindu med samme lengde som valgt periode
             var lengde = toUtc - fromUtc;
             var prevTo = fromUtc;
             var prevFrom = fromUtc - lengde;
 
-            var aggregateTask = NedetidApi.GetCaptureRateAsync(_plantId, fromUtc, toUtc);
-            var monthlyTask = NedetidApi.GetCaptureRateMonthlyAsync(_plantId, fromUtc, toUtc);
-            var dailyTask = NedetidApi.GetCaptureRateDailyAsync(_plantId, fromUtc, toUtc);
+            var aggregateTask = NedetidApi.GetCaptureRateAsync(Filter.PlantId, fromUtc, toUtc);
+            var monthlyTask = NedetidApi.GetCaptureRateMonthlyAsync(Filter.PlantId, fromUtc, toUtc);
+            var dailyTask = NedetidApi.GetCaptureRateDailyAsync(Filter.PlantId, fromUtc, toUtc);
             // Forrige periode: bare aggregat-tall, ikke månedsfordeling
-            var prevTask = SafeTask(() => NedetidApi.GetCaptureRateAsync(_plantId, prevFrom, prevTo));
+            var prevTask = SafeTask(() => NedetidApi.GetCaptureRateAsync(Filter.PlantId, prevFrom, prevTo));
 
             _aggregate = await aggregateTask;
             _monthly = await monthlyTask;
@@ -330,6 +308,7 @@ else if (_aggregate is not null)
         finally
         {
             _loading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 

@@ -29,7 +29,47 @@ public static class PortfolioEndpoints
             .Produces<PortfolioKpiResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
+        group.MapGet("/vakt-roi", GetVaktRoiAsync)
+            .WithName("GetPortfolioVaktRoi")
+            .WithSummary("Aggregert Vakt-ROI på tvers av alle anlegg for en gitt periode.")
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
+            .Produces<PortfolioVaktRoiResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest);
+
         return endpoints;
+    }
+
+    private static async Task<IResult> GetVaktRoiAsync(
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        double? kapasitetsfaktor,
+        int? topN,
+        IPortfolioVaktRoiQueryService service,
+        CancellationToken ct)
+    {
+        if (!from.HasValue || !to.HasValue)
+        {
+            return Results.Problem(
+                title: "Manglende periode",
+                detail: "Både 'from' og 'to' må oppgis (ISO-8601, UTC).",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var fromUtc = from.Value.ToUniversalTime();
+        var toUtc = to.Value.ToUniversalTime();
+        if (toUtc <= fromUtc)
+        {
+            return Results.Problem(
+                title: "Ugyldig periode",
+                detail: "'to' må være etter 'from'.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var faktor = kapasitetsfaktor ?? 0.5;
+        var top = topN ?? 10;
+
+        var response = await service.GetAsync(fromUtc, toUtc, faktor, top, ct).ConfigureAwait(false);
+        return Results.Ok(response);
     }
 
     private static async Task<IResult> GetKpisAsync(

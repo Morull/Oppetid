@@ -1,8 +1,9 @@
 @page "/produksjon"
 @page "/produksjon/{PlantId}"
 @using ApexCharts
-@inject ReportsApi ReportsApi
+@implements IDisposable
 @inject NedetidApi NedetidApi
+@inject FilterState Filter
 
 <PageTitle>Produksjon</PageTitle>
 
@@ -19,23 +20,7 @@
     </MudItem>
 </MudGrid>
 
-@* ---- Filter ---- *@
-<MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudGrid>
-        <MudItem xs="12" sm="4">
-            <MudSelect T="string" Value="_plantId" ValueChanged="OnPlantChanged"
-                       Label="Anlegg" Variant="Variant.Outlined" Margin="Margin.Dense">
-                @foreach (var p in _plants)
-                {
-                    <MudSelectItem Value="@p.Id">@p.Name (@p.Id)</MudSelectItem>
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="8">
-            <DateRangeFilter From="_fromDate" To="_toDate" OnChanged="@OnRangeChanged" />
-        </MudItem>
-    </MudGrid>
-</MudPaper>
+@* Anlegg + periode styres av global velger i AppBar (FilterState). *@
 
 @if (_error is not null)
 {
@@ -281,11 +266,6 @@ else if (_data is not null)
 @code {
     [Parameter] public string? PlantId { get; set; }
 
-    private IReadOnlyList<PlantDto> _plants = Array.Empty<PlantDto>();
-    private string _plantId = string.Empty;
-    private DateTime? _fromDate;
-    private DateTime? _toDate;
-
     private bool _loading;
     private string? _error;
     private ProduksjonAnalyseDto? _data;
@@ -320,69 +300,65 @@ else if (_data is not null)
 
     protected override async Task OnInitializedAsync()
     {
+        Filter.OnChange += OnFilterChanged;
+
+        if (!string.IsNullOrEmpty(PlantId) && PlantId != Filter.PlantId)
+        {
+            Filter.PlantId = PlantId;
+        }
+
+        if (Filter.ErKlar)
+        {
+            await LoadAsync();
+        }
+    }
+
+    public void Dispose()
+    {
+        Filter.OnChange -= OnFilterChanged;
+    }
+
+    private async void OnFilterChanged()
+    {
         try
         {
-            _plants = await ReportsApi.ListPlantsAsync();
-            _plantId = !string.IsNullOrEmpty(PlantId)
-                ? PlantId
-                : (_plants.Count > 0 ? _plants[0].Id : string.Empty);
-
-            // Default: forrige måned (kortest periode med Hydrogrid-plan-data)
-            var today = DateTime.Today;
-            var firstThis = new DateTime(today.Year, today.Month, 1);
-            _fromDate = firstThis.AddMonths(-1);
-            _toDate = firstThis;
-
-            if (!string.IsNullOrEmpty(_plantId))
-            {
-                await LoadAsync();
-            }
+            if (Filter.ErKlar) await LoadAsync();
+            else await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
-            _error = $"Klarte ikke laste anleggsliste: {ex.Message}";
+            _error = $"Kunne ikke hente produksjons-analyse: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
         }
-    }
-
-    private Task OnPlantChanged(string newPlantId)
-    {
-        _plantId = newPlantId;
-        return Task.CompletedTask;
-    }
-
-    private async Task OnRangeChanged((DateTime From, DateTime To) range)
-    {
-        _fromDate = range.From;
-        _toDate = range.To;
-        await LoadAsync();
     }
 
     private async Task LoadAsync()
     {
-        if (string.IsNullOrEmpty(_plantId) || !_fromDate.HasValue || !_toDate.HasValue) return;
+        if (!Filter.ErKlar) return;
         _loading = true;
         _error = null;
         _data = null;
         _previous = null;
         _dataQuality = null;
+        await InvokeAsync(StateHasChanged);
         try
         {
-            var fromUtc = _fromDate.ToUtcOffsetSafe();
-            var toUtc = _toDate.ToUtcOffsetSafe();
+            var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
+            var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
 
             // Forrige periode med samme lengde for trend-pilene
             var lengde = toUtc - fromUtc;
             var prevTo = fromUtc;
             var prevFrom = fromUtc - lengde;
 
-            var dataTask = NedetidApi.GetProduksjonAnalyseAsync(_plantId, fromUtc, toUtc);
-            var prevTask = SafeTask(() => NedetidApi.GetProduksjonAnalyseAsync(_plantId, prevFrom, prevTo));
+            var dataTask = NedetidApi.GetProduksjonAnalyseAsync(Filter.PlantId, fromUtc, toUtc);
+            var prevTask = SafeTask(() => NedetidApi.GetProduksjonAnalyseAsync(Filter.PlantId, prevFrom, prevTo));
 
             _data = await dataTask;
             _previous = await prevTask;
 
             // Datakvalitet — informasjons-banner.
-            try { _dataQuality = await NedetidApi.GetDataQualityAsync(_plantId, fromUtc, toUtc); }
+            try { _dataQuality = await NedetidApi.GetDataQualityAsync(Filter.PlantId, fromUtc, toUtc); }
             catch { _dataQuality = null; }
 
             BuildDailyPoints();
@@ -396,6 +372,7 @@ else if (_data is not null)
         finally
         {
             _loading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 

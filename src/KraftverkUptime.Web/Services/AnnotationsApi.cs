@@ -171,6 +171,37 @@ public sealed class AnnotationsApi
         response.EnsureSuccessStatusCode();
     }
 
+    // ---- Cause aliases (admin) ---------------------------------------------
+
+    /// <summary>Lister alle cause-aliaser sortert alfabetisk på cause-kode.</summary>
+    public async Task<IReadOnlyList<CauseAliasDto>> ListCauseAliasesAsync(CancellationToken ct = default)
+    {
+        var items = await _http
+            .GetFromJsonAsync<List<CauseAliasDto>>("api/v1/admin/cause-aliases", JsonOptions, ct)
+            .ConfigureAwait(false);
+        return items ?? (IReadOnlyList<CauseAliasDto>)Array.Empty<CauseAliasDto>();
+    }
+
+    /// <summary>Oppretter eller oppdaterer alias for en cause-kode.</summary>
+    public async Task<CauseAliasDto> UpsertCauseAliasAsync(
+        string causeCode, string displayText, CancellationToken ct = default)
+    {
+        var url = $"api/v1/admin/cause-aliases/{Uri.EscapeDataString(causeCode)}";
+        var resp = await _http.PutAsJsonAsync(url, new { displayText }, JsonOptions, ct)
+            .ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<CauseAliasDto>(JsonOptions, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Tom respons fra upsert-cause-alias.");
+    }
+
+    /// <summary>Sletter alias for en cause-kode (UI faller tilbake til intern kode).</summary>
+    public async Task DeleteCauseAliasAsync(string causeCode, CancellationToken ct = default)
+    {
+        var url = new Uri($"api/v1/admin/cause-aliases/{Uri.EscapeDataString(causeCode)}", UriKind.Relative);
+        var resp = await _http.DeleteAsync(url, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+    }
+
     private static async Task<AnnotationSaveResult> ParseSaveResultAsync(HttpResponseMessage response, CancellationToken ct)
     {
         if (response.StatusCode == HttpStatusCode.Conflict)
@@ -222,6 +253,8 @@ public sealed record AnnotationCategoryDto(
 public sealed record AnnotationOverlapConflictDto(
     string Message,
     IReadOnlyList<AnnotationDto> Overlapping);
+
+public sealed record CauseAliasDto(string CauseCode, string DisplayText, DateTimeOffset UpdatedAt);
 
 /// <summary>Diskriminert union for resultat av POST/PATCH.</summary>
 public abstract record AnnotationSaveResult

@@ -139,6 +139,7 @@ app.MapPlantsV1(apiV1);
 app.MapSettlementsV1(apiV1);
 app.MapMultiPlantSettlementsV1(apiV1);
 app.MapAnnotationsV1(apiV1);
+app.MapCauseAliasesV1(apiV1);
 app.MapScadaV1(apiV1);
 app.MapNedetidV1(apiV1);
 app.MapEffektivitetV1(apiV1);

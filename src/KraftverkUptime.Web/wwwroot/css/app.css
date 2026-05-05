@@ -242,6 +242,17 @@ html, body {
     letter-spacing: 0.02em;
 }
 
+/* --- Sub-bar med global anlegg- + periode-velger -------------------------- */
+.dk-subbar {
+    background: var(--mud-palette-surface, #fff);
+    position: sticky;
+    top: 56px;
+    z-index: 100;
+}
+body.dk-dark .dk-subbar {
+    background: var(--mud-palette-surface, #1a1d22);
+}
+
 /* --- Bordkort på rapport-listen ------------------------------------------- */
 .dk-table-wrap {
     border-radius: 14px;

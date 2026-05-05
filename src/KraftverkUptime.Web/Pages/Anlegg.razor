@@ -1,4 +1,5 @@
 @page "/anlegg/{PlantId}"
+@implements IDisposable
 @inject ReportsApi ReportsApi
 @inject NedetidApi NedetidApi
 @inject NavigationManager Nav
@@ -43,10 +44,7 @@ else
         </MudItem>
     </MudGrid>
 
-    @* ---- Periode-velger ---- *@
-    <MudPaper Class="pa-4 mb-4" Elevation="1">
-        <DateRangeFilter From="_fromDate" To="_toDate" OnChanged="@OnRangeChanged" />
-    </MudPaper>
+    @* Periode styres av global velger i AppBar (FilterState). *@
 
     @* ---- KPI-strip (henter aggregerte tall fra portefølje-API for valgt periode) ---- *@
     @if (_plantKpis is not null)
@@ -358,8 +356,6 @@ else
 
     private PlantDto? _plant;
     private string? _error;
-    private DateTime? _fromDate;
-    private DateTime? _toDate;
 
     // Per-fane data
     private PortfolioPlantKpi? _plantKpis;
@@ -373,6 +369,15 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        Filter.OnChange += OnFilterChanged;
+
+        // URL-route-parameter PlantId overstyrer FilterState ved direkte
+        // navigering — etterpå er FilterState autoritativ.
+        if (!string.IsNullOrEmpty(PlantId) && PlantId != Filter.PlantId)
+        {
+            Filter.PlantId = PlantId;
+        }
+
         try
         {
             var plants = await ReportsApi.ListPlantsAsync();
@@ -383,12 +388,7 @@ else
                 return;
             }
 
-            // Default-periode: forrige måned
-            var today = DateTime.Today;
-            var firstThis = new DateTime(today.Year, today.Month, 1);
-            _fromDate = firstThis.AddMonths(-1);
-            _toDate = firstThis;
-            await ReloadAllAsync();
+            if (Filter.ErKlar) await ReloadAllAsync();
         }
         catch (Exception ex)
         {
@@ -396,11 +396,31 @@ else
         }
     }
 
-    private async Task OnRangeChanged((DateTime From, DateTime To) range)
+    public void Dispose()
     {
-        _fromDate = range.From;
-        _toDate = range.To;
-        await ReloadAllAsync();
+        Filter.OnChange -= OnFilterChanged;
+    }
+
+    private async void OnFilterChanged()
+    {
+        // Når brukeren bytter anlegg via global velger: naviger til den nye
+        // anlegg-URLen for å holde URL og data konsistent.
+        if (!string.IsNullOrEmpty(Filter.PlantId) && Filter.PlantId != PlantId)
+        {
+            Nav.NavigateTo($"anlegg/{Filter.PlantId}");
+            return;
+        }
+
+        try
+        {
+            if (Filter.ErKlar) await ReloadAllAsync();
+            else await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke laste data: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     // Sort-funksjoner for rapport-fanens settlement-tabell
@@ -415,22 +435,16 @@ else
     /// </summary>
     private async Task ReloadAllAsync()
     {
-        if (_plant is null || !_fromDate.HasValue || !_toDate.HasValue) return;
+        if (_plant is null || !Filter.ErKlar) return;
 
-        var fromUtc = _fromDate.ToUtcOffsetSafe();
-        var toUtc = _toDate.ToUtcOffsetSafe();
+        var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
+        var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
 
         _imports = null; _nedetid = null; _vaktRoi = null;
         _effektivitet = null; _captureRate = null; _plantKpis = null;
         _dataQuality = null;
         _loadingKpis = true;
-        StateHasChanged();
-
-        // Synkroniser FilterState slik at "Full visning"-lenkene
-        // åpner med samme periode.
-        Filter.PlantId = PlantId;
-        Filter.FromDate = DateTime.SpecifyKind(_fromDate.Value, DateTimeKind.Unspecified);
-        Filter.ToDate = DateTime.SpecifyKind(_toDate.Value, DateTimeKind.Unspecified);
+        await InvokeAsync(StateHasChanged);
 
         // Kjør parallelt; hver feiler isolert
         var importsTask = SafeTask(() => ReportsApi.ListSettlementsAsync(PlantId,
@@ -460,7 +474,7 @@ else
         _dataQuality = await dqTask;
         _loadingKpis = false;
 
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     private static async Task<T?> SafeTask<T>(Func<Task<T>> task) where T : class

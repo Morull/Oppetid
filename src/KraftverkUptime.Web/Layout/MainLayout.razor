@@ -1,5 +1,9 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @inject IUserContextProvider UserContext
+@inject FilterState Filter
+@inject ReportsApi ReportsApi
+@inject NavigationManager Nav
 
 <MudLayout>
     <MudAppBar Elevation="1" Dense="true">
@@ -53,6 +57,14 @@
     </MudDrawer>
 
     <MudMainContent>
+        @* Global anlegg- + periode-velger som driver FilterState. Vises kun
+           på sider som har nytte av den; sider som DataImport/Kategorier/Index
+           kan velge å skjule via SuppressGlobalSelector-flagget under. *@
+        @if (ShowGlobalSelector)
+        {
+            <AppBarPlantPeriodSelector />
+        }
+
         <MudContainer MaxWidth="MaxWidth.Large" Class="pa-6">
             @Body
         </MudContainer>
@@ -63,6 +75,71 @@
     [CascadingParameter] private App? App { get; set; }
 
     private bool _drawerOpen = true;
+
+    // Sider hvor velgeren ikke gir mening (admin-sider, opplasting, etc.)
+    // Resten viser velgeren — de fleste rapport-sider trenger plant + periode.
+    private static readonly HashSet<string> SuppressedPaths = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "/data-import",
+        "/data-status",
+        "/admin/kategorier",
+        "/upload",
+        "/behandles",
+    };
+
+    private bool ShowGlobalSelector
+    {
+        get
+        {
+            var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
+            if (string.IsNullOrEmpty(path)) path = "/";
+            // Eksakt-match for definerte unntak; alle andre sider får velger.
+            return !SuppressedPaths.Contains(path);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+
+        // Last persistert state først — så plant-listen. Rekkefølgen er valgt
+        // slik at en eventuell URL-route-parameter kan overstyre persistert
+        // PlantId i sidens egen OnInitialized.
+        await Filter.LoadFromStorageAsync();
+
+        try
+        {
+            var plants = await ReportsApi.ListPlantsAsync();
+            Filter.SetPlants(plants);
+
+            // Hvis ingen persistert state: sett default plant + forrige måned.
+            if (string.IsNullOrEmpty(Filter.PlantId) && plants.Count > 0)
+            {
+                Filter.PlantId = plants[0].Id;
+            }
+            if (!Filter.FromDate.HasValue || !Filter.ToDate.HasValue)
+            {
+                var (from, to) = PeriodCalculator.ForrigeManed(DateTime.Today);
+                Filter.SetPeriod(from, to, PeriodGranularity.Maned);
+            }
+        }
+        catch
+        {
+            // Plant-lasting kan feile (API nede); UI viser tom velger,
+            // men appen er fortsatt brukbar.
+        }
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        // Re-render slik at ShowGlobalSelector evalueres på nytt.
+        StateHasChanged();
+    }
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
 
