@@ -51,39 +51,82 @@ else
     {
         <MudGrid Class="mb-4">
             <MudItem xs="6" sm="4" md="2">
-                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Tilgjengelighet</MudText>
-                    <MudText Typo="Typo.h4">@FormatRatio(KpiOf("AvailabilityFactor_AF"))</MudText>
-                </MudPaper>
+                <KpiCard Label="Tilgjengelighet"
+                         Value="@FormatRatio(KpiOf("AvailabilityFactor_AF"))"
+                         AccentColor="#2A9D8F"
+                         InfoText="Andel av tiden anlegget var produksjons-klart (i drift eller planlagt revisjon). Standard kraftbransje-KPI."
+                         InfoFormula="AF = (InService + PlannedOutage) / TotalHours" />
             </MudItem>
             <MudItem xs="6" sm="4" md="2">
-                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #E76F51;">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">FO-rate</MudText>
-                    <MudText Typo="Typo.h4">@FormatRatio(KpiOf("ForcedOutageRate_FOR"))</MudText>
-                </MudPaper>
+                <KpiCard Label="FO-rate"
+                         Value="@FormatRatio(KpiOf("ForcedOutageRate_FOR"))"
+                         AccentColor="#E76F51"
+                         InfoText="Andel av tiden anlegget var nede på grunn av uplanlagt feil/havari (Forced Outage). Lavere er bedre — typisk &lt; 2 % for godt drevne anlegg."
+                         InfoFormula="FOR = ForcedOutageHours / (InService + ForcedOutage)" />
             </MudItem>
             <MudItem xs="6" sm="4" md="2">
-                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Produksjon</MudText>
-                    <MudText Typo="Typo.h4">@FormatMwh(KpiOf("TotalProduction_MWh"))</MudText>
-                    <MudText Typo="Typo.caption">MWh</MudText>
-                </MudPaper>
+                <KpiCard Label="Produksjon"
+                         Value="@FormatMwh(KpiOf("TotalProduction_MWh"))"
+                         SubText="MWh"
+                         AccentColor="#1E5F8E"
+                         InfoText="Total levert energi til Elhub i perioden. Hentes fra avregnings-data, ikke estimert." />
             </MudItem>
             <MudItem xs="6" sm="4" md="2">
-                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #6E59A5;">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Spotomsetning</MudText>
-                    <MudText Typo="Typo.h4">@FormatNok(KpiOf("Spotomsetning_NOK"))</MudText>
-                </MudPaper>
+                <KpiCard Label="Spotomsetning"
+                         Value="@FormatNok(KpiOf("Spotomsetning_NOK"))"
+                         AccentColor="#6E59A5"
+                         InfoText="Hva produsenten ville fått i ren spot-omsetning: levert MWh × spotpris time-for-time."
+                         InfoFormula="Σ (Elhub_h × Spotpris_h)" />
             </MudItem>
             <MudItem xs="6" sm="4" md="2">
-                <MudPaper Class="pa-3" Elevation="2" Style="@CrCardStyle(KpiOf("CaptureRate_Times"))">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Capture rate</MudText>
+                <MudPaper Class="pa-3 dk-kpi-card" Elevation="2" Style="@($"position:relative;{CrCardStyle(KpiOf("CaptureRate_Times"))}")">
+                    <div class="d-flex justify-space-between align-start" style="gap: 4px;">
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Capture rate</MudText>
+                        <MudTooltip Arrow="true" Placement="Placement.Top">
+                            <TooltipContent>
+                                <div style="max-width: 320px; padding: 4px 2px;">
+                                    <MudText Typo="Typo.body2" Style="font-weight: 600; margin-bottom: 4px;">Capture rate</MudText>
+                                    <MudText Typo="Typo.body2">
+                                        Hvor godt produsenten traff på prisen. Verdier &gt; 1.0 = bedre enn å selge ren spot
+                                        (sparte vann i lav-pris-timer og produserte i topp-pris). 1.0 = lik som spot. &lt; 1.0 = dårligere.
+                                    </MudText>
+                                    <MudText Typo="Typo.caption" Style="margin-top: 6px; font-family: monospace; opacity: 0.85;">
+                                        CR = realisert NOK/MWh / tidsvektet spotpris
+                                    </MudText>
+                                </div>
+                            </TooltipContent>
+                            <ChildContent>
+                                <MudIcon Icon="@Icons.Material.Outlined.Info" Size="MudBlazor.Size.Small"
+                                         Style="cursor: help; color: var(--mud-palette-text-secondary); opacity: 0.6;" />
+                            </ChildContent>
+                        </MudTooltip>
+                    </div>
                     <MudText Typo="Typo.h4">@FormatCr(KpiOf("CaptureRate_Times"))</MudText>
                 </MudPaper>
             </MudItem>
             <MudItem xs="6" sm="4" md="2">
-                <MudPaper Class="pa-3" Elevation="2" Style="@MerverdiCardStyle(KpiOf("Merverdi_NOK"))">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Merverdi vs spot</MudText>
+                <MudPaper Class="pa-3 dk-kpi-card" Elevation="2" Style="@($"position:relative;{MerverdiCardStyle(KpiOf("Merverdi_NOK"))}")">
+                    <div class="d-flex justify-space-between align-start" style="gap: 4px;">
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Merverdi vs spot</MudText>
+                        <MudTooltip Arrow="true" Placement="Placement.Top">
+                            <TooltipContent>
+                                <div style="max-width: 320px; padding: 4px 2px;">
+                                    <MudText Typo="Typo.body2" Style="font-weight: 600; margin-bottom: 4px;">Merverdi vs spot</MudText>
+                                    <MudText Typo="Typo.body2">
+                                        Hvor mye ekstra produsenten tjente sammenlignet med å solgt all energi til ren spotpris time-for-time.
+                                        Positivt = god timing av produksjon (lagring + topplast-bud). Negativt = produsert i lavpris-timer.
+                                    </MudText>
+                                    <MudText Typo="Typo.caption" Style="margin-top: 6px; font-family: monospace; opacity: 0.85;">
+                                        Merverdi = Realisert omsetning − (Produksjon × snitt-spotpris)
+                                    </MudText>
+                                </div>
+                            </TooltipContent>
+                            <ChildContent>
+                                <MudIcon Icon="@Icons.Material.Outlined.Info" Size="MudBlazor.Size.Small"
+                                         Style="cursor: help; color: var(--mud-palette-text-secondary); opacity: 0.6;" />
+                            </ChildContent>
+                        </MudTooltip>
+                    </div>
                     <MudText Typo="Typo.h4">@FormatNokSigned(KpiOf("Merverdi_NOK"))</MudText>
                 </MudPaper>
             </MudItem>
