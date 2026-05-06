@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-kraftverk}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kraftverk}
@@ -17,6 +18,7 @@ services:
 
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite:3.33.0
+    restart: unless-stopped
     # --location /data tvinger azurite til å lagre i volume-mountet path
     # i stedet for default /opt/azurite (som er ephemeral i container).
     # Uten dette nullstilles blob-storage ved hver restart, og rapport-
@@ -34,6 +36,7 @@ services:
     build:
       context: .
       dockerfile: src/KraftverkUptime.Api/Dockerfile
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,6 +67,7 @@ services:
     build:
       context: .
       dockerfile: src/KraftverkUptime.Worker/Dockerfile
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,6 +86,7 @@ services:
     build:
       context: .
       dockerfile: src/KraftverkUptime.Web/Dockerfile
+    restart: unless-stopped
     depends_on:
       api:
         condition: service_started
