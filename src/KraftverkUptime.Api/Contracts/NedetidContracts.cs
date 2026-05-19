@@ -58,6 +58,7 @@ public sealed record VaktRoiEventDto(
     double ReddetUbalanse_NOK,
     int OverflowTimerInCounterfactual,
     bool OverflowDataMissing,
+    bool PlanDataPartial,
     string Forklaring);
 
 public sealed record VaktRoiResponse(
@@ -67,7 +68,6 @@ public sealed record VaktRoiResponse(
     double InstallertEffektMw,
     double SnittSpotprisNokMwh,
     double SnittUbalansetilleggNokMwh,
-    double Kapasitetsfaktor,
     int AntallEventsTotalt,
     int AntallReddbareInnenforVakt,
     double TotalReddetMwh,

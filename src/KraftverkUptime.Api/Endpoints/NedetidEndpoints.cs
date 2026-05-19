@@ -93,7 +93,6 @@ public static class NedetidEndpoints
         DateTimeOffset? from,
         DateTimeOffset? to,
         string? format,
-        double? kapasitetsfaktor,
         INedetidQueryService nedetid,
         IOverflowQueryService overflow,
         VaktRoiCalculator calculator,
@@ -129,8 +128,6 @@ public static class NedetidEndpoints
             snittSpot = sumTapNok / sumTapMwh;
         }
 
-        var faktor = Math.Clamp(kapasitetsfaktor ?? 0.5, 0.0, 1.0);
-
         // Overløps-justering: vakt-ROI gjelder kun timer der det var overløp i
         // magasinet. Hent settet av overløps-timer + data-coverage for hele
         // perioden i én spørring; calculator filtrerer per event mot settet.
@@ -146,6 +143,13 @@ public static class NedetidEndpoints
             .GetAvgImbalancePremiumAsync(plantId, fromUtc, toUtc, ct)
             .ConfigureAwait(false);
 
+        // Produksjonsplan-per-time fra Hydrogrid-plan (settlement-import).
+        // Tjenesten utvider vinduet bakover (4 uker proxy) og fremover
+        // (3 dager counterfactual-buffer) automatisk.
+        var planResult = await nedetid
+            .GetProduksjonplanByHourAsync(plantId, fromUtc, toUtc, ct)
+            .ConfigureAwait(false);
+
         // Manuelle overrides for vakt-events i perioden — drifts-leder kan
         // tvinge "HaddeOverlop" eller "IkkeOverlop" på en spesifikk hendelse.
         var overrides = await db.VaktEventOverrides
@@ -157,12 +161,13 @@ public static class NedetidEndpoints
             .ConfigureAwait(false);
 
         var roi = calculator.Calculate(
-            events, plant.InstalledCapacityMw, snittSpot, faktor,
+            events, snittSpot, planResult.PlanByHour,
             dataset.OverflowHours, overflowDataAvailable: dataset.DataAvailable,
             snittUbalansetillegg_NokMwh: snittUbalansetillegg,
-            overrides: overrides);
+            overrides: overrides,
+            proxyHours: planResult.ProxyHours);
         var response = BuildVaktRoiResponse(plantId, fromUtc, toUtc, plant.InstalledCapacityMw,
-            snittSpot, faktor, snittUbalansetillegg, roi);
+            snittSpot, snittUbalansetillegg, roi);
 
         if (string.Equals(format, "csv", StringComparison.OrdinalIgnoreCase))
         {
@@ -250,7 +255,7 @@ public static class NedetidEndpoints
 
     private static VaktRoiResponse BuildVaktRoiResponse(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc,
-        double effektMw, double snittSpot, double faktor,
+        double effektMw, double snittSpot,
         double snittUbalansetillegg,
         IReadOnlyList<VaktRoiResultat> roi)
     {
@@ -266,6 +271,7 @@ public static class NedetidEndpoints
             ReddetUbalanse_NOK: r.ReddetUbalanse_NOK,
             OverflowTimerInCounterfactual: r.OverflowTimerInCounterfactual,
             OverflowDataMissing: r.OverflowDataMissing,
+            PlanDataPartial: r.PlanDataPartial,
             Forklaring: r.Forklaring)).ToList();
 
         var reddbareInnenfor = roi.Count(r => r.ErInnenforVakt && r.ErReddbar);
@@ -283,7 +289,6 @@ public static class NedetidEndpoints
             InstallertEffektMw: effektMw,
             SnittSpotprisNokMwh: snittSpot,
             SnittUbalansetilleggNokMwh: snittUbalansetillegg,
-            Kapasitetsfaktor: faktor,
             AntallEventsTotalt: roi.Count,
             AntallReddbareInnenforVakt: reddbareInnenfor,
             TotalReddetMwh: totalReddetMwh,

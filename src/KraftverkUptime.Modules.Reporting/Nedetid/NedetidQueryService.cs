@@ -121,6 +121,93 @@ public sealed class NedetidQueryService : INedetidQueryService
         return events;
     }
 
+    public async Task<PlanByHourResult> GetProduksjonplanByHourAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        if (toUtc <= fromUtc)
+        {
+            return new PlanByHourResult(
+                new Dictionary<DateTimeOffset, double>(),
+                new HashSet<DateTimeOffset>());
+        }
+
+        // Hent imports som dekker både settlement-perioden OG bakover (4 uker
+        // for proxy) + fremover (3 dager for counterfactual_end som maks går
+        // fra fredag 23:59 til mandag 08:00 lokal).
+        var fetchFrom = fromUtc.AddDays(-28);
+        var fetchTo = toUtc.AddDays(3);
+        var imports = await _imports
+            .ListForPlantAsync(plantId, fetchFrom, fetchTo, limit: 1000, ct)
+            .ConfigureAwait(false);
+        if (imports.Count == 0)
+        {
+            return new PlanByHourResult(
+                new Dictionary<DateTimeOffset, double>(),
+                new HashSet<DateTimeOffset>());
+        }
+
+        // Bygg plan-by-time fra blob-data. Siste import vinner ved overlapp
+        // (samme som ListEventsAsync). Annotering påvirker ikke plan-kolonnen,
+        // så vi hopper over overlay her.
+        var planByTime = new Dictionary<DateTimeOffset, double>();
+        foreach (var imp in imports.OrderBy(i => i.ImportedAtUtc))
+        {
+            var report = await _reports
+                .GetAsync(imp.OwnerOrgId, imp.PlantId, imp.IdempotencyKey, ct)
+                .ConfigureAwait(false);
+            if (report is null) continue;
+            foreach (var h in report.Classified)
+            {
+                if (h.TimeUtc < fetchFrom || h.TimeUtc >= fetchTo) continue;
+                // ProduksjonplanMwh er nullable i row-modellen — behandle null som 0
+                // siden plan-feltet alltid har en verdi i Hydrogrid-eksport, og null
+                // betyr at importeren ikke kunne tolke tallet (sjeldent).
+                planByTime[h.TimeUtc] = h.Row.ProduksjonplanMwh ?? 0;
+            }
+        }
+
+        // Iterer time-for-time i [fromUtc, toUtc + 3d) og fyll inn proxy der
+        // direkte data mangler. Vi inkluderer noen ekstra dager etter toUtc
+        // slik at Vakt-ROI kan summere plan over counterfactual_end > toUtc.
+        var result = new Dictionary<DateTimeOffset, double>();
+        var proxyHours = new HashSet<DateTimeOffset>();
+        var rangeStart = FloorToHour(fromUtc);
+        var rangeEnd = FloorToHour(toUtc.AddDays(3));
+        for (var h = rangeStart; h < rangeEnd; h = h.AddHours(1))
+        {
+            if (planByTime.TryGetValue(h, out var direct))
+            {
+                result[h] = direct;
+                continue;
+            }
+            // Proxy: samme ukedag/time bakover (1, 2, 3, 4 uker)
+            for (var w = 1; w <= 4; w++)
+            {
+                var proxyTime = h.AddDays(-7 * w);
+                if (planByTime.TryGetValue(proxyTime, out var proxyVal))
+                {
+                    result[h] = proxyVal;
+                    proxyHours.Add(h);
+                    break;
+                }
+            }
+            // Hvis ingen proxy funnet: hopp over. Calculator treats as 0 for den timen.
+        }
+
+        _log.LogDebug(
+            "ProduksjonplanByHour for {PlantId} [{From},{To}): {Direct} direkte timer, {Proxy} proxy-timer.",
+            plantId, fromUtc, toUtc, result.Count - proxyHours.Count, proxyHours.Count);
+
+        return new PlanByHourResult(result, proxyHours);
+    }
+
+    private static DateTimeOffset FloorToHour(DateTimeOffset t)
+    {
+        var u = t.UtcDateTime;
+        return new DateTimeOffset(u.Year, u.Month, u.Day, u.Hour, 0, 0, TimeSpan.Zero);
+    }
+
     public async Task<double> GetAvgImbalancePremiumAsync(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
     {

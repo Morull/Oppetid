@@ -42,7 +42,6 @@ public static class PortfolioEndpoints
     private static async Task<IResult> GetVaktRoiAsync(
         DateTimeOffset? from,
         DateTimeOffset? to,
-        double? kapasitetsfaktor,
         int? topN,
         IPortfolioVaktRoiQueryService service,
         CancellationToken ct)
@@ -65,10 +64,9 @@ public static class PortfolioEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var faktor = kapasitetsfaktor ?? 0.5;
         var top = topN ?? 10;
 
-        var response = await service.GetAsync(fromUtc, toUtc, faktor, top, ct).ConfigureAwait(false);
+        var response = await service.GetAsync(fromUtc, toUtc, top, ct).ConfigureAwait(false);
         return Results.Ok(response);
     }
 

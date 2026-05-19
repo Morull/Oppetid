@@ -1,0 +1,15 @@
+prioritet;pattern;state_resultat;confidence;cause_code;kommentar
+1;*_STARTER_AL;InService (start);0.95;operlog:start;Generator startsekvens — markerer start paa drifts-periode
+1;*_STOPPER_AL;MaintenanceOutage;0.95;operlog:stop;Generator stoppsekvens — markerer slutt paa drifts-periode
+2;*NODSTOPP*;ForcedOutage;0.95;operlog:nodstopp;Noedstopp aktivert
+2;*HURTIGSTOPP*;ForcedOutage;0.95;operlog:hurtigstopp;Hurtigstopp aktivert
+2;*RIST_FALLTAP*;ForcedOutage;0.85;operlog:rist-falltap;Tett inntaksrist
+2;*TURB_FEIL*;ForcedOutage;0.85;operlog:turb-feil;Turbinfeil
+2;*FEIL_AL*;ForcedOutage;0.80;operlog:fault;Generell feilalarm
+2;*HAVARI*;ForcedOutage;0.80;operlog:fault;Havari
+3;*_LL_AL (alarmType=alarm/event);ForcedOutage;0.50;operlog:lav-lav-alarm;Terskel-alarm lav-lav
+3;*_HH_AL (alarmType=alarm/event);ForcedOutage;0.50;operlog:hoy-hoy-alarm;Terskel-alarm hoey-hoey
+4;*_AL (alarmType=alarm/event);MaintenanceOutage;0.40;operlog:annen-alarm;Generisk alarm — annotering i tidslinje
+0;*_KONTROLL_REG_*;(ingen state-endring);;;Settpunkt-endring — kan ekskluderes for trafikk-reduksjon
+0;*_KONTROLL_AGC_*;(ingen state-endring);;;AGC settpunkt — kan ekskluderes
+0;*_NIVA_*_CMD;(ingen state-endring);;;Niva-kommando — kan ekskluderes

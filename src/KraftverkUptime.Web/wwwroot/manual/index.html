@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bruksanvisning – KraftverkUptime</title>
+<style>
+  /* -------- Dalane Kraft-fargepalett (synket med app.css) -------- */
+  :root {
+    --dk-primary: #1E5F8E;
+    --dk-primary-light: #2A7CB5;
+    --dk-secondary: #00A99D;
+    --dk-secondary-light: #2DD4BF;
+    --dk-success: #2A9D8F;
+    --dk-warning: #F39C12;
+    --dk-error: #E76F51;
+    --dk-purple: #6E59A5;
+    --dk-text: #2C3E50;
+    --dk-text-secondary: #5A6B7B;
+    --dk-bg: #F7F9FB;
+    --dk-card-bg: #FFFFFF;
+    --dk-border: #E1E7ED;
+    --dk-code-bg: #F1F5F9;
+    --dk-shadow: 0 2px 6px rgba(15, 30, 45, 0.06);
+    --dk-shadow-hover: 0 6px 18px rgba(15, 30, 45, 0.10);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+    color: var(--dk-text);
+    background: var(--dk-bg);
+    line-height: 1.55;
+    font-size: 16px;
+  }
+
+  /* -------- Header -------- */
+  .dk-header {
+    background: linear-gradient(135deg, var(--dk-primary) 0%, var(--dk-primary-light) 100%);
+    color: #fff;
+    padding: 28px 36px;
+    box-shadow: var(--dk-shadow);
+  }
+  .dk-header-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .dk-brand-mark {
+    width: 44px; height: 44px;
+    background: rgba(255,255,255,0.18);
+    border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 22px;
+    border: 1px solid rgba(255,255,255,0.25);
+  }
+  .dk-brand-text { font-weight: 600; font-size: 18px; letter-spacing: 0.04em; }
+  .dk-app-tag {
+    background: rgba(255,255,255,0.15);
+    padding: 3px 10px; border-radius: 4px;
+    font-size: 12px; font-weight: 600;
+  }
+  .dk-header h1 { margin: 14px 0 6px 0; font-weight: 600; font-size: 28px; letter-spacing: -0.02em; }
+  .dk-header .dk-subtitle { opacity: 0.92; font-size: 15px; }
+
+  /* -------- Tab-bars -------- */
+  .dk-tabs {
+    display: flex; gap: 0;
+    background: var(--dk-card-bg);
+    border-bottom: 1px solid var(--dk-border);
+    padding: 0 36px;
+    overflow-x: auto;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .dk-tabs.dk-tabs-secondary {
+    background: var(--dk-bg);
+    border-bottom: 2px solid var(--dk-border);
+    padding-top: 4px;
+    top: 53px;
+  }
+  .dk-tab {
+    padding: 14px 22px;
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--dk-text-secondary);
+    border: none;
+    background: none;
+    font-size: 14.5px;
+    border-bottom: 3px solid transparent;
+    transition: color .15s, border-color .15s;
+    white-space: nowrap;
+  }
+  .dk-tab:hover { color: var(--dk-primary); }
+  .dk-tab.active {
+    color: var(--dk-primary);
+    border-bottom-color: var(--dk-primary);
+    font-weight: 600;
+  }
+  .dk-tabs-secondary .dk-tab.active { border-bottom-color: var(--dk-secondary); color: var(--dk-secondary); }
+
+  /* -------- Layout -------- */
+  main {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 32px 36px 80px;
+  }
+
+  /* -------- Card -------- */
+  .dk-card {
+    background: var(--dk-card-bg);
+    border-radius: 10px;
+    padding: 28px 32px;
+    box-shadow: var(--dk-shadow);
+    border: 1px solid var(--dk-border);
+    margin-bottom: 24px;
+  }
+  .dk-card h2 {
+    margin: 0 0 8px 0; font-size: 24px; font-weight: 600;
+    letter-spacing: -0.01em; color: var(--dk-text);
+  }
+  .dk-card h3 {
+    margin: 28px 0 10px 0; font-size: 18px; font-weight: 600;
+    color: var(--dk-primary);
+    border-bottom: 1px solid var(--dk-border); padding-bottom: 6px;
+  }
+  .dk-card h4 {
+    margin: 20px 0 8px 0; font-size: 15.5px; font-weight: 600;
+    color: var(--dk-text);
+  }
+  .dk-card .dk-lead {
+    color: var(--dk-text-secondary);
+    font-size: 15px;
+    margin: 0 0 20px 0;
+  }
+  .dk-card p { margin: 8px 0; }
+
+  /* -------- Stat-strip (rolle-overskrift) -------- */
+  .dk-role-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin: 0 0 24px 0;
+  }
+  .dk-role-strip .stat {
+    background: var(--dk-card-bg);
+    border-left: 4px solid var(--dk-primary);
+    padding: 12px 14px;
+    border-radius: 6px;
+    box-shadow: var(--dk-shadow);
+  }
+  .dk-role-strip .stat .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dk-text-secondary);
+    margin-bottom: 4px;
+  }
+  .dk-role-strip .stat .value { font-size: 16px; font-weight: 600; }
+
+  /* -------- Step list -------- */
+  ol.dk-steps { padding-left: 0; counter-reset: step; list-style: none; margin: 8px 0; }
+  ol.dk-steps > li {
+    counter-increment: step;
+    position: relative;
+    padding: 10px 12px 10px 50px;
+    margin-bottom: 8px;
+    background: var(--dk-bg);
+    border-radius: 6px;
+    border-left: 3px solid var(--dk-secondary);
+  }
+  ol.dk-steps > li::before {
+    content: counter(step);
+    position: absolute; left: 12px; top: 10px;
+    width: 26px; height: 26px;
+    background: var(--dk-secondary); color: #fff;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 600; font-size: 13px;
+  }
+  ol.dk-steps strong { color: var(--dk-primary); }
+
+  /* -------- Inline-elementer -------- */
+  code, .kbd {
+    font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+    font-size: 0.92em;
+  }
+  code {
+    background: var(--dk-code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .kbd {
+    border: 1px solid var(--dk-border);
+    background: #fff;
+    padding: 2px 7px;
+    border-radius: 4px;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.06);
+  }
+  pre {
+    background: var(--dk-code-bg);
+    padding: 14px 18px;
+    border-radius: 6px;
+    overflow-x: auto;
+    border: 1px solid var(--dk-border);
+    font-size: 13.5px;
+  }
+
+  /* -------- Tabell -------- */
+  table.dk-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 18px 0;
+    font-size: 14.5px;
+  }
+  table.dk-table th, table.dk-table td {
+    text-align: left;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--dk-border);
+    vertical-align: top;
+  }
+  table.dk-table th {
+    background: var(--dk-bg);
+    font-weight: 600;
+    color: var(--dk-text);
+    border-bottom: 2px solid var(--dk-border);
+  }
+  table.dk-table tr:hover td { background: var(--dk-bg); }
+
+  /* -------- Skjermbilde-plassholder -------- */
+  .dk-screenshot {
+    border: 2px dashed #B5BEC8;
+    background:
+      repeating-linear-gradient(45deg, #F7F9FB, #F7F9FB 12px, #ECF1F5 12px, #ECF1F5 24px);
+    color: var(--dk-text-secondary);
+    padding: 28px 24px;
+    text-align: center;
+    border-radius: 8px;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  .dk-screenshot::before {
+    content: "📷 ";
+    font-size: 18px;
+    margin-right: 4px;
+  }
+  .dk-screenshot strong { color: var(--dk-primary); }
+
+  /* -------- Callout-bokser -------- */
+  .dk-callout {
+    border-left: 4px solid var(--dk-primary);
+    background: rgba(30, 95, 142, 0.06);
+    padding: 12px 16px;
+    border-radius: 0 6px 6px 0;
+    margin: 14px 0;
+    font-size: 14.5px;
+  }
+  .dk-callout.tip { border-left-color: var(--dk-success); background: rgba(42, 157, 143, 0.07); }
+  .dk-callout.warn { border-left-color: var(--dk-warning); background: rgba(243, 156, 18, 0.07); }
+  .dk-callout.danger { border-left-color: var(--dk-error); background: rgba(231, 111, 81, 0.07); }
+  .dk-callout strong { display: block; margin-bottom: 4px; }
+
+  /* -------- KPI-badge -------- */
+  .kpi-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--dk-primary);
+    color: #fff;
+    letter-spacing: 0.03em;
+  }
+  .kpi-badge.green { background: var(--dk-success); }
+  .kpi-badge.orange { background: var(--dk-warning); }
+  .kpi-badge.red { background: var(--dk-error); }
+  .kpi-badge.purple { background: var(--dk-purple); }
+
+  /* -------- Visning av seksjoner styres med JS -------- */
+  section[data-level], section[data-role] { display: none; }
+  section.active { display: block; }
+
+  /* -------- Footer -------- */
+  footer {
+    text-align: center;
+    padding: 28px 24px;
+    color: var(--dk-text-secondary);
+    font-size: 13px;
+    border-top: 1px solid var(--dk-border);
+    background: var(--dk-card-bg);
+  }
+
+  /* -------- Print-stil -------- */
+  @media print {
+    .dk-tabs { display: none; }
+    section[data-level], section[data-role] { display: block !important; page-break-inside: avoid; }
+    section[data-level] { page-break-after: always; }
+    .dk-card { box-shadow: none; border: 1px solid #ccc; }
+    .dk-screenshot { background: #f5f5f5; }
+    body { background: #fff; }
+  }
+</style>
+</head>
+<body>
+
+<header class="dk-header">
+  <div class="dk-header-row">
+    <span class="dk-brand-mark">D</span>
+    <span class="dk-brand-text">DALANE KRAFT</span>
+    <span class="dk-app-tag">Uptime · v1</span>
+  </div>
+  <h1>Bruksanvisning – KraftverkUptime</h1>
+  <div class="dk-subtitle">For driftsleder, produksjonsleder og daglig leder · Sist oppdatert mai 2026</div>
+</header>
+
+<!-- Nivå-velger -->
+<nav class="dk-tabs" id="levelTabs">
+  <button class="dk-tab active" data-level="quickstart">Quick-start</button>
+  <button class="dk-tab" data-level="standard">Standard</button>
+  <button class="dk-tab" data-level="referanse">Komplett referanse</button>
+</nav>
+
+<!-- Rolle-velger (skjules på referanse-nivå) -->
+<nav class="dk-tabs dk-tabs-secondary" id="roleTabs">
+  <button class="dk-tab active" data-role="driftsleder">Driftsleder</button>
+  <button class="dk-tab" data-role="produksjonsleder">Produksjonsleder</button>
+  <button class="dk-tab" data-role="dagligleder">Daglig leder</button>
+</nav>
+
+<main>
+
+<!-- ============================================================= -->
+<!-- ====================== QUICK-START =========================== -->
+<!-- ============================================================= -->
+
+<!-- ----- Quick-start: Driftsleder ----- -->
+<section data-level="quickstart" data-role="driftsleder" class="active">
+  <div class="dk-card">
+    <h2>Driftsleder – Quick-start</h2>
+    <p class="dk-lead">Mål: vit i løpet av 30 sekunder om importene har kommet inn, om det ligger uklassifiserte hendelser, og om det er nedetid som krever oppfølging.</p>
+
+    <div class="dk-role-strip">
+      <div class="stat" style="border-left-color: var(--dk-primary);">
+        <div class="label">Daglig sjekk</div>
+        <div class="value">5 min · /data-import + /behandles</div>
+      </div>
+      <div class="stat" style="border-left-color: var(--dk-secondary);">
+        <div class="label">Ukentlig</div>
+        <div class="value">15 min · /nedetid + /vakt-roi</div>
+      </div>
+      <div class="stat" style="border-left-color: var(--dk-warning);">
+        <div class="label">Ved hendelse</div>
+        <div class="value">Annoter i /nedetid · rediger /admin/kategorier</div>
+      </div>
+    </div>
+
+    <h3>De tre sidene du bruker mest</h3>
+    <ol class="dk-steps">
+      <li><strong>/data-import</strong> – status på automatiske importer siste 24 t. Banneren øverst skal være grønn. Røde tall = se historikk-fanen.</li>
+      <li><strong>/behandles</strong> – imports som mangler ferdig rapport. Skal vanligvis være tom; hvis &gt; 1 minutt gammel, sjekk worker.</li>
+      <li><strong>/nedetid</strong> – velg anlegg + periode i topp-baren. Stort tall: tap i NOK. Klikk på en hendelse → blyant-ikon → annoter med riktig årsak.</li>
+    </ol>
+
+    <div class="dk-screenshot"><strong>Skjermbilde:</strong> Forsidens KPI-strip med Anlegg, Installert effekt, Klare rapporter og Behandles-kortet (orange "klikk for liste"-pulserende prikk når det er noe som venter).</div>
+
+    <div class="dk-callout tip">
+      <strong>Tips:</strong> Anlegg + periode settes globalt i topp-baren. Den følger med deg når du bytter side, så du slipper å velge på nytt for hver visning.
+    </div>
+  </div>
+</section>
+
+<!-- ----- Quick-start: Produksjonsleder ----- -->
+<section data-level="quickstart" data-role="produksjonsleder">
+  <div class="dk-card">
+    <h2>Produksjonsleder – Quick-start</h2>
+    <p class="dk-lead">Mål: vurder om produksjonsplanen treffer, om vi tjener mer enn ren spotpris, og om virkningsgraden er på sweet-spot.</p>
+
+    <div class="dk-role-strip">
+      <div class="stat" style="border-left-color: var(--dk-secondary);">
+        <div class="label">Daglig</div>
+        <div class="value">5 min · /produksjon</div>
+      </div>
+      <div class="stat" style="border-left-color: var(--dk-primary);">
+        <div class="label">Ukentlig</div>
+        <div class="value">15 min · /capture-rate + /effektivitet</div>
+      </div>
+      <div class="stat" style="border-left-color: var(--dk-warning);">
+        <div class="label">Avvik</div>
+        <div class="value">Lav plan-treff → Hydrogrid-feil; lav CR → bid-strategi</div>
+      </div>
+    </div>
+
+    <h3>Tre KPI-er du må kjenne</h3>
+    <ol class="dk-steps">
+      <li><strong>Plan-treff (%)</strong> på <code>/produksjon</code>: hvor godt Hydrogrid-planen traff faktisk levert (Elhub). Mål: &gt; 90 %.</li>
+      <li><strong>CR (Capture Rate)</strong> på <code>/capture-rate</code>: oppnådd kr/MWh delt på tidsvektet spot. CR &gt; 1.00 = bedre enn å selge ren spot.</li>
+      <li><strong>Snitt η</strong> på <code>/effektivitet</code>: turbinens virkningsgrad i drift. Sammenlign mot sweet-spot-effekten i samme bilde.</li>
+    </ol>
+
+    <div class="dk-screenshot"><strong>Skjermbilde:</strong> /capture-rate – KPI-rad med Capture-pris, CR (times), CR (dag, P5/P95-filtrert) og Merverdi vs spot. Hver med trend-pil mot forrige periode.</div>
+
+    <div class="dk-callout tip">
+      <strong>Lese-rekkefølge:</strong> Plan-treff først (har planen vært realistisk?), så CR (har vi solgt det vi produserte godt?), så η (har vi kjørt på sweet-spot?).
+    </div>
+  </div>
+</section>
+
+<!-- ----- Quick-start: Daglig leder ----- -->
+<section data-level="quickstart" data-role="dagligleder">
+  <div class="dk-card">
+    <h2>Daglig leder – Quick-start</h2>
+    <p class="dk-lead">Mål: én side med samlet økonomi og drifts-KPI for hele porteføljen, og en konkret vurdering av om vakt-ordningen lønner seg.</p>
+
+    <div class="dk-role-strip">
+      <div class="stat" style="border-left-color: var(--dk-primary);">
+        <div class="label">Månedlig</div>
+        <div class="value">10 min · /portefolje</div>
+      </div>
+      <div class="stat" style="border-left-color: var(--dk-success);">
+        <div class="label">Strategi</div>
+        <div class="value">/vakt-roi (portefølje-modus)</div>
+      </div>
+      <div class="stat" style="border-left-color: var(--dk-purple);">
+        <div class="label">Bevisbyrde</div>
+        <div class="value">Eksport: CSV/Excel fra hver side</div>
+      </div>
+    </div>
+
+    <h3>Det du faktisk trenger</h3>
+    <ol class="dk-steps">
+      <li><strong>/portefolje</strong>: én tabell med AF, FOR, MWh, NOK spotomsetning, CR, merverdi, nedetid og reddet vakt-NOK per anlegg. SUM-rad nederst.</li>
+      <li><strong>Vakt-ROI-vurdering</strong> (samme side): legg inn årlig vakt-kost → systemet annualiserer reddet beløp og viser ROI med fargekoding. <span class="kpi-badge green">Lønnsom ≥ 1.0×</span> <span class="kpi-badge orange">Marginal 0.5–1.0×</span> <span class="kpi-badge red">Ikke lønnsom &lt; 0.5×</span></li>
+      <li><strong>Klikk anleggsnavn</strong> i tabellen for å bore ned til detalj-visning per anlegg.</li>
+    </ol>
+
+    <div class="dk-screenshot"><strong>Skjermbilde:</strong> /portefolje – øverst "Vurdering av vaktordningen" med fire kort: Total reddet, Annualisert, Vakt-kost/år, Vurdering. Under: stor sortérbar tabell med alle 11 anlegg.</div>
+
+    <div class="dk-callout">
+      <strong>Beslutningsstøtte:</strong> Vurderingen er <em>annualisert</em>. Hvis vurderingen er marginal, sjekk om reddet beløp er konsentrert på 2-3 hendelser — da kan tallet endre seg neste måned.
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<!-- ======================== STANDARD ============================ -->
+<!-- ============================================================= -->
+
+<!-- ----- Standard: Driftsleder ----- -->
+<section data-level="standard" data-role="driftsleder">
+  <div class="dk-card">
+    <h2>Driftsleder – Standard</h2>
+    <p class="dk-lead">Daglige, ukentlige og månedlige rutiner. Hvor du finner ting, hvilke tall du skal se etter, og hva som er en typisk reaksjon.</p>
+
+    <h3>1. Daglig morgenrunde (≈ 5 minutter)</h3>
+    <ol class="dk-steps">
+      <li>Åpne <code>/</code> (Oversikt). Sjekk at <strong>Behandles</strong>-kortet viser 0 — eller et lavt tall som er i ferd med å falle.</li>
+      <li>Klikk på <strong>Behandles</strong>-kortet hvis den pulserer. Du kommer til <code>/behandles</code> med liste over imports som venter klassifisering. Normalt skal disse forsvinne innen 60 sekunder.</li>
+      <li>Gå til <code>/data-import</code>. Banneren øverst skal være blå (auto-import siste 24 t). Sjekk at det ikke står "FAILED" på noen importer i historikk-fanen.</li>
+    </ol>
+
+    <div class="dk-screenshot"><strong>Skjermbilde:</strong> /data-import – tre tabs øverst (Status / Manuell opplasting / Historikk). Banner med "Siste 24 t: 11 importer mottatt".</div>
+
+    <h3>2. Manuell opplasting (når auto-import feiler)</h3>
+    <ol class="dk-steps">
+      <li>På <code>/data-import</code>, velg <strong>Manuell opplasting</strong>-fanen.</li>
+      <li>Velg anlegg, dra fil til drop-zonen, eller bruk multi-plant-zonen for flere filer samtidig.</li>
+      <li>Etter opplasting går filen direkte i klassifiseringskøen. Følg den i <code>/behandles</code>.</li>
+    </ol>
+
+    <h3>3. Annotering av nedetidshendelser</h3>
+    <p>Når SCADA logger en hendelse uten god årsakskode, eller når du vil overstyre klassifiseringen:</p>
+    <ol class="dk-steps">
+      <li>Gå til <code>/nedetid</code>, velg anlegg + periode i topp-baren.</li>
+      <li>I hendelses-tabellen: klikk blyant-ikonet til høyre i raden.</li>
+      <li>Velg kategori, skriv kort årsak, lagre. KPI-er regnes automatisk på nytt.</li>
+    </ol>
+
+    <div class="dk-callout warn">
+      <strong>Viktig:</strong> Annoteringen overstyrer klassifiseringen for <em>alle</em> sider som leser nedetid (Vakt-ROI, Portefølje). Endringer logges i revisjonsspor.
+    </div>
+
+    <h3>4. Vedlikeholde kategorier</h3>
+    <ol class="dk-steps">
+      <li>Åpne <code>/admin/kategorier</code>.</li>
+      <li>Eksisterende system-kategorier kan deaktiveres (ikke slettes). Egne kategorier kan opprettes med <strong>Ny kategori</strong>.</li>
+      <li>Hver kategori mappes til en <strong>UnitState</strong> (InService, ForcedOutage, PlannedOutage, ...) som styrer KPI-tellingen.</li>
+    </ol>
+
+    <h3>5. Datakvalitets-banneren</h3>
+    <p>På <code>/nedetid</code> og <code>/produksjon</code> dukker det opp en gul banner hvis dekningen er under 100 %. Vanlige årsaker:</p>
+    <table class="dk-table">
+      <thead><tr><th>Symptom</th><th>Sannsynlig årsak</th><th>Tiltak</th></tr></thead>
+      <tbody>
+        <tr><td>"Mangler import" timer</td><td>Settlement-fil ikke kommet inn for periode</td><td>Last opp manuelt på /data-import</td></tr>
+        <tr><td>"Bad" timer</td><td>SCADA-signal helt utenfor rimelig grense</td><td>Sjekk signal_map mot SCADA-eksport</td></tr>
+        <tr><td>"Warning" timer</td><td>Mistenkelig verdi (over installert effekt o.l.)</td><td>Annoter eller la stå som data-mangel</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ----- Standard: Produksjonsleder ----- -->
+<section data-level="standard" data-role="produksjonsleder">
+  <div class="dk-card">
+    <h2>Produksjonsleder – Standard</h2>
+    <p class="dk-lead">Du jobber med tre flater: produksjon (planoppfølging), capture rate (verdiskapning) og effektivitet (turbinkjøring). Alle tre har trend-piler mot forrige periode.</p>
+
+    <h3>1. Produksjons-analysen</h3>
+    <p>Side: <code>/produksjon</code>. Datakilde: <code>ProduksjonplanMwh</code> (Hydrogrids plan) sammenlignet mot <code>MwhElhub</code> (faktisk levert) per time, og spotpris.</p>
+    <table class="dk-table">
+      <thead><tr><th>KPI</th><th>Hva det betyr</th><th>Mål</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Plan-treff</strong></td><td>1 − MAE/Σplan over timer med plan &gt; 0</td><td>&gt; 90 %</td></tr>
+        <tr><td><strong>Bid-treffsikkerhet</strong></td><td>Hvor ofte var planen riktig retning vs. spot</td><td>Sammenlign mot forrige måned</td></tr>
+        <tr><td><strong>Pris-trefning</strong></td><td>Snittpris levert / topp-pris i perioden</td><td>Høyere = bedre prising</td></tr>
+      </tbody>
+    </table>
+
+    <div class="dk-screenshot"><strong>Skjermbilde:</strong> /produksjon – øverst KPI-rad med Plan-treff, Bid-treffsikkerhet og Pris-trefning. Trend-piler grønn/rød med tall mot forrige periode.</div>
+
+    <h3>2. Capture rate</h3>
+    <p>Side: <code>/capture-rate</code>. Sammenligner oppnådd pris mot tidsvektet spot. CR = oppnådd / spot.</p>
+    <ol class="dk-steps">
+      <li><strong>Capture-pris (NOK/MWh)</strong>: snittprisen vi faktisk fikk.</li>
+      <li><strong>CR (times)</strong>: hver time vektet med produksjon. Standard.</li>
+      <li><strong>CR (dag, P5/P95-filtrert)</strong>: filtrerer ekstrem-dager for å se trend.</li>
+      <li><strong>Merverdi vs spot</strong>: NOK over/under spot. Negativ = vi tapte vs. å selge ren spot.</li>
+    </ol>
+
+    <div class="dk-callout">
+      <strong>Tolkning:</strong> CR &gt; 1.00 betyr at Hydrogrid (eller magasin-styringen) traff bedre enn ren spot. CR &lt; 1.00 over flere måneder = vurder bid-strategi.
+    </div>
+
+    <h3>3. Effektivitet (η-kurve)</h3>
+    <p>Side: <code>/effektivitet</code>. Krever SCADA-rollene <code>GeneratorActivePower</code>, <code>TurbineEfficiency</code> og <code>TurbineWaterFlow</code>.</p>
+    <ol class="dk-steps">
+      <li><strong>Snitt η</strong>: faktisk virkningsgrad over alle produksjons-timer.</li>
+      <li><strong>Sweet-spot effekt</strong>: effekten der η var høyest i perioden.</li>
+      <li><strong>Spesifikt vannforbruk</strong>: m³ per kWh. Lavere er bedre.</li>
+    </ol>
+
+    <h3>4. Måneds-rutine</h3>
+    <ol class="dk-steps">
+      <li>Sett perioden til <strong>Forrige måned</strong> i topp-baren.</li>
+      <li>Gå gjennom <code>/produksjon</code> → <code>/capture-rate</code> → <code>/effektivitet</code> per anlegg.</li>
+      <li>Bruk <strong>Last ned CSV</strong>-knappen på sider der den finnes for egen analyse i Excel.</li>
+      <li>Avvik fra mål dokumenteres i månedsrapport.</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ----- Standard: Daglig leder ----- -->
+<section data-level="standard" data-role="dagligleder">
+  <div class="dk-card">
+    <h2>Daglig leder – Standard</h2>
+    <p class="dk-lead">Du bruker stort sett to sider: <code>/portefolje</code> for samlet bilde, og <code>/vakt-roi</code> for finregning på vaktordningen. Resten er drill-down ved behov.</p>
+
+    <h3>1. Portefølje-rapporten – nøkkeltall i tabellen</h3>
+    <table class="dk-table">
+      <thead><tr><th>Kolonne</th><th>Forklaring</th><th>Tolkning</th></tr></thead>
+      <tbody>
+        <tr><td>AF</td><td>Tilgjengelighet (Availability Factor)</td><td>&gt; 95 % er bra for små regulerte anlegg</td></tr>
+        <tr><td>FOR</td><td>Forced Outage Rate (uplanlagte stopp)</td><td>&lt; 2 % er målet</td></tr>
+        <tr><td>Produksjon (MWh)</td><td>Faktisk levert til Elhub</td><td>Sammenlign mot år-mot-år</td></tr>
+        <tr><td>Spotoms (NOK)</td><td>Bruttoinntekt på spot-pris</td><td>Hovedøkonomi-tall</td></tr>
+        <tr><td>CR</td><td>Capture Rate</td><td>&gt; 1.00 = vi slår spot</td></tr>
+        <tr><td>Merverdi</td><td>NOK utover ren spot-omsetning</td><td>Direkte mål på trading-ferdighet</td></tr>
+        <tr><td>Nedetid (t)</td><td>Sum stopp-timer</td><td>Detalj per kategori i /nedetid</td></tr>
+        <tr><td>Tap (NOK)</td><td>Estimert tap i nedetid</td><td>Brutto, basert på spotpris</td></tr>
+        <tr><td>Reddet vakt (NOK)</td><td>Hva vakta sparte vs. vente til neste arbeidsdag</td><td>Driver i ROI-vurderingen</td></tr>
+      </tbody>
+    </table>
+
+    <h3>2. Vakt-ROI-vurderingen</h3>
+    <p>Øverst på <code>/portefolje</code>: legg inn estimert årlig vakt-kost (default 360&nbsp;000 NOK). Systemet:</p>
+    <ol class="dk-steps">
+      <li>Annualiserer reddet beløp: <code>total_reddet × (365 / antall_dager_i_periode)</code>.</li>
+      <li>Regner ROI = annualisert / årlig kost.</li>
+      <li>Gir vurdering: <span class="kpi-badge green">Lønnsom ≥ 1.0×</span> <span class="kpi-badge orange">Marginal 0.5–1.0×</span> <span class="kpi-badge red">Ikke lønnsom &lt; 0.5×</span></li>
+    </ol>
+
+    <div class="dk-callout info">
+      <strong>Reddet produksjon-grunnlag (2026-05):</strong> Vakt-ROI bruker
+      <strong>Hydrogrid-plan per time</strong> (fra settlement-data) som basis for hvor
+      mye MWh som ble reddet — ikke en flat kapasitetsfaktor. Det fanger
+      sesongvariasjon i vannføring og marked direkte siden plan reflekterer
+      faktisk forventet kjøretid. For counterfactual-timer utenfor importert plan
+      (typisk dager etter siste settlement) brukes proxy fra nærmeste samme
+      ukedag/time bakover (maks 4 uker). Events med proxy-data flagges med ⚠
+      i tabellen.
+    </div>
+
+    <div class="dk-callout warn">
+      <strong>Vurder periode-lengde:</strong> ROI for 1 måned med uvanlig mange events kan se kunstig god ut. Bruk minst 6 måneder for beslutningsgrunnlag.
+    </div>
+
+    <h3>3. Drill-down per anlegg</h3>
+    <ol class="dk-steps">
+      <li>Klikk anleggsnavn i porteføljetabellen → <code>/anlegg/&#123;plantId&#125;</code>.</li>
+      <li>Du får KPI-strip + lenker til Nedetid, Vakt-ROI, Capture rate, Produksjon og Effektivitet for det anlegget.</li>
+      <li>Periode-velgeren i topp-baren styrer alt.</li>
+    </ol>
+
+    <h3>4. Eksport for styre/eier</h3>
+    <ol class="dk-steps">
+      <li>Klikk <strong>Skriv ut</strong> i nettleser (Ctrl+P) på portefølje-siden — egen print-CSS gir et ryddig PDF-utskrift.</li>
+      <li>Bruk <strong>Last ned CSV</strong> der det er tilgjengelig (f.eks. /nedetid) for tall til styresak.</li>
+      <li>Excel-rapport per måned hentes på <code>/reports</code> (klikk en rapport → Last ned).</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<!-- ======================== REFERANSE =========================== -->
+<!-- ============================================================= -->
+
+<!-- ----- Referanse: Felles for alle roller (skjuler rolle-tabs) ----- -->
+<section data-level="referanse">
+  <div class="dk-card">
+    <h2>Komplett referanse</h2>
+    <p class="dk-lead">Alle sider, alle KPI-er, alle filtre forklart. Bruk søk (Ctrl+F) — siden er bygget for det.</p>
+
+    <h3>Navigasjon (venstre meny)</h3>
+    <table class="dk-table">
+      <thead><tr><th>Sti</th><th>Side</th><th>Hovedformål</th><th>Roller</th></tr></thead>
+      <tbody>
+        <tr><td><code>/</code></td><td>Oversikt</td><td>KPI-strip, hurtigvalg</td><td>Alle</td></tr>
+        <tr><td><code>/plants</code></td><td>Anlegg</td><td>Liste over alle anlegg som kort</td><td>Alle</td></tr>
+        <tr><td><code>/anlegg/&#123;id&#125;</code></td><td>Anleggsdetalj</td><td>Per-anlegg KPI + drill-down-lenker</td><td>Alle</td></tr>
+        <tr><td><code>/reports</code></td><td>Rapporter</td><td>Liste over importerte settlements</td><td>Drift, Produksjon</td></tr>
+        <tr><td><code>/reports/&#123;id&#125;</code></td><td>Rapport-detalj</td><td>Klassifisert KPI-rapport for en periode</td><td>Drift, Produksjon</td></tr>
+        <tr><td><code>/portefolje</code></td><td>Portefølje-rapport</td><td>Aggregert tabell på tvers av anlegg + vakt-ROI-vurdering</td><td><strong>Daglig leder (primær)</strong></td></tr>
+        <tr><td><code>/nedetid</code></td><td>Nedetids-analyse</td><td>Hendelser, varighet, tap per kategori</td><td><strong>Driftsleder (primær)</strong></td></tr>
+        <tr><td><code>/vakt-roi</code></td><td>Vakt-ROI</td><td>Counterfactual: hva sparte vakta? Portefølje- og per-anlegg-modus</td><td>Drift, Daglig leder</td></tr>
+        <tr><td><code>/capture-rate</code></td><td>Capture rate</td><td>Verdiskapning vs. ren spot</td><td><strong>Produksjonsleder (primær)</strong></td></tr>
+        <tr><td><code>/produksjon</code></td><td>Produksjon</td><td>Plan-treff (Hydrogrid vs. Elhub)</td><td><strong>Produksjonsleder (primær)</strong></td></tr>
+        <tr><td><code>/effektivitet</code></td><td>Effektivitet</td><td>η(P)-kurve, sweet-spot, spesifikt vannforbruk</td><td>Produksjonsleder</td></tr>
+        <tr><td><code>/data-import</code></td><td>Data-import</td><td>Status / Manuell opplasting / Historikk</td><td><strong>Driftsleder (primær)</strong></td></tr>
+        <tr><td><code>/behandles</code></td><td>Behandles</td><td>Imports som venter klassifisering</td><td>Driftsleder</td></tr>
+        <tr><td><code>/admin/kategorier</code></td><td>Hendelses-kategorier</td><td>CRUD på annoterings-kategorier</td><td>Driftsleder</td></tr>
+      </tbody>
+    </table>
+
+    <h3>KPI-definisjoner (IEEE 762-basert)</h3>
+    <table class="dk-table">
+      <thead><tr><th>KPI</th><th>Formel</th><th>Tolkning</th></tr></thead>
+      <tbody>
+        <tr><td><strong>AF</strong> (Availability Factor)</td><td>(InService + PlannedOutage) / TotalHours</td><td>Andel tid anlegget var produksjonsklart</td></tr>
+        <tr><td><strong>EAF</strong> (Equivalent Availability)</td><td>AF korrigert for delredusert kapasitet</td><td>Mer realistisk for delvis utfall</td></tr>
+        <tr><td><strong>FOR</strong> (Forced Outage Rate)</td><td>ForcedOutageHours / (InService + ForcedOutage)</td><td>Andel uplanlagte stopp</td></tr>
+        <tr><td><strong>CF</strong> (Capacity Factor)</td><td>FaktiskMWh / (InstalledCapacity × Hours)</td><td>Faktisk vs. teoretisk maks-produksjon</td></tr>
+        <tr><td><strong>Plan-treff</strong></td><td>1 − MAE / Σplan</td><td>Hydrogrid-planens treffsikkerhet</td></tr>
+        <tr><td><strong>CR (times)</strong></td><td>Σ(MWh × pris) / (Σ MWh × Σ(t × spot)/Σt)</td><td>Capture vs. tidsvektet spot</td></tr>
+        <tr><td><strong>Merverdi</strong></td><td>Σ(MWh × actual) − Σ(MWh × spot)</td><td>NOK over/under ren spot-omsetning</td></tr>
+        <tr><td><strong>η (eta)</strong></td><td>P_el / (ρ × g × Q × H)</td><td>Turbinens virkningsgrad</td></tr>
+        <tr><td><strong>Spesifikt vannforbruk</strong></td><td>Σ Q×t / Σ MWh</td><td>m³ vann per produsert kWh</td></tr>
+        <tr><td><strong>Vakt-ROI</strong></td><td>Annualisert reddet / årlig vakt-kost</td><td>≥ 1.0 = lønnsom</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Hendelses-kategorier og UnitState-mapping</h3>
+    <table class="dk-table">
+      <thead><tr><th>Kategori (UI)</th><th>UnitState</th><th>Talles i</th></tr></thead>
+      <tbody>
+        <tr><td>Trip / feil</td><td>ForcedOutage</td><td>FOR (teller + nevner)</td></tr>
+        <tr><td>Tett inntaksrist</td><td>ForcedOutage / DeratedAvailable</td><td>FOR + EAF</td></tr>
+        <tr><td>Ekstern forstyrrelse</td><td>OutsideManagementControl</td><td>Egen kategori, telles ikke i FOR</td></tr>
+        <tr><td>Planlagt vedlikehold</td><td>PlannedOutage</td><td>AF (teller + nevner), ikke FOR</td></tr>
+        <tr><td>Markedstopp</td><td>Reserve</td><td>Telles ikke som "stopp" i KPI</td></tr>
+        <tr><td>Ressursmangel</td><td>OutsideManagementControl</td><td>Egen kategori (vannmangel o.l.)</td></tr>
+        <tr><td>Datamangel</td><td>DataMangel</td><td>Ekskluderes fra KPI-er</td></tr>
+        <tr><td>Ukjent nedetid</td><td>Unknown</td><td>Skal annoteres → flagges</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Datakvalitets-flagg</h3>
+    <table class="dk-table">
+      <thead><tr><th>Status</th><th>Når</th><th>Effekt</th></tr></thead>
+      <tbody>
+        <tr><td><span class="kpi-badge green">Good</span></td><td>Alle signaler innenfor rimelige grenser</td><td>Telles fullt i KPI</td></tr>
+        <tr><td><span class="kpi-badge orange">Warning</span></td><td>Mistenkelig (over installert effekt o.l.)</td><td>Telles, men flagges</td></tr>
+        <tr><td><span class="kpi-badge red">Bad</span></td><td>Helt utenfor grense</td><td>Ekskluderes fra KPI</td></tr>
+        <tr><td><span style="background:#9AA5B0;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;">Missing</span></td><td>Ingen prøve på timen</td><td>Ekskluderes</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Globalt filter (topp-baren)</h3>
+    <p>Anlegg + periode lagres i <code>FilterState</code> og persisteres mellom navigeringer. Skjules på admin-sider og data-import. Forvalg: forrige måned for nytt valgt anlegg.</p>
+
+    <h3>Datakilder</h3>
+    <table class="dk-table">
+      <thead><tr><th>Kilde</th><th>Format</th><th>Bruk</th></tr></thead>
+      <tbody>
+        <tr><td>Settlement (KAIA)</td><td>XLSX/CSV per anlegg + måned</td><td>MwhElhub, ProduksjonplanMwh, spotpris</td></tr>
+        <tr><td>SCADA-eksport</td><td>CSV signal-tag per minutt/time</td><td>UnitState, η, vannføring</td></tr>
+        <tr><td>Operlog</td><td>CSV/XLSX hendelses-logg</td><td>Cause-koder, operatør-merknader</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Feilsøking (vanlige avvik)</h3>
+    <table class="dk-table">
+      <thead><tr><th>Symptom</th><th>Årsak</th><th>Løsning</th></tr></thead>
+      <tbody>
+        <tr><td>Tomt KPI-bilde på /portefolje</td><td>Ingen settlement-import dekker valgt periode</td><td>Last opp på /data-import</td></tr>
+        <tr><td>Banner: "Mangler import"</td><td>Hot-folder har ikke fanget filen</td><td>Manuell opplasting + sjekk auto-import-loggen</td></tr>
+        <tr><td>SCADA-data mangler-banner på /effektivitet</td><td>signal_map ikke satt opp for anlegget</td><td>Driftsleder oppretter signal-mapping</td></tr>
+        <tr><td>"Ingen plan-data" på /produksjon</td><td>ProduksjonplanMwh-kolonnen mangler i settlement</td><td>Sjekk Hydrogrid-eksporten</td></tr>
+        <tr><td>Vakt-ROI viser 0 reddet</td><td>Ingen events innenfor vakt-vinduet</td><td>Forventet — det er bra for drift</td></tr>
+        <tr><td>Pending import &gt; 1 minutt på /behandles</td><td>Worker er nede eller henger</td><td>Sjekk worker-loggen i Application Insights</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Rolle-til-side-matrise</h3>
+    <table class="dk-table">
+      <thead><tr><th>Side</th><th>Driftsleder</th><th>Produksjonsleder</th><th>Daglig leder</th></tr></thead>
+      <tbody>
+        <tr><td>/</td><td>Daglig</td><td>Daglig</td><td>Ukentlig</td></tr>
+        <tr><td>/portefolje</td><td>Ukentlig</td><td>Ukentlig</td><td><strong>Månedlig hovedside</strong></td></tr>
+        <tr><td>/nedetid</td><td><strong>Daglig</strong></td><td>Ved hendelse</td><td>Ved drill-down</td></tr>
+        <tr><td>/vakt-roi</td><td>Ukentlig</td><td>—</td><td><strong>Månedlig vurdering</strong></td></tr>
+        <tr><td>/capture-rate</td><td>—</td><td><strong>Ukentlig</strong></td><td>Ved drill-down</td></tr>
+        <tr><td>/produksjon</td><td>—</td><td><strong>Daglig</strong></td><td>—</td></tr>
+        <tr><td>/effektivitet</td><td>Ved revisjon</td><td><strong>Månedlig</strong></td><td>—</td></tr>
+        <tr><td>/data-import</td><td><strong>Daglig</strong></td><td>—</td><td>—</td></tr>
+        <tr><td>/behandles</td><td><strong>Daglig</strong></td><td>—</td><td>—</td></tr>
+        <tr><td>/admin/kategorier</td><td><strong>Vedlikehold</strong></td><td>—</td><td>—</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Tastatursnarveier (nettleser)</h3>
+    <table class="dk-table">
+      <tbody>
+        <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">F</span></td><td>Søk i siden / tabellen</td></tr>
+        <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">P</span></td><td>Skriv ut (PDF) — egen print-CSS gir ryddig utskrift</td></tr>
+        <tr><td><span class="kbd">F5</span></td><td>Tving ny henting (filterstate beholdes)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Integrasjon i appen</h3>
+    <p>Denne manualen er en frittstående HTML-fil i <code>wwwroot/manual/index.html</code>. For å gjøre den synlig fra appen:</p>
+    <pre>// I src/KraftverkUptime.Web/Layout/NavMenu.razor — legg til:
+&lt;MudNavLink Href="manual/" Target="_blank"
+            Icon="@Icons.Material.Filled.MenuBook"&gt;Bruksanvisning&lt;/MudNavLink&gt;</pre>
+    <p>Eller wrap som Razor-side ved å lage <code>Pages/Manual.razor</code> med <code>@page "/manual"</code> og en <code>&lt;iframe src="manual/index.html"&gt;</code>. Dette gir manualen samme topp-bar som resten av appen.</p>
+
+    <div class="dk-callout tip">
+      <strong>Versjons-pinning:</strong> Når funksjoner endres, oppdater feltet "Sist oppdatert" øverst i denne filen og legg til en kort logg under denne seksjonen. Hold gjerne én versjon synket med produksjonsversjonen i appen.
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  KraftverkUptime · Dalane Kraft · Bruksanvisning v1 · Utskrift: <span id="printDate"></span>
+</footer>
+
+<script>
+  // -------- Tab-logikk --------
+  const levelTabs = document.querySelectorAll('#levelTabs .dk-tab');
+  const roleTabs = document.querySelectorAll('#roleTabs .dk-tab');
+  const roleTabBar = document.getElementById('roleTabs');
+
+  let currentLevel = 'quickstart';
+  let currentRole = 'driftsleder';
+
+  function applyVisibility() {
+    document.querySelectorAll('section[data-level]').forEach(s => s.classList.remove('active'));
+
+    if (currentLevel === 'referanse') {
+      // Referanse-nivå har ikke rolle-deling
+      roleTabBar.style.display = 'none';
+      const ref = document.querySelector('section[data-level="referanse"]');
+      if (ref) ref.classList.add('active');
+    } else {
+      roleTabBar.style.display = 'flex';
+      const sel = document.querySelector(
+        `section[data-level="${currentLevel}"][data-role="${currentRole}"]`);
+      if (sel) sel.classList.add('active');
+    }
+  }
+
+  levelTabs.forEach(t => t.addEventListener('click', () => {
+    levelTabs.forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    currentLevel = t.dataset.level;
+    applyVisibility();
+    // Persist valg
+    try { localStorage.setItem('dk-manual-level', currentLevel); } catch (e) {}
+  }));
+
+  roleTabs.forEach(t => t.addEventListener('click', () => {
+    roleTabs.forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    currentRole = t.dataset.role;
+    applyVisibility();
+    try { localStorage.setItem('dk-manual-role', currentRole); } catch (e) {}
+  }));
+
+  // Last lagret valg
+  try {
+    const savedLevel = localStorage.getItem('dk-manual-level');
+    const savedRole = localStorage.getItem('dk-manual-role');
+    if (savedLevel) {
+      const t = document.querySelector(`#levelTabs .dk-tab[data-level="${savedLevel}"]`);
+      if (t) t.click();
+    }
+    if (savedRole) {
+      const t = document.querySelector(`#roleTabs .dk-tab[data-role="${savedRole}"]`);
+      if (t) t.click();
+    }
+  } catch (e) {}
+
+  // Footer-dato
+  document.getElementById('printDate').textContent =
+    new Date().toLocaleDateString('nb-NO', { year: 'numeric', month: 'long', day: 'numeric' });
+</script>
+
+</body>
+</html>

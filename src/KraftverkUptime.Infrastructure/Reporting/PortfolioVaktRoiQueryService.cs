@@ -41,12 +41,12 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
 
     public async Task<PortfolioVaktRoiResponse> GetAsync(
         DateTimeOffset fromUtc, DateTimeOffset toUtc,
-        double kapasitetsfaktor, int topN, CancellationToken ct)
+        int topN, CancellationToken ct)
     {
         if (toUtc <= fromUtc)
         {
             return new PortfolioVaktRoiResponse(
-                fromUtc, toUtc, kapasitetsfaktor,
+                fromUtc, toUtc,
                 PlantCount: 0, PlantsWithData: 0,
                 TotalReddetNok: 0, TotalReddbareEvents: 0, TotalEvents: 0,
                 PerPlant: Array.Empty<PortfolioVaktRoiPlantSummary>(),
@@ -54,7 +54,6 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
                 MonthlyTrend: Array.Empty<PortfolioVaktRoiMonthlyPoint>());
         }
 
-        var faktor = Math.Clamp(kapasitetsfaktor, 0.0, 1.0);
         var topNCapped = Math.Clamp(topN, 1, 100);
 
         var plants = await _db.Plants
@@ -89,6 +88,8 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
                 .ConfigureAwait(false);
             var snittUbalansetillegg = await _nedetid.GetAvgImbalancePremiumAsync(plant.Id, fromUtc, toUtc, ct)
                 .ConfigureAwait(false);
+            var planResult = await _nedetid.GetProduksjonplanByHourAsync(plant.Id, fromUtc, toUtc, ct)
+                .ConfigureAwait(false);
 
             // Per-anlegg overrides for vakt-events i perioden.
             var overrides = await _db.VaktEventOverrides
@@ -100,10 +101,11 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
                 .ConfigureAwait(false);
 
             var roi = _calculator.Calculate(
-                events, plant.InstalledCapacityMw, snittSpot, faktor,
+                events, snittSpot, planResult.PlanByHour,
                 dataset.OverflowHours, overflowDataAvailable: dataset.DataAvailable,
                 snittUbalansetillegg_NokMwh: snittUbalansetillegg,
-                overrides: overrides);
+                overrides: overrides,
+                proxyHours: planResult.ProxyHours);
 
             var plantReddetNok = roi.Sum(r => r.ReddetNok);
             var plantReddbare = roi.Count(r => r.ErInnenforVakt && r.ErReddbar);
@@ -168,7 +170,6 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
         return new PortfolioVaktRoiResponse(
             FromUtc: fromUtc,
             ToUtc: toUtc,
-            Kapasitetsfaktor: faktor,
             PlantCount: plants.Count,
             PlantsWithData: plantsWithData,
             TotalReddetNok: totalReddetNok,

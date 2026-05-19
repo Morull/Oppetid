@@ -41,4 +41,29 @@ public interface INedetidQueryService
         DateTimeOffset fromUtc,
         DateTimeOffset toUtc,
         CancellationToken ct);
+
+    /// <summary>
+    /// Henter Hydrogrid-plan (<c>ProduksjonplanMwh</c>) per UTC-time fra alle
+    /// settlement-imports som overlapper en utvidet variant av [from, to). For
+    /// timer der settlement-data mangler innenfor counterfactual-vinduet, fyller
+    /// tjenesten inn proxy-verdier fra nærmeste samme ukedag/time bakover i tid
+    /// (maks 4 uker tilbake) og rapporterer proxy-timene i <c>ProxyHours</c>.
+    /// Brukes av Vakt-ROI til å verdsette reddet produksjon basert på faktisk
+    /// plan istedenfor en flat <c>installert × kapasitetsfaktor</c>.
+    /// </summary>
+    Task<PlanByHourResult> GetProduksjonplanByHourAsync(
+        string plantId,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        CancellationToken ct);
 }
+
+/// <summary>
+/// Resultat fra <see cref="INedetidQueryService.GetProduksjonplanByHourAsync"/>.
+/// <see cref="PlanByHour"/> dekker <c>[fromUtc, toUtc + counterfactual-buffer)</c>
+/// inkludert proxy-utfylte timer; <see cref="ProxyHours"/> markerer hvilke som
+/// er proxy slik at <see cref="VaktRoiResultat.PlanDataPartial"/> kan settes.
+/// </summary>
+public sealed record PlanByHourResult(
+    IReadOnlyDictionary<DateTimeOffset, double> PlanByHour,
+    IReadOnlySet<DateTimeOffset> ProxyHours);

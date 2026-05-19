@@ -45,14 +45,17 @@
     <MudPaper Class="pa-4 mb-4" Elevation="1">
         <MudGrid>
             <MudItem xs="12" sm="6">
-                <MudNumericField T="double" @bind-Value="_kapasitetsfaktor" Label="Kapasitetsfaktor"
-                                 Min="0.1" Max="1.0" Step="0.05" Format="F2"
-                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
-            </MudItem>
-            <MudItem xs="12" sm="6">
                 <MudNumericField T="double" @bind-Value="_aarligVaktKost" Label="Årlig vakt-kost (NOK)"
                                  Step="50000" Format="N0"
                                  Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                    Reddet produksjon beregnes fra <strong>Hydrogrid-plan per time</strong> (settlement-data),
+                    ikke en flat kapasitetsfaktor. Plan fanger sesongvariasjon i vannføring og marked
+                    direkte. For counterfactual-timer utenfor importert plan brukes proxy fra
+                    nærmeste samme ukedag/time bakover (maks 4 uker).
+                </MudText>
             </MudItem>
         </MudGrid>
     </MudPaper>
@@ -235,10 +238,6 @@ else if (!IsPortfolioMode && _response is not null)
                 <MudText Typo="Typo.body1">@_response.SnittSpotprisNokMwh.ToString("F0") NOK/MWh</MudText>
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Kapasitetsfaktor</MudText>
-                <MudText Typo="Typo.body1">@((_response.Kapasitetsfaktor * 100).ToString("F0")) %</MudText>
-            </MudItem>
-            <MudItem xs="12" sm="6" md="3">
                 <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Snitt RK-tillegg</MudText>
                 <MudText Typo="Typo.body1">@_response.SnittUbalansetilleggNokMwh.ToString("F0") NOK/MWh</MudText>
             </MudItem>
@@ -357,7 +356,6 @@ else if (!IsPortfolioMode && _response is not null)
 @code {
     [Parameter] public string? PlantId { get; set; }
 
-    private double _kapasitetsfaktor = 0.5;
     private double _aarligVaktKost = 200_000;
     private bool _loading;
     private string? _error;
@@ -494,7 +492,7 @@ else if (!IsPortfolioMode && _response is not null)
         {
             var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
             var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
-            _portfolio = await NedetidApi.GetPortfolioVaktRoiAsync(fromUtc, toUtc, _kapasitetsfaktor, topN: 10);
+            _portfolio = await NedetidApi.GetPortfolioVaktRoiAsync(fromUtc, toUtc, topN: 10);
             BuildPortfolioCharts(_portfolio);
         }
         catch (Exception ex)
@@ -519,7 +517,7 @@ else if (!IsPortfolioMode && _response is not null)
         {
             var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
             var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
-            _response = await NedetidApi.GetVaktRoiAsync(Filter.PlantId, fromUtc, toUtc, _kapasitetsfaktor);
+            _response = await NedetidApi.GetVaktRoiAsync(Filter.PlantId, fromUtc, toUtc);
             _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "vakt-roi", fromUtc, toUtc).ToString();
             Filter.StoreVaktRoi(_response);
             BuildCharts(_response);

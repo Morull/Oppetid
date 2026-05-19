@@ -7,12 +7,18 @@ namespace KraftverkUptime.Core.Domain;
 ///
 /// Regnemodellen er bevisst enkel og transparent:
 ///   reddet_timer = max(0, counterfactual_end − faktisk_end)
-///   reddet_mwh   = reddet_timer × snitt_kapasitetsfaktor × InstallertEffektMw
+///   reddet_mwh   = sum(ProduksjonplanMwh for timer i counterfactual som har
+///                       overløp OG ikke er dekket av outage)
 ///   reddet_nok   = reddet_mwh × snitt_spotpris_for_perioden
 ///
 /// "Faktisk_end" hentes fra eventets EndUtc (med vakt-respons allerede iberegnet
 /// i settlement-data — vakt-tjenesten har gjort jobben).
 /// "Counterfactual_end" beregnes fra <c>VaktTidsmodell.NesteArbeidsdagOppstart</c>.
+///
+/// Plan-data (<c>ProduksjonplanMwh</c> fra Hydrogrid-plan) brukes som basis
+/// for reddet produksjon istedenfor flat <c>installertEffektMw × kapasitetsfaktor</c>
+/// — det fanger årstid/vannføring direkte siden plan reflekterer faktisk
+/// vannmengde producer hadde forventet å kjøre på.
 /// </summary>
 public sealed record VaktRoiResultat
 {
@@ -38,9 +44,9 @@ public sealed record VaktRoiResultat
     /// <summary>
     /// Verdien av ubalanse-gebyret vakten reddet. Gjelder ALLE counterfactual-
     /// timer (uavhengig av magasinstand) fordi Spotbud-forpliktelsen står
-    /// uansett. Beregnes som ekstra_timer × effekt × kapasitetsfaktor ×
-    /// snittUbalansetillegg, der snittUbalansetillegg = max(0, avg(RkPris − Spot))
-    /// over perioden.
+    /// uansett. Beregnes som sum(ProduksjonplanMwh for timer ikke dekket av
+    /// outage) × snittUbalansetillegg, der snittUbalansetillegg =
+    /// max(0, avg(RkPris − Spot)) over perioden.
     /// </summary>
     public required double ReddetUbalanse_NOK { get; init; }
 
@@ -54,6 +60,14 @@ public sealed record VaktRoiResultat
 
     /// <summary>True hvis SCADA-data manglet for hele eller deler av counterfactual-perioden.</summary>
     public required bool OverflowDataMissing { get; init; }
+
+    /// <summary>
+    /// True hvis plan-data (<c>ProduksjonplanMwh</c>) manglet for én eller flere
+    /// counterfactual-timer og proxy-fallback (samme ukedag/time bakover) ble
+    /// brukt. UI bør markere eventet slik at drifts-leder vet at tallene er
+    /// estimerte for de manglende timene. Default false.
+    /// </summary>
+    public bool PlanDataPartial { get; init; }
 
     /// <summary>Forklaring for visning: hvorfor eventet ble (eller ikke ble) regnet.</summary>
     public required string Forklaring { get; init; }

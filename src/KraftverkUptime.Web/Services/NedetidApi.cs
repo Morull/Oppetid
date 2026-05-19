@@ -27,16 +27,16 @@ public sealed class NedetidApi
     public async Task<NedetidResponse> GetNedetidAsync(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
     {
-        var url = BuildUrl(plantId, "nedetid", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        var url = BuildUrl(plantId, "nedetid", fromUtc, toUtc, format: null);
         var resp = await _http.GetFromJsonAsync<NedetidResponse>(url, JsonOptions, ct).ConfigureAwait(false);
         return resp ?? throw new InvalidOperationException("Tom respons fra /nedetid.");
     }
 
     public async Task<VaktRoiResponse> GetVaktRoiAsync(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc,
-        double? kapasitetsfaktor = null, CancellationToken ct = default)
+        CancellationToken ct = default)
     {
-        var url = BuildUrl(plantId, "vakt-roi", fromUtc, toUtc, format: null, kapasitetsfaktor);
+        var url = BuildUrl(plantId, "vakt-roi", fromUtc, toUtc, format: null);
         var resp = await _http.GetFromJsonAsync<VaktRoiResponse>(url, JsonOptions, ct).ConfigureAwait(false);
         return resp ?? throw new InvalidOperationException("Tom respons fra /vakt-roi.");
     }
@@ -44,7 +44,7 @@ public sealed class NedetidApi
     public async Task<EffektivitetResponse> GetEffektivitetAsync(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
     {
-        var url = BuildUrl(plantId, "effektivitet", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        var url = BuildUrl(plantId, "effektivitet", fromUtc, toUtc, format: null);
         var resp = await _http.GetFromJsonAsync<EffektivitetResponse>(url, JsonOptions, ct).ConfigureAwait(false);
         return resp ?? throw new InvalidOperationException("Tom respons fra /effektivitet.");
     }
@@ -92,11 +92,10 @@ public sealed class NedetidApi
     /// </summary>
     public async Task<PortfolioVaktRoiResponse> GetPortfolioVaktRoiAsync(
         DateTimeOffset fromUtc, DateTimeOffset toUtc,
-        double kapasitetsfaktor = 0.5, int topN = 10, CancellationToken ct = default)
+        int topN = 10, CancellationToken ct = default)
     {
         var qs = $"from={Uri.EscapeDataString(fromUtc.UtcDateTime.ToString("o"))}"
                + $"&to={Uri.EscapeDataString(toUtc.UtcDateTime.ToString("o"))}"
-               + $"&kapasitetsfaktor={kapasitetsfaktor.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}"
                + $"&topN={topN}";
         var resp = await _http
             .GetFromJsonAsync<PortfolioVaktRoiResponse>($"api/v1/portfolio/vakt-roi?{qs}", JsonOptions, ct)
@@ -107,7 +106,7 @@ public sealed class NedetidApi
     public async Task<CaptureRateResultDto> GetCaptureRateAsync(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
     {
-        var url = BuildUrl(plantId, "capture-rate", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        var url = BuildUrl(plantId, "capture-rate", fromUtc, toUtc, format: null);
         var resp = await _http.GetFromJsonAsync<CaptureRateResultDto>(url, JsonOptions, ct).ConfigureAwait(false);
         return resp ?? throw new InvalidOperationException("Tom respons fra /capture-rate.");
     }
@@ -115,7 +114,7 @@ public sealed class NedetidApi
     public async Task<IReadOnlyList<MonthlyCaptureRateDto>> GetCaptureRateMonthlyAsync(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
     {
-        var url = BuildUrl(plantId, "capture-rate/monthly", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        var url = BuildUrl(plantId, "capture-rate/monthly", fromUtc, toUtc, format: null);
         var resp = await _http.GetFromJsonAsync<List<MonthlyCaptureRateDto>>(url, JsonOptions, ct).ConfigureAwait(false);
         return resp ?? new List<MonthlyCaptureRateDto>();
     }
@@ -123,7 +122,7 @@ public sealed class NedetidApi
     public async Task<IReadOnlyList<DailyCaptureRateDto>> GetCaptureRateDailyAsync(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
     {
-        var url = BuildUrl(plantId, "capture-rate/daily", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        var url = BuildUrl(plantId, "capture-rate/daily", fromUtc, toUtc, format: null);
         var resp = await _http.GetFromJsonAsync<List<DailyCaptureRateDto>>(url, JsonOptions, ct).ConfigureAwait(false);
         return resp ?? new List<DailyCaptureRateDto>();
     }
@@ -132,7 +131,7 @@ public sealed class NedetidApi
     public async Task<ProduksjonAnalyseDto> GetProduksjonAnalyseAsync(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
     {
-        var url = BuildUrl(plantId, "produksjon-analyse", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        var url = BuildUrl(plantId, "produksjon-analyse", fromUtc, toUtc, format: null);
         var resp = await _http.GetFromJsonAsync<ProduksjonAnalyseDto>(url, JsonOptions, ct).ConfigureAwait(false);
         return resp ?? throw new InvalidOperationException("Tom respons fra /produksjon-analyse.");
     }
@@ -141,7 +140,7 @@ public sealed class NedetidApi
     public async Task<DataQualitySummaryDto?> GetDataQualityAsync(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
     {
-        var url = BuildUrl(plantId, "data-quality", fromUtc, toUtc, format: null, kapasitetsfaktor: null);
+        var url = BuildUrl(plantId, "data-quality", fromUtc, toUtc, format: null);
         try
         {
             return await _http.GetFromJsonAsync<DataQualitySummaryDto>(url, JsonOptions, ct).ConfigureAwait(false);
@@ -381,22 +380,18 @@ public sealed class NedetidApi
     public Uri BuildCsvUri(string plantId, string endpoint, DateTimeOffset fromUtc, DateTimeOffset toUtc)
     {
         var baseAddress = _http.BaseAddress ?? throw new InvalidOperationException("HttpClient mangler BaseAddress.");
-        var rel = BuildUrl(plantId, endpoint, fromUtc, toUtc, format: "csv", kapasitetsfaktor: null);
+        var rel = BuildUrl(plantId, endpoint, fromUtc, toUtc, format: "csv");
         return new Uri(baseAddress, rel);
     }
 
     private static string BuildUrl(string plantId, string endpoint,
-        DateTimeOffset fromUtc, DateTimeOffset toUtc, string? format, double? kapasitetsfaktor)
+        DateTimeOffset fromUtc, DateTimeOffset toUtc, string? format)
     {
         var qs = $"from={Uri.EscapeDataString(fromUtc.UtcDateTime.ToString("o"))}"
                + $"&to={Uri.EscapeDataString(toUtc.UtcDateTime.ToString("o"))}";
         if (!string.IsNullOrEmpty(format))
         {
             qs += $"&format={Uri.EscapeDataString(format)}";
-        }
-        if (kapasitetsfaktor.HasValue)
-        {
-            qs += $"&kapasitetsfaktor={kapasitetsfaktor.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
         }
         return $"api/v1/plants/{Uri.EscapeDataString(plantId)}/{endpoint}?{qs}";
     }
@@ -448,7 +443,8 @@ public sealed record VaktRoiEventDto(
     double ReddetUbalanse_NOK,
     int OverflowTimerInCounterfactual,
     bool OverflowDataMissing,
-    string Forklaring);
+    string Forklaring,
+    bool PlanDataPartial = false);
 
 public sealed record PortfolioKpiResponse(
     DateTimeOffset FromUtc,
@@ -467,7 +463,6 @@ public sealed record PortfolioPlantKpi(
 public sealed record PortfolioVaktRoiResponse(
     DateTimeOffset FromUtc,
     DateTimeOffset ToUtc,
-    double Kapasitetsfaktor,
     int PlantCount,
     int PlantsWithData,
     double TotalReddetNok,
@@ -619,7 +614,6 @@ public sealed record VaktRoiResponse(
     double InstallertEffektMw,
     double SnittSpotprisNokMwh,
     double SnittUbalansetilleggNokMwh,
-    double Kapasitetsfaktor,
     int AntallEventsTotalt,
     int AntallReddbareInnenforVakt,
     double TotalReddetMwh,

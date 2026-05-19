@@ -13,7 +13,6 @@ public interface IPortfolioVaktRoiQueryService
 {
     Task<PortfolioVaktRoiResponse> GetAsync(
         DateTimeOffset fromUtc, DateTimeOffset toUtc,
-        double kapasitetsfaktor,
         int topN,
         CancellationToken ct);
 }
@@ -24,7 +23,6 @@ public interface IPortfolioVaktRoiQueryService
 public sealed record PortfolioVaktRoiResponse(
     DateTimeOffset FromUtc,
     DateTimeOffset ToUtc,
-    double Kapasitetsfaktor,
     int PlantCount,
     int PlantsWithData,
     double TotalReddetNok,

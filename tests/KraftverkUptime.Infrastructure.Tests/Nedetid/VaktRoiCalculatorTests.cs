@@ -13,6 +13,12 @@ namespace KraftverkUptime.Infrastructure.Tests.Nedetid;
 ///
 /// Etter spec 2026-04-29 forutsetter alle ROI-tester at counterfactual-perioden
 /// hadde overløp i magasinet. Tester uten overløp gir per definisjon null ROI.
+///
+/// Etter signatur-endring 2026-05-19 tar <see cref="VaktRoiCalculator.Calculate"/>
+/// en plan-dictionary per UTC-time istedenfor flat (installertEffekt × kapasitetsfaktor).
+/// Testene bruker hjelperen <see cref="PlanFlat"/> for å bygge en konstant plan-verdi
+/// per time, slik at de gamle test-forventningene (basert på flat utnyttelse) fortsatt
+/// holder math-ekvivalent.
 /// </summary>
 public class VaktRoiCalculatorTests
 {
@@ -37,6 +43,27 @@ public class VaktRoiCalculatorTests
         return set;
     }
 
+    /// <summary>
+    /// Bygger en plan-dictionary med konstant MWh-verdi for hver hel klokketime i
+    /// counterfactual-vinduet (typisk fra eventets start til neste arbeidsdag 08:00).
+    /// Returnerer "installert × kapasitetsfaktor" som flat verdi per time så
+    /// summen i den nye plan-baserte formelen matcher de gamle test-forventningene.
+    /// </summary>
+    private static IReadOnlyDictionary<DateTimeOffset, double> PlanFlat(
+        DateTimeOffset fromUtc, DateTimeOffset toUtc, double mwhPerHour)
+    {
+        var dict = new Dictionary<DateTimeOffset, double>();
+        var u = fromUtc.UtcDateTime;
+        var startHour = new DateTimeOffset(u.Year, u.Month, u.Day, u.Hour, 0, 0, TimeSpan.Zero);
+        // Utvid forover for å dekke counterfactual-end (max ~3 dager etter event)
+        var endHour = toUtc.AddDays(3);
+        for (var h = startHour; h < endHour; h = h.AddHours(1))
+        {
+            dict[h] = mwhPerHour;
+        }
+        return dict;
+    }
+
     [Fact]
     public void Trip_Innenfor_Vakt_Onsdag_Beregner_ROI_Med_Overlop()
     {
@@ -56,11 +83,14 @@ public class VaktRoiCalculatorTests
 
         var counterfactualEnd = OsloLokal(2026, 2, 5, 8);
         var overflow = OverflowAlleTimer(ev.EndUtc, counterfactualEnd);
+        var plan = PlanFlat(ev.StartUtc, counterfactualEnd, 2.2 * 0.5);
 
         var calc = new VaktRoiCalculator();
-        var roi = calc.Calculate(new[] { ev }, installertEffektMw: 2.2,
-            snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
-            overflowHours: overflow, overflowDataAvailable: true);
+        var roi = calc.Calculate(new[] { ev },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true);
 
         roi.Should().HaveCount(1);
         var r = roi[0];
@@ -102,8 +132,13 @@ public class VaktRoiCalculatorTests
             TapMwh = 1.0, TapNok = 850, TimerSettlement = 2,
         };
 
+        var counterfactualEnd = OsloLokal(2026, 2, 5, 8);
+        var plan = PlanFlat(ev.StartUtc, counterfactualEnd, 2.2 * 0.5);
+
         var calc = new VaktRoiCalculator();
-        var roi = calc.Calculate(new[] { ev }, 2.2, 850, 0.5,
+        var roi = calc.Calculate(new[] { ev },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
             overflowHours: new HashSet<DateTimeOffset>(),
             overflowDataAvailable: true);
 
@@ -137,10 +172,14 @@ public class VaktRoiCalculatorTests
         var counterfactualEnd = OsloLokal(2026, 2, 5, 8);
         var alle = OverflowAlleTimer(ev.EndUtc, counterfactualEnd).ToList();
         var halvt = alle.Take(6).ToHashSet();
+        var plan = PlanFlat(ev.StartUtc, counterfactualEnd, 2.2 * 0.5);
 
         var calc = new VaktRoiCalculator();
-        var roi = calc.Calculate(new[] { ev }, 2.2, 850, 0.5,
-            overflowHours: halvt, overflowDataAvailable: true);
+        var roi = calc.Calculate(new[] { ev },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: halvt,
+            overflowDataAvailable: true);
 
         var r = roi[0];
         r.OverflowTimerInCounterfactual.Should().Be(6);
@@ -162,8 +201,13 @@ public class VaktRoiCalculatorTests
             TapMwh = 1.0, TapNok = 850, TimerSettlement = 2,
         };
 
+        var counterfactualEnd = OsloLokal(2026, 2, 5, 8);
+        var plan = PlanFlat(ev.StartUtc, counterfactualEnd, 2.2 * 0.5);
+
         var calc = new VaktRoiCalculator();
-        var roi = calc.Calculate(new[] { ev }, 2.2, 850, 0.5,
+        var roi = calc.Calculate(new[] { ev },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
             overflowHours: new HashSet<DateTimeOffset>(),
             overflowDataAvailable: false);
 
@@ -188,8 +232,12 @@ public class VaktRoiCalculatorTests
             TapMwh = 1.0, TapNok = 500, TimerSettlement = 1,
         };
 
+        var plan = PlanFlat(ev.StartUtc, ev.EndUtc.AddDays(2), 2.2 * 0.5);
+
         var calc = new VaktRoiCalculator();
-        var roi = calc.Calculate(new[] { ev }, 2.2, 850);
+        var roi = calc.Calculate(new[] { ev },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan);
 
         roi[0].ErInnenforVakt.Should().BeFalse();
         roi[0].ReddetNok.Should().Be(0);
@@ -224,12 +272,12 @@ public class VaktRoiCalculatorTests
         // Selv med rikelig overflow-data og ubalansetillegg skal ROI være 0
         var counterfactual = OsloLokal(2026, 2, 5, 8);
         var overflow = OverflowAlleTimer(ev.StartUtc, counterfactual);
+        var plan = PlanFlat(ev.StartUtc, counterfactual, 2.2 * 0.5);
 
         var calc = new VaktRoiCalculator();
         var roi = calc.Calculate(new[] { ev },
-            installertEffektMw: 2.2,
             snittSpotprisNokMwh: 850,
-            kapasitetsfaktor: 0.5,
+            planByHour: plan,
             overflowHours: overflow,
             overflowDataAvailable: true,
             snittUbalansetillegg_NokMwh: 200);
@@ -259,8 +307,12 @@ public class VaktRoiCalculatorTests
             TapMwh = 2.0, TapNok = 1700, TimerSettlement = 2,
         };
 
+        var plan = PlanFlat(ev.StartUtc, ev.EndUtc.AddDays(2), 2.2 * 0.5);
+
         var calc = new VaktRoiCalculator();
-        var roi = calc.Calculate(new[] { ev }, 2.2, 850);
+        var roi = calc.Calculate(new[] { ev },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan);
 
         roi[0].ErInnenforVakt.Should().BeTrue();
         roi[0].ErReddbar.Should().BeFalse();
@@ -284,8 +336,12 @@ public class VaktRoiCalculatorTests
         };
 
         // Selv med overløp i hele perioden — ekstraTimer = 0 betyr ingen ROI.
+        var plan = PlanFlat(ev.StartUtc, ev.EndUtc, 2.2 * 0.5);
+
         var calc = new VaktRoiCalculator();
-        var roi = calc.Calculate(new[] { ev }, 2.2, 850, 0.5,
+        var roi = calc.Calculate(new[] { ev },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
             overflowHours: OverflowAlleTimer(ev.StartUtc, ev.EndUtc),
             overflowDataAvailable: true);
 
@@ -312,10 +368,14 @@ public class VaktRoiCalculatorTests
 
         var counterfactualEnd = OsloLokal(2026, 2, 9, 8);
         var overflow = OverflowAlleTimer(ev.EndUtc, counterfactualEnd);
+        var plan = PlanFlat(ev.StartUtc, counterfactualEnd, 2.2 * 0.5);
 
         var calc = new VaktRoiCalculator();
-        var roi = calc.Calculate(new[] { ev }, 2.2, 850, 0.5,
-            overflowHours: overflow, overflowDataAvailable: true);
+        var roi = calc.Calculate(new[] { ev },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true);
 
         roi[0].EkstraTimerSpart.Should().BeApproximately(43.0, 0.01); // 13:00 lørdag → 08:00 mandag
         roi[0].OverflowTimerInCounterfactual.Should().Be(43);
@@ -339,18 +399,24 @@ public class VaktRoiCalculatorTests
         };
         var counterfactualEnd = OsloLokal(2026, 2, 5, 8);
         var overflow = OverflowAlleTimer(ev.EndUtc, counterfactualEnd);
+        var plan = PlanFlat(ev.StartUtc, counterfactualEnd, 2.2 * 0.5);
 
         var calc = new VaktRoiCalculator();
         var roi = calc.Calculate(new[] { ev },
-            installertEffektMw: 2.2, snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
-            overflowHours: overflow, overflowDataAvailable: true,
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true,
             snittUbalansetillegg_NokMwh: 200);
 
         var r = roi[0];
         // Produksjon: 15 t × 2.2 × 0.5 × 850 = 14 025 NOK
         r.ReddetProduksjon_NOK.Should().BeApproximately(15 * 2.2 * 0.5 * 850, 1.0);
-        // Ubalanse: 14.5 t (ekstra) × 2.2 × 0.5 × 200 = 3 190 NOK
-        r.ReddetUbalanse_NOK.Should().BeApproximately(14.5 * 2.2 * 0.5 * 200, 1.0);
+        // Ubalanse: 15 hele timer (gulv-kvantisert) × 2.2 × 0.5 × 200 = 3 300 NOK
+        // (gammel formel brukte 14.5 t kontinuerlig, men plan summeres per hele time
+        // — counterfactual-vinduet dekker timene 16:00..07:00 = 16 hele timer minus
+        // outage-timene 16-17, dvs. 15 timer plan-bidrag).
+        r.ReddetUbalanse_NOK.Should().BeApproximately(15 * 2.2 * 0.5 * 200, 1.0);
         // Total = sum
         r.ReddetNok.Should().BeApproximately(r.ReddetProduksjon_NOK + r.ReddetUbalanse_NOK, 0.01);
         r.Forklaring.Should().Contain("Ubalanse-gebyr");
@@ -371,16 +437,22 @@ public class VaktRoiCalculatorTests
             TapMwh = 1.0, TapNok = 850, TimerSettlement = 2,
         };
 
+        var counterfactualEnd = OsloLokal(2026, 2, 5, 8);
+        var plan = PlanFlat(ev.StartUtc, counterfactualEnd, 2.2 * 0.5);
+
         var calc = new VaktRoiCalculator();
         var roi = calc.Calculate(new[] { ev },
-            installertEffektMw: 2.2, snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
-            overflowHours: new HashSet<DateTimeOffset>(), overflowDataAvailable: true,
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: new HashSet<DateTimeOffset>(),
+            overflowDataAvailable: true,
             snittUbalansetillegg_NokMwh: 200);
 
         var r = roi[0];
         r.ReddetProduksjon_NOK.Should().Be(0);
-        r.ReddetUbalanse_NOK.Should().BeApproximately(14.5 * 2.2 * 0.5 * 200, 1.0);
-        r.ReddetNok.Should().BeApproximately(14.5 * 2.2 * 0.5 * 200, 1.0);
+        // Plan summeres per hele time: 15 timer i counterfactual-vinduet utenfor outage.
+        r.ReddetUbalanse_NOK.Should().BeApproximately(15 * 2.2 * 0.5 * 200, 1.0);
+        r.ReddetNok.Should().BeApproximately(15 * 2.2 * 0.5 * 200, 1.0);
         r.Forklaring.Should().Contain("ingen overløp");
         r.Forklaring.Should().Contain("ubalanse-gebyret");
     }
@@ -401,16 +473,22 @@ public class VaktRoiCalculatorTests
             TapMwh = 1.0, TapNok = 850, TimerSettlement = 2,
         };
 
+        var counterfactualEnd = OsloLokal(2026, 2, 5, 8);
+        var plan = PlanFlat(ev.StartUtc, counterfactualEnd, 2.2 * 0.5);
+
         var calc = new VaktRoiCalculator();
         var roi = calc.Calculate(new[] { ev },
-            installertEffektMw: 2.2, snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
-            overflowHours: new HashSet<DateTimeOffset>(), overflowDataAvailable: false,
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: new HashSet<DateTimeOffset>(),
+            overflowDataAvailable: false,
             snittUbalansetillegg_NokMwh: 200);
 
         var r = roi[0];
         r.OverflowDataMissing.Should().BeTrue();
         r.ReddetProduksjon_NOK.Should().Be(0);
-        r.ReddetUbalanse_NOK.Should().BeApproximately(14.5 * 2.2 * 0.5 * 200, 1.0);
+        // 15 hele timer plan-bidrag (gulv-kvantisert) × 2.2 × 0.5 × 200
+        r.ReddetUbalanse_NOK.Should().BeApproximately(15 * 2.2 * 0.5 * 200, 1.0);
         r.Forklaring.Should().Contain("SCADA mangler");
         r.Forklaring.Should().Contain("Ubalanse");
     }
@@ -429,9 +507,12 @@ public class VaktRoiCalculatorTests
             TapMwh = 1.0, TapNok = 850, TimerSettlement = 2,
         };
 
+        var plan = PlanFlat(ev.StartUtc, ev.EndUtc.AddDays(2), 2.2 * 0.5);
+
         var calc = new VaktRoiCalculator();
         FluentActions.Invoking(() => calc.Calculate(new[] { ev },
-            installertEffektMw: 2.2, snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
             snittUbalansetillegg_NokMwh: -100))
             .Should().Throw<ArgumentOutOfRangeException>();
     }
@@ -470,11 +551,14 @@ public class VaktRoiCalculatorTests
         // Begge har samme counterfactualEnd: mandag 23.02 08:00 lokal
         var counterfactualEnd = OsloLokal(2026, 2, 23, 8);
         var overflow = OverflowAlleTimer(event1.StartUtc, counterfactualEnd);
+        var plan = PlanFlat(event1.StartUtc, counterfactualEnd, 2.2 * 0.5);
 
         var calc = new VaktRoiCalculator();
         var roi = calc.Calculate(new[] { event1, event2 },
-            installertEffektMw: 2.2, snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
-            overflowHours: overflow, overflowDataAvailable: true);
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true);
 
         roi.Should().HaveCount(2);
         var leader = roi.First(r => ReferenceEquals(r.Event, event1));
@@ -504,11 +588,14 @@ public class VaktRoiCalculatorTests
 
         var counterfactualEnd = OsloLokal(2026, 2, 23, 8);
         var overflow = OverflowAlleTimer(e1.StartUtc, counterfactualEnd);
+        var plan = PlanFlat(e1.StartUtc, counterfactualEnd, 2.2 * 0.5);
 
         var calc = new VaktRoiCalculator();
         var roi = calc.Calculate(new[] { e1, e2, e3 },
-            installertEffektMw: 2.2, snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
-            overflowHours: overflow, overflowDataAvailable: true);
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true);
 
         var leader = roi.First(r => ReferenceEquals(r.Event, e1));
         // Vindu = lør 16:00 → man 08:00 = 40 t. Minus 4 t union = 36 t.
@@ -526,14 +613,16 @@ public class VaktRoiCalculatorTests
         var e1 = MakeEvent(OsloLokal(2026, 2, 14, 16), OsloLokal(2026, 2, 14, 17)); // helg 1
         var e2 = MakeEvent(OsloLokal(2026, 2, 21, 16), OsloLokal(2026, 2, 21, 17)); // helg 2
 
-        var counterfactual1 = OsloLokal(2026, 2, 16, 8); // 14.02 lør → 16.02 man
         var counterfactual2 = OsloLokal(2026, 2, 23, 8);
         var overflow = OverflowAlleTimer(e1.StartUtc, counterfactual2);
+        var plan = PlanFlat(e1.StartUtc, counterfactual2, 2.2 * 0.5);
 
         var calc = new VaktRoiCalculator();
         var roi = calc.Calculate(new[] { e1, e2 },
-            installertEffektMw: 2.2, snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
-            overflowHours: overflow, overflowDataAvailable: true);
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true);
 
         // Begge er ledere for sin gruppe — begge får full ROI
         roi.Should().HaveCount(2);
@@ -568,11 +657,14 @@ public class VaktRoiCalculatorTests
 
         var counterfactual = OsloLokal(2026, 2, 23, 8);
         var overflow = OverflowAlleTimer(e1.StartUtc, counterfactual);
+        var plan = PlanFlat(e1.StartUtc, counterfactual, 2.2 * 0.5);
 
         var calc = new VaktRoiCalculator();
         var roi = calc.Calculate(new[] { e1, e2 },
-            installertEffektMw: 2.2, snittSpotprisNokMwh: 850, kapasitetsfaktor: 0.5,
-            overflowHours: overflow, overflowDataAvailable: true);
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true);
 
         // Begge får sin egen ROI siden de er forskjellige plants
         roi.Should().HaveCount(2);
@@ -581,6 +673,44 @@ public class VaktRoiCalculatorTests
             r.ErReddbar.Should().BeTrue();
             r.EkstraTimerSpart.Should().BeGreaterThan(0);
         });
+    }
+
+    [Fact]
+    public void PlanDataPartial_FlaggesNaarProxyHoursTreffer_CounterfactualVindu()
+    {
+        // Event onsdag kveld → counterfactual = torsdag 08:00.
+        // Vi gir plan for hele vinduet, men markerer noen av timene som proxy.
+        var ev = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 2, 4, 18),
+            EndUtc = OsloLokal(2026, 2, 4, 19),
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            TapMwh = 1.0, TapNok = 850, TimerSettlement = 1,
+        };
+        var cfEnd = OsloLokal(2026, 2, 5, 8);
+        var plan = PlanFlat(ev.StartUtc, cfEnd, mwhPerHour: 1.1);
+        var overflow = OverflowAlleTimer(ev.EndUtc, cfEnd);
+
+        // Marker tre timer i counterfactual-perioden som proxy.
+        var proxyHours = new HashSet<DateTimeOffset>
+        {
+            OsloLokal(2026, 2, 5, 5),
+            OsloLokal(2026, 2, 5, 6),
+            OsloLokal(2026, 2, 5, 7),
+        };
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { ev },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true,
+            proxyHours: proxyHours);
+
+        roi[0].PlanDataPartial.Should().BeTrue();
+        roi[0].Forklaring.Should().Contain("proxy");
     }
 
     private static DowntimeEvent MakeEvent(DateTimeOffset start, DateTimeOffset end)

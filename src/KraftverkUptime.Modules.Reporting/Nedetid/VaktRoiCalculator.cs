@@ -7,14 +7,25 @@ namespace KraftverkUptime.Modules.Reporting.Nedetid;
 /// Beregner Vakt-ROI per nedetids-event:
 ///
 ///   ekstra_timer_spart = max(0, counterfactual_end − faktisk_end)
-///   reddbare_timer     = antall timer i counterfactual som hadde overløp
-///   reddet_mwh         = reddbare_timer × installert_effekt_mw × kapasitetsfaktor
+///   reddet_mwh         = sum(ProduksjonplanMwh for timer i counterfactual som
+///                              hadde overløp OG ikke er dekket av outage)
+///   ubalanse_mwh       = sum(ProduksjonplanMwh for timer i counterfactual som
+///                              ikke er dekket av outage)
 ///   reddet_nok         = reddet_mwh × snitt_spotpris_for_perioden
+///                      + ubalanse_mwh × snitt_ubalansetillegg
 ///
 /// "Faktisk_end" hentes fra event.EndUtc — dette er tiden FAKTISK, med vakt-respons
 /// allerede iberegnet fordi vakt-tjenesten har gjort jobben.
 /// "Counterfactual_end" beregnes fra <see cref="VaktTidsmodell.NesteArbeidsdagOppstart"/>:
 /// neste arbeidsdag kl. 08:00 lokal tid.
+///
+/// Plan-data (<c>ProduksjonplanMwh</c> fra Hydrogrid-plan) brukes som basis
+/// istedenfor en flat <c>installertEffektMw × kapasitetsfaktor</c>. Plan
+/// reflekterer faktisk vannmengde/markedssituasjon producer hadde forventet
+/// å kjøre på, så det fanger sesongvariasjon automatisk. For events der
+/// counterfactual-vinduet strekker seg forbi importert settlement-data,
+/// brukes nærmeste samme-ukedag/time bakover i tid som proxy (maks 4 ukers
+/// vindu); slike events flagges med <see cref="VaktRoiResultat.PlanDataPartial"/>.
 ///
 /// Overløps-justering (spec 2026-04-29): Vakt-ROI gjelder kun timer der det var
 /// overløp i magasinet i counterfactual-perioden. Hvis det ikke var overløp,
@@ -58,18 +69,19 @@ public sealed class VaktRoiCalculator
     /// Kjører ROI-beregning for et sett events.
     /// </summary>
     /// <param name="events">Aggregerte downtime-events fra <see cref="INedetidQueryService"/>.</param>
-    /// <param name="installertEffektMw">Plant-kapasitet i MW. Brukes til å estimere reddet produksjon.</param>
     /// <param name="snittSpotprisNokMwh">
     /// Gjennomsnittlig spotpris for perioden i NOK/MWh. Brukes til å verdsette
     /// "ekstra timer" som ville oppstått uten vakt — disse timene ligger per
     /// definisjon utenfor settlement-vinduet og har ikke kjent spotpris, så
     /// vi bruker periodens snitt som beste tilgjengelige estimat.
     /// </param>
-    /// <param name="kapasitetsfaktor">
-    /// Forventet utnyttelses-grad for de "ekstra timene". For norske
-    /// elvekraftverk: typisk 0.4-0.6 over et år, men kan være lavere i tørre
-    /// perioder. v1-default 0.5; bedre estimat kan beregnes per anlegg fra
-    /// historikk i v2.
+    /// <param name="planByHour">
+    /// Plan-data: <c>ProduksjonplanMwh</c> per UTC-time-presisjon. Dekker
+    /// både settlement-perioden og counterfactual-utvidelsen (typisk
+    /// fromUtc til toUtc + 3 dager for å fange counterfactual-end). Verdier
+    /// for timer der settlement-data manglet er allerede fylt inn av tjenesten
+    /// via proxy-fallback (samme ukedag/time bakover). Bruk
+    /// <paramref name="proxyHours"/> til å vite hvilke som er proxy-utfylt.
     /// </param>
     /// <param name="overflowHours">
     /// Settet av timer (UTC, time-presisjon) i counterfactual-perioden der
@@ -97,24 +109,30 @@ public sealed class VaktRoiCalculator
     /// komponent til 0). Events uten override (eller med "Auto") bruker
     /// SCADA-overflow-data som vanlig.
     /// </param>
+    /// <param name="proxyHours">
+    /// Settet av timer der <paramref name="planByHour"/>-verdien er proxy-utfylt
+    /// (samme ukedag/time bakover i tid, opptil 4 uker). Events som har ≥ 1
+    /// counterfactual-time i dette settet flagges med
+    /// <see cref="VaktRoiResultat.PlanDataPartial"/>. Null = ingen proxy-info
+    /// (alle hours regnes som direkte plan-data).
+    /// </param>
     public IReadOnlyList<VaktRoiResultat> Calculate(
         IReadOnlyList<DowntimeEvent> events,
-        double installertEffektMw,
         double snittSpotprisNokMwh,
-        double kapasitetsfaktor = 0.5,
+        IReadOnlyDictionary<DateTimeOffset, double> planByHour,
         IReadOnlySet<DateTimeOffset>? overflowHours = null,
         bool overflowDataAvailable = false,
         double snittUbalansetillegg_NokMwh = 0,
-        IReadOnlyDictionary<DateTimeOffset, string>? overrides = null)
+        IReadOnlyDictionary<DateTimeOffset, string>? overrides = null,
+        IReadOnlySet<DateTimeOffset>? proxyHours = null)
     {
         ArgumentNullException.ThrowIfNull(events);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(installertEffektMw);
-        ArgumentOutOfRangeException.ThrowIfNegative(kapasitetsfaktor);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(kapasitetsfaktor, 1.0);
+        ArgumentNullException.ThrowIfNull(planByHour);
         ArgumentOutOfRangeException.ThrowIfNegative(snittUbalansetillegg_NokMwh);
 
         overflowHours ??= new HashSet<DateTimeOffset>();
         overrides ??= new Dictionary<DateTimeOffset, string>();
+        proxyHours ??= new HashSet<DateTimeOffset>();
 
         // Pass 1: klassifiser hvert event (utenfor-vakt / ikke-reddbar / reddbar)
         // og lag en arbeidsliste med counterfactualEnd per reddbar event.
@@ -151,10 +169,9 @@ public sealed class VaktRoiCalculator
         // hvilket event er "leder" (først i tid).
         //
         // Ekstra timer beregnes kontinuerlig (brøk-timer beholdes) slik at
-        // ubalanse-komponenten matcher den eksakte tiden plantet er oppe.
-        // Overflow telles per hele klokketime (gulv-kvantisert) fordi
-        // overflow-data leveres per-time fra SCADA. Dette er semantisk likt
-        // som gammel single-event-kalkulator, men generaliserer til grupper.
+        // BuildForklaring kan vise nøyaktig tid plantet ville stått.
+        // Plan-summering går per hele klokketime (gulv-kvantisert) fordi
+        // plan-data leveres per-time fra settlement.
         var groupRoi = new Dictionary<(string, DateTimeOffset), GroupRoi>(groups.Count);
         foreach (var (key, members) in groups)
         {
@@ -192,8 +209,8 @@ public sealed class VaktRoiCalculator
             var windowHours = (counterfactualEnd - leaderStart).TotalHours;
             var savedHours = Math.Max(0, windowHours - totalOutageHours);
 
-            // Overflow: gulv-kvantiserte timer i vinduet som IKKE er dekket av
-            // noe outage-intervall. Match SCADA-time-aggregat-modellen.
+            // Bygg gulv-kvantisert outage-set så vi vet hvilke hele klokketimer
+            // som er dekket av nedetid (= ikke skal telles som "reddet").
             var outageHourSet = new HashSet<DateTimeOffset>();
             foreach (var iv in merged)
             {
@@ -201,13 +218,32 @@ public sealed class VaktRoiCalculator
                 var hEnd = FloorToHour(iv.End);
                 for (var h = hStart; h < hEnd; h = h.AddHours(1)) outageHourSet.Add(h);
             }
-            var savedOverflowHours = 0;
+
+            // Pass over hele counterfactual-vinduet: summer plan per time
+            // for overflow-redning og ubalanse-redning separat.
             var leaderStartHour = FloorToHour(leaderStart);
             var counterfactualHour = FloorToHour(counterfactualEnd);
+            double reddetMwh = 0;
+            double ubalanseMwh = 0;
+            var savedOverflowHours = 0;
+            var anyProxyHour = false;
             for (var h = leaderStartHour; h < counterfactualHour; h = h.AddHours(1))
             {
                 if (outageHourSet.Contains(h)) continue;
-                if (overflowHours.Contains(h)) savedOverflowHours++;
+                var planForHour = planByHour.TryGetValue(h, out var pv) ? pv : 0.0;
+                if (planForHour < 0) planForHour = 0; // beskytt mot rare verdier
+                if (proxyHours.Contains(h)) anyProxyHour = true;
+
+                // Ubalanse-komponenten gjelder ALLE counterfactual-timer
+                // (uavhengig av overflow) fordi Spotbud-forpliktelsen står.
+                ubalanseMwh += planForHour;
+
+                // Produksjons-komponenten gjelder bare timer med overløp.
+                if (overflowHours.Contains(h))
+                {
+                    reddetMwh += planForHour;
+                    savedOverflowHours++;
+                }
             }
 
             // Manuell override per leder-event: drifts-leder kan tvinge full
@@ -220,14 +256,20 @@ public sealed class VaktRoiCalculator
                 case "HaddeOverlop":
                     // Tving full produksjons-redding: alle ekstra-timer regnes
                     // som overflow (counterfactual-vindu minus outage, gulv-kvantisert).
+                    reddetMwh = 0;
                     savedOverflowHours = 0;
                     for (var h = leaderStartHour; h < counterfactualHour; h = h.AddHours(1))
                     {
-                        if (!outageHourSet.Contains(h)) savedOverflowHours++;
+                        if (outageHourSet.Contains(h)) continue;
+                        var planForHour = planByHour.TryGetValue(h, out var pv) ? pv : 0.0;
+                        if (planForHour < 0) planForHour = 0;
+                        reddetMwh += planForHour;
+                        savedOverflowHours++;
                     }
                     overflowOverridden = true;
                     break;
                 case "IkkeOverlop":
+                    reddetMwh = 0;
                     savedOverflowHours = 0;
                     overflowOverridden = true;
                     break;
@@ -239,7 +281,10 @@ public sealed class VaktRoiCalculator
                 CounterfactualEnd: counterfactualEnd,
                 SavedHours: savedHours,
                 SavedOverflowHours: savedOverflowHours,
-                OverflowOverridden: overflowOverridden);
+                ReddetMwh: reddetMwh,
+                UbalanseMwh: ubalanseMwh,
+                OverflowOverridden: overflowOverridden,
+                PlanDataPartial: anyProxyHour);
         }
 
         // Pass 4: bygg per-event resultater. Leader får full gruppe-ROI;
@@ -262,6 +307,7 @@ public sealed class VaktRoiCalculator
                     ReddetUbalanse_NOK = 0,
                     OverflowTimerInCounterfactual = 0,
                     OverflowDataMissing = false,
+                    PlanDataPartial = false,
                     Forklaring = "Event startet i ordinær arbeidstid — driftspersonell responderer, ikke vakten.",
                 });
                 continue;
@@ -282,6 +328,7 @@ public sealed class VaktRoiCalculator
                     ReddetUbalanse_NOK = 0,
                     OverflowTimerInCounterfactual = 0,
                     OverflowDataMissing = false,
+                    PlanDataPartial = false,
                     Forklaring = $"Kategori '{e.Category}' regnes ikke som reddbar (planlagt/marked/data).",
                 });
                 continue;
@@ -309,6 +356,7 @@ public sealed class VaktRoiCalculator
                     ReddetUbalanse_NOK = 0,
                     OverflowTimerInCounterfactual = 0,
                     OverflowDataMissing = false,
+                    PlanDataPartial = false,
                     Forklaring =
                         $"Samme vakt-callout som event kl. {leader.StartUtc.LocalDateTime:dd.MM HH:mm} — " +
                         "ROI er allerede regnet på leder-eventet (vakta var allerede ute, ekstra hendelser " +
@@ -321,10 +369,10 @@ public sealed class VaktRoiCalculator
             var ekstraTimer = group.SavedHours;
             var overflowTimer = group.SavedOverflowHours;
 
-            var reddetMwh = overflowTimer * installertEffektMw * kapasitetsfaktor;
+            var reddetMwh = group.ReddetMwh;
             var reddetProduksjonNok = reddetMwh * snittSpotprisNokMwh;
 
-            var ubalanseMwh = ekstraTimer * installertEffektMw * kapasitetsfaktor;
+            var ubalanseMwh = group.UbalanseMwh;
             var reddetUbalanseNok = ubalanseMwh * snittUbalansetillegg_NokMwh;
 
             var reddetTotalNok = reddetProduksjonNok + reddetUbalanseNok;
@@ -347,6 +395,12 @@ public sealed class VaktRoiCalculator
                     " ⚠ Manuelt overstyrt av drifts-leder (override aktiv på denne hendelsen).";
             }
 
+            if (group.PlanDataPartial)
+            {
+                forklaring +=
+                    " ℹ Plan-data manglet for én eller flere counterfactual-timer; brukte proxy fra samme ukedag/time bakover.";
+            }
+
             result.Add(new VaktRoiResultat
             {
                 Event = e,
@@ -361,6 +415,7 @@ public sealed class VaktRoiCalculator
                 OverflowTimerInCounterfactual = overflowTimer,
                 // Hvis override er aktiv, regnes ikke data som "missing" uansett.
                 OverflowDataMissing = !group.OverflowOverridden && !overflowDataAvailable && ekstraTimer > 0,
+                PlanDataPartial = group.PlanDataPartial,
                 Forklaring = forklaring,
             });
         }
@@ -376,32 +431,10 @@ public sealed class VaktRoiCalculator
         DateTimeOffset CounterfactualEnd,
         double SavedHours,
         int SavedOverflowHours,
-        bool OverflowOverridden);
-
-    /// <summary>
-    /// Teller hele timer i [<paramref name="fromUtc"/>, <paramref name="toUtc"/>)
-    /// som har en match i <paramref name="overflowHours"/>. Brøk-timer ved
-    /// kantene rundes til nærmeste hele time-grense (start: gulv, slutt:
-    /// gulv) — det matcher hvordan SCADA leverer time-aggregat (én rad per
-    /// hel klokketime).
-    /// </summary>
-    private static int CountOverflowHours(
-        DateTimeOffset fromUtc, DateTimeOffset toUtc,
-        IReadOnlySet<DateTimeOffset> overflowHours)
-    {
-        if (overflowHours.Count == 0) return 0;
-        if (toUtc <= fromUtc) return 0;
-
-        var startHour = FloorToHour(fromUtc);
-        var endHour = FloorToHour(toUtc);
-
-        var count = 0;
-        for (var h = startHour; h < endHour; h = h.AddHours(1))
-        {
-            if (overflowHours.Contains(h)) count++;
-        }
-        return count;
-    }
+        double ReddetMwh,
+        double UbalanseMwh,
+        bool OverflowOverridden,
+        bool PlanDataPartial);
 
     private static DateTimeOffset FloorToHour(DateTimeOffset t)
     {
@@ -411,8 +444,7 @@ public sealed class VaktRoiCalculator
 
     /// <summary>
     /// Bygger forklaringsteksten ut fra hvilke ROI-komponenter som er ulik 0.
-    /// Uten ubalanse-komponent matcher meldingen v2 nøyaktig (bakoverkompabilitet
-    /// for tester og UI). Med ubalanse legges en ekstra setning til.
+    /// Bruker plan-baserte MWh-tall som basis.
     /// </summary>
     private static string BuildForklaring(
         DowntimeEvent e,
@@ -462,8 +494,8 @@ public sealed class VaktRoiCalculator
 
         // overflowTimer > 0
         var produksjonsDel = $"Vakt løste på {e.VarighetTimer:F1} t. Counterfactual = {ekstraTimer:F1} t. "
-            + $"Av disse hadde {overflowTimer} t overløp i magasinet → {overflowTimer} t reddet "
-            + $"(≈ {reddetMwh:F1} MWh × {snittSpot:F0} NOK/MWh = {reddetProduksjonNok:F0} NOK).";
+            + $"Av disse hadde {overflowTimer} t overløp i magasinet → "
+            + $"{reddetMwh:F1} MWh fra plan × {snittSpot:F0} NOK/MWh = {reddetProduksjonNok:F0} NOK.";
         if (!hasUbalanse)
         {
             return produksjonsDel;
