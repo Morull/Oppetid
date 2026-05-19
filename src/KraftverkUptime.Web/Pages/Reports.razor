@@ -170,23 +170,33 @@ else
     }
 
     /// <summary>
-    /// Finner nyeste import (ReportAvailable = true) som dekker forrige kalendermåned
-    /// — målt mot dagens lokal-dato. Returnerer null hvis ingen import dekker.
-    /// Dekning: periode-start ≤ forrige måneds start, periode-slutt ≥ slutten.
+    /// Finner nyeste import (ReportAvailable = true) for forrige kalendermåned
+    /// — målt mot dagens lokal-dato. Returnerer null hvis ingen import finnes.
+    /// Bruker måned-identifikasjon (år+måned i lokal tid på periode-start) for
+    /// å unngå timezone-edge-cases der periode-grensene er lagret som UTC-
+    /// midnatt vs Norge-midnatt (off-by-1-eller-2-timer mot Oslo sommertid).
     /// </summary>
     private static SettlementImportSummary? FindLastMonthImport(IReadOnlyList<SettlementImportSummary> items)
     {
         if (items is null || items.Count == 0) return null;
         var today = DateTime.Today;
-        var firstThisMonth = new DateTime(today.Year, today.Month, 1);
-        var firstLastMonth = firstThisMonth.AddMonths(-1);
-        var firstLastMonthUtc = new DateTimeOffset(firstLastMonth, TimeZoneInfo.Local.GetUtcOffset(firstLastMonth)).ToUniversalTime();
-        var firstThisMonthUtc = new DateTimeOffset(firstThisMonth, TimeZoneInfo.Local.GetUtcOffset(firstThisMonth)).ToUniversalTime();
+        var lastMonth = new DateTime(today.Year, today.Month, 1).AddMonths(-1);
+        var targetYear = lastMonth.Year;
+        var targetMonth = lastMonth.Month;
 
         return items
-            .Where(i => i.ReportAvailable
-                && i.PeriodStartUtc <= firstLastMonthUtc
-                && i.PeriodEndUtc >= firstThisMonthUtc)
+            .Where(i => i.ReportAvailable)
+            .Where(i =>
+            {
+                // En måneds-rapport har periode-start på dag 1 av måneden i
+                // lokal tid. Konverter UTC → local og sammenlign år+måned.
+                // Dette tolererer både UTC-midnatt (00:00 UTC) og Oslo-midnatt
+                // (22:00 UTC sommer / 23:00 UTC vinter) som lagrings-format.
+                var startLocal = i.PeriodStartUtc.ToLocalTime();
+                return startLocal.Year == targetYear
+                    && startLocal.Month == targetMonth
+                    && startLocal.Day == 1;
+            })
             .OrderByDescending(i => i.ImportedAtUtc)
             .FirstOrDefault();
     }
