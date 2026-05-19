@@ -25,6 +25,10 @@
 }
 else
 {
+    @if (_fallbackBanner is not null)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">@_fallbackBanner</MudAlert>
+    }
     <MudTable T="SettlementImportSummary" Items="@_items" Loading="@(_items is null)"
               Hover="true" Striped="true" Elevation="0" Class="dk-card"
               OnRowClick="OnRowClick" RowStyle="cursor: pointer;"
@@ -79,6 +83,7 @@ else
 @code {
     private List<SettlementImportSummary>? _items;
     private string? _error;
+    private string? _fallbackBanner;
     private string _searchText = string.Empty;
 
     // Sort-funksjoner som felt for å unngå Razor-attributt-escape-problemer
@@ -125,6 +130,7 @@ else
     private async Task ReloadAsync()
     {
         _error = null;
+        _fallbackBanner = null;
         if (string.IsNullOrWhiteSpace(Filter.PlantId))
         {
             _items = null;
@@ -141,6 +147,19 @@ else
 
             var result = await Api.ListSettlementsAsync(Filter.PlantId, from, to);
             _items = result.ToList();
+
+            // Direkte-redirect til forrige måneds rapport hvis vi finner én.
+            // FilterState.PeriodChanged trigger denne på nytt ved periode-bytte.
+            var target = FindLastMonthImport(_items);
+            if (target is not null)
+            {
+                Nav.NavigateTo($"reports/{target.PlantId}/{target.IdempotencyKey}",
+                    forceLoad: false, replace: true);
+                return;
+            }
+
+            // Ingen import for forrige måned → fallback til liste-visning med banner.
+            _fallbackBanner = "Ingen rapport for forrige måned for valgt anlegg — velg fra listen under.";
         }
         catch (Exception ex)
         {
@@ -148,6 +167,28 @@ else
             _items = new List<SettlementImportSummary>();
         }
         await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Finner nyeste import (ReportAvailable = true) som dekker forrige kalendermåned
+    /// — målt mot dagens lokal-dato. Returnerer null hvis ingen import dekker.
+    /// Dekning: periode-start ≤ forrige måneds start, periode-slutt ≥ slutten.
+    /// </summary>
+    private static SettlementImportSummary? FindLastMonthImport(IReadOnlyList<SettlementImportSummary> items)
+    {
+        if (items is null || items.Count == 0) return null;
+        var today = DateTime.Today;
+        var firstThisMonth = new DateTime(today.Year, today.Month, 1);
+        var firstLastMonth = firstThisMonth.AddMonths(-1);
+        var firstLastMonthUtc = new DateTimeOffset(firstLastMonth, TimeZoneInfo.Local.GetUtcOffset(firstLastMonth)).ToUniversalTime();
+        var firstThisMonthUtc = new DateTimeOffset(firstThisMonth, TimeZoneInfo.Local.GetUtcOffset(firstThisMonth)).ToUniversalTime();
+
+        return items
+            .Where(i => i.ReportAvailable
+                && i.PeriodStartUtc <= firstLastMonthUtc
+                && i.PeriodEndUtc >= firstThisMonthUtc)
+            .OrderByDescending(i => i.ImportedAtUtc)
+            .FirstOrDefault();
     }
 
     private void OnRowClick(TableRowClickEventArgs<SettlementImportSummary> args)
