@@ -1,4 +1,5 @@
 using KraftverkUptime.Core.Domain;
+using KraftverkUptime.Core.Time;
 using KraftverkUptime.Infrastructure.Persistence;
 using KraftverkUptime.Modules.Reporting.Nedetid;
 using KraftverkUptime.Modules.Reporting.Portefolje;
@@ -41,7 +42,7 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
 
     public async Task<PortfolioVaktRoiResponse> GetAsync(
         DateTimeOffset fromUtc, DateTimeOffset toUtc,
-        int topN, CancellationToken ct)
+        int topN, VaktTidsmodellOptions? vaktOptions, CancellationToken ct)
     {
         if (toUtc <= fromUtc)
         {
@@ -105,7 +106,8 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
                 dataset.OverflowHours, overflowDataAvailable: dataset.DataAvailable,
                 snittUbalansetillegg_NokMwh: snittUbalansetillegg,
                 overrides: overrides,
-                proxyHours: planResult.ProxyHours);
+                proxyHours: planResult.ProxyHours,
+                vaktOptions: vaktOptions);
 
             var plantReddetNok = roi.Sum(r => r.ReddetNok);
             var plantReddbare = roi.Count(r => r.ErInnenforVakt && r.ErReddbar);

@@ -34,9 +34,15 @@ public sealed class NedetidApi
 
     public async Task<VaktRoiResponse> GetVaktRoiAsync(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc,
+        string? vaktStartLokal = null,
+        string? vaktSluttLokal = null,
+        string? oppmoteLokal = null,
         CancellationToken ct = default)
     {
-        var url = BuildUrl(plantId, "vakt-roi", fromUtc, toUtc, format: null);
+        var url = BuildUrl(plantId, "vakt-roi", fromUtc, toUtc, format: null,
+            vaktStartLokal: vaktStartLokal,
+            vaktSluttLokal: vaktSluttLokal,
+            oppmoteLokal: oppmoteLokal);
         var resp = await _http.GetFromJsonAsync<VaktRoiResponse>(url, JsonOptions, ct).ConfigureAwait(false);
         return resp ?? throw new InvalidOperationException("Tom respons fra /vakt-roi.");
     }
@@ -92,11 +98,21 @@ public sealed class NedetidApi
     /// </summary>
     public async Task<PortfolioVaktRoiResponse> GetPortfolioVaktRoiAsync(
         DateTimeOffset fromUtc, DateTimeOffset toUtc,
-        int topN = 10, CancellationToken ct = default)
+        int topN = 10,
+        string? vaktStartLokal = null,
+        string? vaktSluttLokal = null,
+        string? oppmoteLokal = null,
+        CancellationToken ct = default)
     {
         var qs = $"from={Uri.EscapeDataString(fromUtc.UtcDateTime.ToString("o"))}"
                + $"&to={Uri.EscapeDataString(toUtc.UtcDateTime.ToString("o"))}"
                + $"&topN={topN}";
+        if (!string.IsNullOrWhiteSpace(vaktStartLokal))
+            qs += $"&vaktStartLokal={Uri.EscapeDataString(vaktStartLokal)}";
+        if (!string.IsNullOrWhiteSpace(vaktSluttLokal))
+            qs += $"&vaktSluttLokal={Uri.EscapeDataString(vaktSluttLokal)}";
+        if (!string.IsNullOrWhiteSpace(oppmoteLokal))
+            qs += $"&oppmoteLokal={Uri.EscapeDataString(oppmoteLokal)}";
         var resp = await _http
             .GetFromJsonAsync<PortfolioVaktRoiResponse>($"api/v1/portfolio/vakt-roi?{qs}", JsonOptions, ct)
             .ConfigureAwait(false);
@@ -385,7 +401,8 @@ public sealed class NedetidApi
     }
 
     private static string BuildUrl(string plantId, string endpoint,
-        DateTimeOffset fromUtc, DateTimeOffset toUtc, string? format)
+        DateTimeOffset fromUtc, DateTimeOffset toUtc, string? format,
+        string? vaktStartLokal = null, string? vaktSluttLokal = null, string? oppmoteLokal = null)
     {
         var qs = $"from={Uri.EscapeDataString(fromUtc.UtcDateTime.ToString("o"))}"
                + $"&to={Uri.EscapeDataString(toUtc.UtcDateTime.ToString("o"))}";
@@ -393,6 +410,12 @@ public sealed class NedetidApi
         {
             qs += $"&format={Uri.EscapeDataString(format)}";
         }
+        if (!string.IsNullOrWhiteSpace(vaktStartLokal))
+            qs += $"&vaktStartLokal={Uri.EscapeDataString(vaktStartLokal)}";
+        if (!string.IsNullOrWhiteSpace(vaktSluttLokal))
+            qs += $"&vaktSluttLokal={Uri.EscapeDataString(vaktSluttLokal)}";
+        if (!string.IsNullOrWhiteSpace(oppmoteLokal))
+            qs += $"&oppmoteLokal={Uri.EscapeDataString(oppmoteLokal)}";
         return $"api/v1/plants/{Uri.EscapeDataString(plantId)}/{endpoint}?{qs}";
     }
 }
@@ -621,7 +644,10 @@ public sealed record VaktRoiResponse(
     double TotalReddetProduksjon_NOK,
     double TotalReddetUbalanse_NOK,
     double SnittEkstraTimerPerEvent,
-    IReadOnlyList<VaktRoiEventDto> Events);
+    IReadOnlyList<VaktRoiEventDto> Events,
+    string VaktStartLokal = "15:00",
+    string VaktSluttLokal = "07:00",
+    string OppmoteLokal = "08:00");
 
 // --- DataQuality (SPEC-MVP-HARDENING tiltak C) -------------------------------
 

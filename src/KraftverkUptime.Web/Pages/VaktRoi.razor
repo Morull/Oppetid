@@ -39,6 +39,43 @@
     </MudItem>
 </MudGrid>
 
+@* Vakt-vindu (per-plant + portefølje): konfigurerbar i topp-baren slik at
+   drifts-leder kan simulere alternative vakt-ordninger (eks. droppe nattvakt). *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.h6" Class="mb-2">Vakt-vindu</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudTimePicker @bind-Time="_vaktStart" Label="Start vakt" TimeFormat="HH:mm"
+                           Variant="Variant.Outlined" Margin="Margin.Dense"
+                           Editable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudTimePicker @bind-Time="_vaktSlutt" Label="Slutt vakt (neste morgen)" TimeFormat="HH:mm"
+                           Variant="Variant.Outlined" Margin="Margin.Dense"
+                           Editable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudTimePicker @bind-Time="_oppmote" Label="Oppmøte neste arbeidsdag" TimeFormat="HH:mm"
+                           Variant="Variant.Outlined" Margin="Margin.Dense"
+                           Editable="true" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                ℹ Default = hjem-vakt 15-07 hverdager + hele helg/helligdag. Endre for å
+                simulere alternative vakt-ordninger (eks. droppe nattvakt 22-07).
+                Helg- og helligdags-håndteringen endres ikke.
+            </MudText>
+        </MudItem>
+        <MudItem xs="12" Class="d-flex justify-end gap-2">
+            <MudButton Variant="Variant.Text" OnClick="ResetVaktVindu">Tilbakestill til default</MudButton>
+            <MudButton Color="MudBlazor.Color.Primary" Variant="Variant.Filled"
+                       OnClick="ReloadAsync" Disabled="_loading">
+                Bruk vakt-vindu
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
 @if (!IsPortfolioMode)
 {
     @* Vakt-spesifikke parametre — kun for per-plant-modus. *@
@@ -360,6 +397,37 @@ else if (!IsPortfolioMode && _response is not null)
     private bool _loading;
     private string? _error;
 
+    // Vakt-vindu (lokal tid). Default matcher VaktTidsmodellOptions.Default.
+    private TimeSpan? _vaktStart = new(15, 0, 0);
+    private TimeSpan? _vaktSlutt = new(7, 0, 0);
+    private TimeSpan? _oppmote = new(8, 0, 0);
+    private const string VaktStartDefault = "15:00";
+    private const string VaktSluttDefault = "07:00";
+    private const string OppmoteDefault = "08:00";
+
+    private string? VaktStartParam =>
+        _vaktStart.HasValue && _vaktStart.Value.ToString(@"hh\:mm") != VaktStartDefault
+            ? _vaktStart.Value.ToString(@"hh\:mm") : null;
+    private string? VaktSluttParam =>
+        _vaktSlutt.HasValue && _vaktSlutt.Value.ToString(@"hh\:mm") != VaktSluttDefault
+            ? _vaktSlutt.Value.ToString(@"hh\:mm") : null;
+    private string? OppmoteParam =>
+        _oppmote.HasValue && _oppmote.Value.ToString(@"hh\:mm") != OppmoteDefault
+            ? _oppmote.Value.ToString(@"hh\:mm") : null;
+
+    private void ResetVaktVindu()
+    {
+        _vaktStart = new(15, 0, 0);
+        _vaktSlutt = new(7, 0, 0);
+        _oppmote = new(8, 0, 0);
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (IsPortfolioMode) await LoadPortfolioAsync();
+        else await LoadAsync();
+    }
+
     // Per-plant state
     private VaktRoiResponse? _response;
     private string? _csvUrl;
@@ -492,7 +560,10 @@ else if (!IsPortfolioMode && _response is not null)
         {
             var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
             var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
-            _portfolio = await NedetidApi.GetPortfolioVaktRoiAsync(fromUtc, toUtc, topN: 10);
+            _portfolio = await NedetidApi.GetPortfolioVaktRoiAsync(fromUtc, toUtc, topN: 10,
+                vaktStartLokal: VaktStartParam,
+                vaktSluttLokal: VaktSluttParam,
+                oppmoteLokal: OppmoteParam);
             BuildPortfolioCharts(_portfolio);
         }
         catch (Exception ex)
@@ -517,7 +588,10 @@ else if (!IsPortfolioMode && _response is not null)
         {
             var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
             var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
-            _response = await NedetidApi.GetVaktRoiAsync(Filter.PlantId, fromUtc, toUtc);
+            _response = await NedetidApi.GetVaktRoiAsync(Filter.PlantId, fromUtc, toUtc,
+                vaktStartLokal: VaktStartParam,
+                vaktSluttLokal: VaktSluttParam,
+                oppmoteLokal: OppmoteParam);
             _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "vakt-roi", fromUtc, toUtc).ToString();
             Filter.StoreVaktRoi(_response);
             BuildCharts(_response);

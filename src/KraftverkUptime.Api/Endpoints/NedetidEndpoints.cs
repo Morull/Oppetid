@@ -5,6 +5,7 @@ using Asp.Versioning.Builder;
 using KraftverkUptime.Api.Contracts;
 using KraftverkUptime.Core.Domain;
 using KraftverkUptime.Core.Security;
+using KraftverkUptime.Core.Time;
 using KraftverkUptime.Infrastructure.Persistence;
 using KraftverkUptime.Modules.Reporting.Nedetid;
 using Microsoft.EntityFrameworkCore;
@@ -93,6 +94,9 @@ public static class NedetidEndpoints
         DateTimeOffset? from,
         DateTimeOffset? to,
         string? format,
+        string? vaktStartLokal,
+        string? vaktSluttLokal,
+        string? oppmoteLokal,
         INedetidQueryService nedetid,
         IOverflowQueryService overflow,
         VaktRoiCalculator calculator,
@@ -103,6 +107,12 @@ public static class NedetidEndpoints
         if (!TryValidatePeriod(from, to, out var fromUtc, out var toUtc, out var problem))
         {
             return problem!;
+        }
+
+        if (!TryParseVaktOptions(vaktStartLokal, vaktSluttLokal, oppmoteLokal,
+            out var vaktOptions, out var vaktProblem))
+        {
+            return vaktProblem!;
         }
 
         var plant = await queryContext.Apply(db.Plants.AsQueryable())
@@ -165,9 +175,11 @@ public static class NedetidEndpoints
             dataset.OverflowHours, overflowDataAvailable: dataset.DataAvailable,
             snittUbalansetillegg_NokMwh: snittUbalansetillegg,
             overrides: overrides,
-            proxyHours: planResult.ProxyHours);
+            proxyHours: planResult.ProxyHours,
+            vaktOptions: vaktOptions);
+        var effectiveVakt = vaktOptions ?? VaktTidsmodellOptions.Default;
         var response = BuildVaktRoiResponse(plantId, fromUtc, toUtc, plant.InstalledCapacityMw,
-            snittSpot, snittUbalansetillegg, roi);
+            snittSpot, snittUbalansetillegg, effectiveVakt, roi);
 
         if (string.Equals(format, "csv", StringComparison.OrdinalIgnoreCase))
         {
@@ -257,6 +269,7 @@ public static class NedetidEndpoints
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc,
         double effektMw, double snittSpot,
         double snittUbalansetillegg,
+        VaktTidsmodellOptions vaktOptions,
         IReadOnlyList<VaktRoiResultat> roi)
     {
         var dtos = roi.Select(r => new VaktRoiEventDto(
@@ -289,6 +302,9 @@ public static class NedetidEndpoints
             InstallertEffektMw: effektMw,
             SnittSpotprisNokMwh: snittSpot,
             SnittUbalansetilleggNokMwh: snittUbalansetillegg,
+            VaktStartLokal: FormatHm(vaktOptions.EttermiddagStart),
+            VaktSluttLokal: FormatHm(vaktOptions.MorgenCutoff),
+            OppmoteLokal: FormatHm(vaktOptions.OppmoteTidspunkt),
             AntallEventsTotalt: roi.Count,
             AntallReddbareInnenforVakt: reddbareInnenfor,
             TotalReddetMwh: totalReddetMwh,
@@ -297,6 +313,65 @@ public static class NedetidEndpoints
             TotalReddetUbalanse_NOK: totalReddetUbalanse,
             SnittEkstraTimerPerEvent: snittEkstra,
             Events: dtos);
+    }
+
+    private static string FormatHm(TimeSpan ts) =>
+        $"{ts.Hours:D2}:{ts.Minutes:D2}";
+
+    /// <summary>
+    /// Parser de tre vakt-vindu-query-paramene til <see cref="VaktTidsmodellOptions"/>.
+    /// Hvis ingen er satt returneres null = bruk default (15:00/07:00/08:00).
+    /// Krever HH:mm-format. Returnerer 400 Bad Request via <paramref name="problem"/>
+    /// hvis én er ugyldig.
+    /// </summary>
+    private static bool TryParseVaktOptions(
+        string? vaktStartLokal, string? vaktSluttLokal, string? oppmoteLokal,
+        out VaktTidsmodellOptions? options, out IResult? problem)
+    {
+        options = null;
+        problem = null;
+
+        if (vaktStartLokal is null && vaktSluttLokal is null && oppmoteLokal is null)
+        {
+            return true; // ingen overstyring → null = default
+        }
+
+        var def = VaktTidsmodellOptions.Default;
+        if (!TryParseHm(vaktStartLokal, def.EttermiddagStart, out var start)
+            || !TryParseHm(vaktSluttLokal, def.MorgenCutoff, out var slutt)
+            || !TryParseHm(oppmoteLokal, def.OppmoteTidspunkt, out var oppmote))
+        {
+            problem = Results.Problem(
+                title: "Ugyldig vakt-vindu",
+                detail: "Forventer HH:mm-format (eks. 15:00, 07:00, 08:00).",
+                statusCode: StatusCodes.Status400BadRequest);
+            return false;
+        }
+
+        options = def with
+        {
+            EttermiddagStart = start,
+            MorgenCutoff = slutt,
+            OppmoteTidspunkt = oppmote,
+        };
+        return true;
+    }
+
+    private static bool TryParseHm(string? raw, TimeSpan fallback, out TimeSpan parsed)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            parsed = fallback;
+            return true;
+        }
+        if (TimeSpan.TryParseExact(raw.Trim(), [@"hh\:mm", @"h\:mm"],
+            CultureInfo.InvariantCulture, out var ts))
+        {
+            parsed = ts;
+            return true;
+        }
+        parsed = default;
+        return false;
     }
 
     private static NedetidEventDto MapEvent(DowntimeEvent e) => new(

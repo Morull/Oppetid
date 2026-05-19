@@ -1,3 +1,5 @@
+using KraftverkUptime.Core.Time;
+
 namespace KraftverkUptime.Modules.Reporting.Portefolje;
 
 /// <summary>
@@ -14,6 +16,7 @@ public interface IPortfolioVaktRoiQueryService
     Task<PortfolioVaktRoiResponse> GetAsync(
         DateTimeOffset fromUtc, DateTimeOffset toUtc,
         int topN,
+        VaktTidsmodellOptions? vaktOptions,
         CancellationToken ct);
 }
 

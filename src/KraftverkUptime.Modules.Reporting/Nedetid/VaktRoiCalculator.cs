@@ -116,6 +116,13 @@ public sealed class VaktRoiCalculator
     /// <see cref="VaktRoiResultat.PlanDataPartial"/>. Null = ingen proxy-info
     /// (alle hours regnes som direkte plan-data).
     /// </param>
+    /// <param name="vaktOptions">
+    /// Valgfri overstyring av vakt-vinduet for denne ene beregningen — brukes
+    /// av endepunktet når drifts-leder simulerer alternative vakt-ordninger
+    /// (eks. dropp av nattvakt 22-07). Hvis null brukes konstruktør-injected
+    /// <c>_vaktModell</c>. Helg- og helligdags-håndteringen er IKKE konfigurerbar
+    /// — hele lørdag/søndag/helligdag er fortsatt vakt-aktiv.
+    /// </param>
     public IReadOnlyList<VaktRoiResultat> Calculate(
         IReadOnlyList<DowntimeEvent> events,
         double snittSpotprisNokMwh,
@@ -124,7 +131,8 @@ public sealed class VaktRoiCalculator
         bool overflowDataAvailable = false,
         double snittUbalansetillegg_NokMwh = 0,
         IReadOnlyDictionary<DateTimeOffset, string>? overrides = null,
-        IReadOnlySet<DateTimeOffset>? proxyHours = null)
+        IReadOnlySet<DateTimeOffset>? proxyHours = null,
+        VaktTidsmodellOptions? vaktOptions = null)
     {
         ArgumentNullException.ThrowIfNull(events);
         ArgumentNullException.ThrowIfNull(planByHour);
@@ -134,12 +142,16 @@ public sealed class VaktRoiCalculator
         overrides ??= new Dictionary<DateTimeOffset, string>();
         proxyHours ??= new HashSet<DateTimeOffset>();
 
+        // Hvis caller har gitt egne vakt-tider for denne spørringen, bygg en
+        // lokal modell. Ellers bruk default fra konstruktør (DI-injected).
+        var vaktModell = vaktOptions is null ? _vaktModell : new VaktTidsmodell(vaktOptions);
+
         // Pass 1: klassifiser hvert event (utenfor-vakt / ikke-reddbar / reddbar)
         // og lag en arbeidsliste med counterfactualEnd per reddbar event.
         var classified = new List<(DowntimeEvent Event, EventClassification Class, DateTimeOffset? CounterfactualEnd)>(events.Count);
         foreach (var e in events)
         {
-            var innenforVakt = _vaktModell.ErInnenforVakt(e.StartUtc);
+            var innenforVakt = vaktModell.ErInnenforVakt(e.StartUtc);
             var reddbar = ReddbareKategorier.Contains(e.Category);
             if (!innenforVakt)
             {
@@ -151,7 +163,7 @@ public sealed class VaktRoiCalculator
             }
             else
             {
-                var cf = _vaktModell.NesteArbeidsdagOppstart(e.StartUtc);
+                var cf = vaktModell.NesteArbeidsdagOppstart(e.StartUtc);
                 classified.Add((e, EventClassification.Reddbar, cf));
             }
         }

@@ -1,6 +1,8 @@
+using System.Globalization;
 using Asp.Versioning;
 using Asp.Versioning.Builder;
 using KraftverkUptime.Core.Security;
+using KraftverkUptime.Core.Time;
 using KraftverkUptime.Modules.Reporting.Portefolje;
 
 namespace KraftverkUptime.Api.Endpoints;
@@ -43,6 +45,9 @@ public static class PortfolioEndpoints
         DateTimeOffset? from,
         DateTimeOffset? to,
         int? topN,
+        string? vaktStartLokal,
+        string? vaktSluttLokal,
+        string? oppmoteLokal,
         IPortfolioVaktRoiQueryService service,
         CancellationToken ct)
     {
@@ -66,8 +71,62 @@ public static class PortfolioEndpoints
 
         var top = topN ?? 10;
 
-        var response = await service.GetAsync(fromUtc, toUtc, top, ct).ConfigureAwait(false);
+        if (!TryParseVaktOptions(vaktStartLokal, vaktSluttLokal, oppmoteLokal,
+            out var vaktOptions, out var vaktProblem))
+        {
+            return vaktProblem!;
+        }
+
+        var response = await service.GetAsync(fromUtc, toUtc, top, vaktOptions, ct)
+            .ConfigureAwait(false);
         return Results.Ok(response);
+    }
+
+    private static bool TryParseVaktOptions(
+        string? vaktStartLokal, string? vaktSluttLokal, string? oppmoteLokal,
+        out VaktTidsmodellOptions? options, out IResult? problem)
+    {
+        options = null;
+        problem = null;
+        if (vaktStartLokal is null && vaktSluttLokal is null && oppmoteLokal is null)
+        {
+            return true;
+        }
+        var def = VaktTidsmodellOptions.Default;
+        if (!TryParseHm(vaktStartLokal, def.EttermiddagStart, out var start)
+            || !TryParseHm(vaktSluttLokal, def.MorgenCutoff, out var slutt)
+            || !TryParseHm(oppmoteLokal, def.OppmoteTidspunkt, out var oppmote))
+        {
+            problem = Results.Problem(
+                title: "Ugyldig vakt-vindu",
+                detail: "Forventer HH:mm-format.",
+                statusCode: StatusCodes.Status400BadRequest);
+            return false;
+        }
+        options = def with
+        {
+            EttermiddagStart = start,
+            MorgenCutoff = slutt,
+            OppmoteTidspunkt = oppmote,
+        };
+        return true;
+    }
+
+    private static bool TryParseHm(string? raw, TimeSpan fallback, out TimeSpan parsed)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            parsed = fallback;
+            return true;
+        }
+        if (TimeSpan.TryParseExact(raw.Trim(), [@"hh\:mm", @"h\:mm"],
+            CultureInfo.InvariantCulture, out var ts))
+        {
+            parsed = ts;
+            return true;
+        }
+        parsed = default;
+        return false;
     }
 
     private static async Task<IResult> GetKpisAsync(
