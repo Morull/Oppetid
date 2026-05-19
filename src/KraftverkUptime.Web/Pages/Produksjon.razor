@@ -4,6 +4,7 @@
 @implements IDisposable
 @inject NedetidApi NedetidApi
 @inject FilterState Filter
+@inject NavigationManager Nav
 
 <PageTitle>Produksjon</PageTitle>
 
@@ -150,11 +151,12 @@ else if (_data is not null)
         @if (_dailyPoints.Count > 0)
         {
             <MudPaper Class="pa-4 mb-4" Elevation="1">
-                <MudText Typo="Typo.h3" Class="mb-2">Plan vs. faktisk (med spotpris)</MudText>
+                <MudText Typo="Typo.h3" Class="mb-2">Plan vs. faktisk produksjon (MWh)</MudText>
                 <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-2">
                     @_grafForklaring Når plan- og faktisk-linjene følger hverandre tett er
-                    Hydrogrid riktig og operasjonen følger planen. Når spotprisen (høyre
-                    akse) topper, ønsker vi at både plan og faktisk er høye.
+                    Hydrogrid riktig og operasjonen følger planen. Stort avvik betyr enten
+                    at planen feilet (Hydrogrid var off), eller at vi ikke greide å følge
+                    den (nedetid, manuell justering osv.).
                 </MudText>
                 <ApexChart @key="@($"hg-{_chartVersion}")" TItem="DailyPoint"
                            Options="_chartOptions" Height="380">
@@ -170,6 +172,17 @@ else if (_data is not null)
                                      SeriesType="SeriesType.Line"
                                      XValue="d => d.Date"
                                      YValue="d => (decimal)d.ElhubMwh" />
+                </ApexChart>
+            </MudPaper>
+
+            <MudPaper Class="pa-4 mb-4" Elevation="1">
+                <MudText Typo="Typo.h3" Class="mb-2">Spotpris-utvikling (NOK/MWh)</MudText>
+                <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-2">
+                    Daglig snitt-spotpris i samme periode. Sammenlign med grafen over —
+                    ønsker du å produsere høyt når spotprisen topper.
+                </MudText>
+                <ApexChart @key="@($"sp-{_chartVersion}")" TItem="DailyPoint"
+                           Options="_spotOptions" Height="220">
                     <ApexPointSeries TItem="DailyPoint"
                                      Items="_dailyPoints"
                                      Name="Spotpris (NOK/MWh)"
@@ -197,10 +210,16 @@ else if (_data is not null)
                     Hydrogrid-merverdi måned-for-måned. Ser man en stigende trend i timing-
                     merverdi, blir Hydrogrid bedre. Plan-treff bør holde seg stabilt høy.
                 </MudText>
-                <MudTable Items="_data.Monthly" Hover="true" Dense="true" Elevation="0">
+                <MudTable Items="_data.Monthly" Hover="true" Dense="true" Elevation="0"
+                          OnRowClick="@((TableRowClickEventArgs<ProduksjonMonthlyDto> args) => OnMonthRowClick(args.Item))"
+                          RowStyle="cursor: pointer;">
                     <HeaderContent>
                         <MudTh><MudTableSortLabel SortBy="@_sortMonth">Måned</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortTimer">Timer prod.</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right">
+                            <MudTooltip Text="Antall hele timer med produksjon (Elhub MWh > 0) / totalt antall timer i måneden">
+                                <MudTableSortLabel SortBy="@_sortTimer">Timer prod.</MudTableSortLabel>
+                            </MudTooltip>
+                        </MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortKap">Kap.utn.</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortOverlop">Overløp (t)</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortElhub">Elhub (MWh)</MudTableSortLabel></MudTh>
@@ -216,7 +235,18 @@ else if (_data is not null)
                         <MudTd>@($"{context.Year}-{context.Month:D2}")</MudTd>
                         <MudTd Style="text-align:right">
                             <div class="d-flex align-center justify-end" style="gap:4px;">
-                                <span>@context.AntallTimerProduksjon</span>
+                                @{
+                                    var totalTimerMnd = TotalHoursInMonth(context.Year, context.Month);
+                                    var ikkeProd = totalTimerMnd - context.AntallTimerProduksjon;
+                                    var prodPct = totalTimerMnd > 0
+                                        ? context.AntallTimerProduksjon / (double)totalTimerMnd : 0;
+                                }
+                                <MudTooltip Text="@($"{context.AntallTimerProduksjon} timer med produksjon ({prodPct:P0}). {ikkeProd} timer uten produksjon i måneden.")">
+                                    <span>
+                                        <strong>@context.AntallTimerProduksjon</strong>
+                                        <span style="color: var(--mud-palette-text-secondary);"> / @totalTimerMnd</span>
+                                    </span>
+                                </MudTooltip>
                                 @if (ErOverlopRisiko(context))
                                 {
                                     <MudTooltip Text="@(context.AntallTimerOverlop > 0 ? $"{context.AntallTimerOverlop} timer overløp på terminal-dam — magasinet flommet" : "Mange produksjonstimer + lav snittpris = sannsynlig overløp-risiko")">
@@ -281,6 +311,7 @@ else if (_data is not null)
     private DataQualitySummaryDto? _dataQuality;
 
     private ApexChartOptions<DailyPoint> _chartOptions = new();
+    private ApexChartOptions<DailyPoint> _spotOptions = new();
     private int _chartVersion;
     private List<DailyPoint> _dailyPoints = new();
     private string _grafForklaring = string.Empty;
@@ -436,18 +467,30 @@ else if (_data is not null)
 
     private void BuildChart()
     {
+        // Plan vs. faktisk MWh — én Y-akse. Tidligere dual-axis-oppsett
+        // (MWh + NOK/MWh i samme graf) rendret blankt pga. ApexCharts.Blazor-
+        // bug med multi-axis-binding; splittet derfor i to grafer i UI.
         _chartOptions = new ApexChartOptions<DailyPoint>
         {
             Stroke = new Stroke { Curve = Curve.Smooth, Width = 2 },
             Xaxis = new XAxis { Type = XAxisType.Datetime },
             Yaxis = new List<YAxis>
             {
-                new() { Title = new AxisTitle { Text = "MWh" }, DecimalsInFloat = 1 },
-                new() { Title = new AxisTitle { Text = "NOK/MWh" }, DecimalsInFloat = 0,
-                        Opposite = true, SeriesName = "Spotpris (NOK/MWh)" }
+                new() { Title = new AxisTitle { Text = "MWh" }, DecimalsInFloat = 1 }
             },
             Legend = new Legend { Position = LegendPosition.Top },
-            Colors = new List<string> { "#1E5F8E", "#2A9D8F", "#F39C12" },
+            Colors = new List<string> { "#1E5F8E", "#2A9D8F" },
+        };
+        _spotOptions = new ApexChartOptions<DailyPoint>
+        {
+            Stroke = new Stroke { Curve = Curve.Smooth, Width = 2 },
+            Xaxis = new XAxis { Type = XAxisType.Datetime },
+            Yaxis = new List<YAxis>
+            {
+                new() { Title = new AxisTitle { Text = "NOK/MWh" }, DecimalsInFloat = 0 }
+            },
+            Legend = new Legend { Position = LegendPosition.Top, Show = false },
+            Colors = new List<string> { "#F39C12" },
         };
     }
 
@@ -494,6 +537,27 @@ else if (_data is not null)
         if (d.OverlopProsent >= 0.10) return "kritisk høyt — magasinet flommer ofte";
         if (d.OverlopProsent >= 0.03) return "moderat — vurder kapasitets-økning";
         return "lavt nivå — naturlig variasjon";
+    }
+
+    /// <summary>
+    /// Antall timer i en gitt måned (28-31 dager × 24). Brukes for å vise
+    /// "X / Y timer" i månedstabellen så drifts-leder ser hvor mange
+    /// produksjonsfrie timer det var.
+    /// </summary>
+    private static int TotalHoursInMonth(int year, int month)
+        => DateTime.DaysInMonth(year, month) * 24;
+
+    /// <summary>
+    /// Drill fra månedsrad i tabellen til Nedetid-siden for samme måned.
+    /// Setter FilterState først så Nedetid-siden bruker riktig periode.
+    /// </summary>
+    private void OnMonthRowClick(ProduksjonMonthlyDto? row)
+    {
+        if (row is null) return;
+        var monthStart = new DateTime(row.Year, row.Month, 1);
+        var monthEnd = monthStart.AddMonths(1);
+        Filter.SetPeriod(monthStart, monthEnd, PeriodGranularity.Maned);
+        Nav.NavigateTo($"nedetid/{Filter.PlantId}");
     }
 
     private string TimingTolkning(double andelTopp) =>
