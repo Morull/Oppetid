@@ -142,6 +142,65 @@ else if (IsPortfolioMode && _portfolio is not null)
         </MudItem>
     </MudGrid>
 
+    @* ---- Sammenligning mot døgnvakt-baseline (portefølje) ---- *@
+    @if (_portfolioBaseline is not null && IsCustomVaktVindu)
+    {
+        var customNok = _portfolio.TotalReddetNok;
+        var baselineNok = _portfolioBaseline.TotalReddetNok;
+        var diffNok = customNok - baselineNok;
+        var pct = baselineNok == 0 ? 0 : (diffNok / baselineNok) * 100;
+        var customEvents = _portfolio.TotalReddbareEvents;
+        var baselineEvents = _portfolioBaseline.TotalReddbareEvents;
+        var annualisertDiff = Annualiser(diffNok);
+        var bedreEnnDognvakt = diffNok > 0;
+
+        <MudPaper Class="pa-4 mb-4" Elevation="1"
+                  Style="border-left: 4px solid #F39C12; background: rgba(243,156,18,0.05);">
+            <MudText Typo="Typo.h4" Class="mb-3">
+                Sammenligning vs. døgnvakt (porteføljen)
+            </MudText>
+            <MudGrid>
+                <MudItem xs="12" md="4">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Din konfig</MudText>
+                    <MudText Typo="Typo.body2" Class="mb-1">@FormatVaktVindu(_portfolio.FromUtc.ToLocalTime().ToString("HH:mm"), "n/a", "n/a")</MudText>
+                    <MudText Typo="Typo.h4">@FormatNok(customNok)</MudText>
+                    <MudText Typo="Typo.caption">@customEvents reddbare events</MudText>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Døgnvakt (15:00-07:00)</MudText>
+                    <MudText Typo="Typo.body2" Class="mb-1">Default — dagens ordning</MudText>
+                    <MudText Typo="Typo.h4">@FormatNok(baselineNok)</MudText>
+                    <MudText Typo="Typo.caption">@baselineEvents reddbare events</MudText>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Differanse</MudText>
+                    <MudText Typo="Typo.body2" Class="mb-1">
+                        @(bedreEnnDognvakt ? "+" : "")@FormatNok(diffNok) (@pct.ToString("F0") %)
+                    </MudText>
+                    <MudText Typo="Typo.h4" Style="@(bedreEnnDognvakt ? "color:#2A9D8F;" : "color:#E74C3C;")">
+                        @(bedreEnnDognvakt ? "+" : "")@FormatNok(annualisertDiff)
+                    </MudText>
+                    <MudText Typo="Typo.caption">annualisert tap/gevinst vs. døgnvakt</MudText>
+                </MudItem>
+            </MudGrid>
+            @if (!bedreEnnDognvakt && annualisertDiff < 0)
+            {
+                <MudAlert Severity="Severity.Info" Class="mt-3" Dense="true">
+                    <strong>Break-even:</strong> ved å bytte fra døgnvakt til din konfig taper du
+                    ca. @FormatNok(Math.Abs(annualisertDiff)) reddet produksjon pr. år.
+                    For at det skal lønne seg å bytte må vakt-kost-besparelsen være større enn dette.
+                </MudAlert>
+            }
+            else if (bedreEnnDognvakt)
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-3" Dense="true">
+                    Din konfig redder mer enn døgnvakt — uvanlig, sjekk at vakt-vinduet ditt er korrekt
+                    parametrisert (events kan klassifiseres som "innenfor vakt" der de før var "arbeidstid").
+                </MudAlert>
+            }
+        </MudPaper>
+    }
+
     @* ---- Topp-N hendelser ---- *@
     <MudPaper Class="pa-4 mb-4" Elevation="1">
         <MudText Typo="Typo.h3" Class="mb-3">Topp @_portfolio.TopEvents.Count hendelser sortert på reddet beløp</MudText>
@@ -261,6 +320,65 @@ else if (!IsPortfolioMode && _response is not null)
             </MudPaper>
         </MudItem>
     </MudGrid>
+
+    @* ---- Sammenligning mot døgnvakt-baseline (per-plant) ---- *@
+    @if (_responseBaseline is not null && IsCustomVaktVindu)
+    {
+        var customNok = _response.TotalReddetNok;
+        var baselineNok = _responseBaseline.TotalReddetNok;
+        var diffNok = customNok - baselineNok;
+        var pct = baselineNok == 0 ? 0 : (diffNok / baselineNok) * 100;
+        var customEvents = _response.AntallReddbareInnenforVakt;
+        var baselineEvents = _responseBaseline.AntallReddbareInnenforVakt;
+        var annualisertDiff = Annualiser(diffNok);
+        var bedreEnnDognvakt = diffNok > 0;
+        var customVindu = FormatVaktVindu(_response.VaktStartLokal, _response.VaktSluttLokal, _response.OppmoteLokal);
+
+        <MudPaper Class="pa-4 mb-4" Elevation="1"
+                  Style="border-left: 4px solid #F39C12; background: rgba(243,156,18,0.05);">
+            <MudText Typo="Typo.h4" Class="mb-3">Sammenligning vs. døgnvakt</MudText>
+            <MudGrid>
+                <MudItem xs="12" md="4">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Din konfig</MudText>
+                    <MudText Typo="Typo.body2" Class="mb-1">@customVindu</MudText>
+                    <MudText Typo="Typo.h4">@FormatNok(customNok)</MudText>
+                    <MudText Typo="Typo.caption">@customEvents reddbare events i perioden</MudText>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Døgnvakt (15:00-07:00)</MudText>
+                    <MudText Typo="Typo.body2" Class="mb-1">Dagens ordning</MudText>
+                    <MudText Typo="Typo.h4">@FormatNok(baselineNok)</MudText>
+                    <MudText Typo="Typo.caption">@baselineEvents reddbare events i perioden</MudText>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Differanse</MudText>
+                    <MudText Typo="Typo.body2" Class="mb-1">
+                        @(bedreEnnDognvakt ? "+" : "")@FormatNok(diffNok) (@pct.ToString("F0") %)
+                    </MudText>
+                    <MudText Typo="Typo.h4" Style="@(bedreEnnDognvakt ? "color:#2A9D8F;" : "color:#E74C3C;")">
+                        @(bedreEnnDognvakt ? "+" : "")@FormatNok(annualisertDiff)
+                    </MudText>
+                    <MudText Typo="Typo.caption">annualisert tap/gevinst vs. døgnvakt</MudText>
+                </MudItem>
+            </MudGrid>
+            @if (!bedreEnnDognvakt && annualisertDiff < 0)
+            {
+                <MudAlert Severity="Severity.Info" Class="mt-3" Dense="true">
+                    <strong>Break-even:</strong> ved å bytte fra døgnvakt til @customVindu taper du
+                    ca. <strong>@FormatNok(Math.Abs(annualisertDiff))</strong> reddet produksjon pr. år.
+                    For at det skal lønne seg å bytte må vakt-kost-besparelsen være større enn dette
+                    (sammenlign mot @FormatNok(_aarligVaktKost) årlig vakt-kost).
+                </MudAlert>
+            }
+            else if (bedreEnnDognvakt)
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-3" Dense="true">
+                    Din konfig redder mer enn døgnvakt — uvanlig, sjekk at vakt-vinduet ditt er
+                    korrekt parametrisert. (Hvis riktig: du kan både spare vakt-kost OG øke ROI.)
+                </MudAlert>
+            }
+        </MudPaper>
+    }
 
     @* ---- Forutsetninger ---- *@
     <MudPaper Class="pa-4 mb-4" Elevation="1">
@@ -415,12 +533,42 @@ else if (!IsPortfolioMode && _response is not null)
         _oppmote.HasValue && _oppmote.Value.ToString(@"hh\:mm") != OppmoteDefault
             ? _oppmote.Value.ToString(@"hh\:mm") : null;
 
+    /// <summary>
+    /// True hvis brukeren har endret minst én av de tre vakt-parametrene
+    /// fra default 15:00 / 07:00 / 08:00 (døgnvakt). Brukes til å avgjøre
+    /// om vi skal hente en baseline-beregning + vise sammenlignings-kortet.
+    /// </summary>
+    private bool IsCustomVaktVindu =>
+        VaktStartParam is not null || VaktSluttParam is not null || OppmoteParam is not null;
+
+    // Baseline-resultater (døgnvakt 15-07) hentes parallelt når bruker
+    // har custom vakt-vindu, slik at sammenligningskortet kan vise diff.
+    private VaktRoiResponse? _responseBaseline;
+    private PortfolioVaktRoiResponse? _portfolioBaseline;
+
     private void ResetVaktVindu()
     {
         _vaktStart = new(15, 0, 0);
         _vaktSlutt = new(7, 0, 0);
         _oppmote = new(8, 0, 0);
+        _responseBaseline = null;
+        _portfolioBaseline = null;
     }
+
+    /// <summary>
+    /// Annualiserer reddet beløp for valgt periode. Brukes i sammenligning-
+    /// kortet for å gi en års-figur drifts-leder kan måle mot vakt-kost.
+    /// </summary>
+    private double Annualiser(double sumNok)
+    {
+        if (!Filter.FromDate.HasValue || !Filter.ToDate.HasValue) return sumNok;
+        var dager = (Filter.ToDate.Value - Filter.FromDate.Value).TotalDays;
+        if (dager <= 0) return sumNok;
+        return sumNok * (365.0 / dager);
+    }
+
+    private static string FormatVaktVindu(string start, string slutt, string oppmote) =>
+        $"{start}-{slutt} (oppmøte {oppmote})";
 
     private async Task ReloadAsync()
     {
@@ -565,15 +713,31 @@ else if (!IsPortfolioMode && _response is not null)
         _loading = true;
         _error = null;
         _portfolio = null;
+        _portfolioBaseline = null;
         await InvokeAsync(StateHasChanged);
         try
         {
             var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
             var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
-            _portfolio = await NedetidApi.GetPortfolioVaktRoiAsync(fromUtc, toUtc, topN: 10,
-                vaktStartLokal: VaktStartParam,
-                vaktSluttLokal: VaktSluttParam,
-                oppmoteLokal: OppmoteParam);
+
+            // Custom vakt-vindu: kjør baseline (døgnvakt 15-07) parallelt slik
+            // at sammenligningskortet får begge tall i samme render. Hvis ikke
+            // custom, hopp over baseline-kallet.
+            if (IsCustomVaktVindu)
+            {
+                var customTask = NedetidApi.GetPortfolioVaktRoiAsync(fromUtc, toUtc, topN: 10,
+                    vaktStartLokal: VaktStartParam,
+                    vaktSluttLokal: VaktSluttParam,
+                    oppmoteLokal: OppmoteParam);
+                var baselineTask = NedetidApi.GetPortfolioVaktRoiAsync(fromUtc, toUtc, topN: 10);
+                await Task.WhenAll(customTask, baselineTask);
+                _portfolio = customTask.Result;
+                _portfolioBaseline = baselineTask.Result;
+            }
+            else
+            {
+                _portfolio = await NedetidApi.GetPortfolioVaktRoiAsync(fromUtc, toUtc, topN: 10);
+            }
             BuildPortfolioCharts(_portfolio);
         }
         catch (Exception ex)
@@ -593,15 +757,30 @@ else if (!IsPortfolioMode && _response is not null)
         _loading = true;
         _error = null;
         _response = null;
+        _responseBaseline = null;
         await InvokeAsync(StateHasChanged);
         try
         {
             var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
             var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
-            _response = await NedetidApi.GetVaktRoiAsync(Filter.PlantId, fromUtc, toUtc,
-                vaktStartLokal: VaktStartParam,
-                vaktSluttLokal: VaktSluttParam,
-                oppmoteLokal: OppmoteParam);
+
+            // Custom vakt-vindu: kjør baseline (døgnvakt) parallelt for
+            // sammenligningskortet. Bare ett kall hvis vakten er default.
+            if (IsCustomVaktVindu)
+            {
+                var customTask = NedetidApi.GetVaktRoiAsync(Filter.PlantId, fromUtc, toUtc,
+                    vaktStartLokal: VaktStartParam,
+                    vaktSluttLokal: VaktSluttParam,
+                    oppmoteLokal: OppmoteParam);
+                var baselineTask = NedetidApi.GetVaktRoiAsync(Filter.PlantId, fromUtc, toUtc);
+                await Task.WhenAll(customTask, baselineTask);
+                _response = customTask.Result;
+                _responseBaseline = baselineTask.Result;
+            }
+            else
+            {
+                _response = await NedetidApi.GetVaktRoiAsync(Filter.PlantId, fromUtc, toUtc);
+            }
             _csvUrl = NedetidApi.BuildCsvUri(Filter.PlantId, "vakt-roi", fromUtc, toUtc).ToString();
             Filter.StoreVaktRoi(_response);
             BuildCharts(_response);
