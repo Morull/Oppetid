@@ -58,6 +58,7 @@
                                 : $"background-color:{cell.Color}; opacity:0.15; cursor:pointer;";
                             var classes = "dk-timeline-cell"
                                 + (cell.IsHighCost ? " dk-timeline-cellHighCost" : "")
+                                + (cell.IsRkSpike ? " dk-timeline-cellRkSpike" : "")
                                 + (matches && _activeFilter is not null ? " dk-timeline-cellHighlighted" : "");
                             var cellDate = day.Date;
                             <div class="@classes" style="@style" title="@cell.Tooltip"
@@ -107,6 +108,11 @@
                         <span class="dk-timeline-legendSwatch" style="background-color:#7E57C2; outline: 2px solid #E76F51;"></span>
                         <span>Stor ub.-kost (&gt; @FormatNok(HighCostThresholdNok) NOK)</span>
                     </button>
+                    <button type="button" class="@LegendBtnClass(CellFilter.RkSpike)"
+                            @onclick="() => ToggleFilter(CellFilter.RkSpike)">
+                        <span class="dk-timeline-legendSwatch" style="background-color:transparent; outline: 2px dashed #FFC107;"></span>
+                        <span>RK-spike (premium &gt; @FormatNok(RkSpikeThresholdNokMwh)/MWh)</span>
+                    </button>
                     <button type="button" class="@LegendBtnClass(CellFilter.IngenDrift)"
                             @onclick="() => ToggleFilter(CellFilter.IngenDrift)">
                         <span class="dk-timeline-legendSwatch" style="background-color:#9AA5B0;"></span>
@@ -115,8 +121,10 @@
                 </div>
                 <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mt-2 d-block">
                     💡 <strong>Klikk en celle</strong> i tidslinjen for å se hendelser den dagen.
-                    "Ubalanse-kost" = (RK-pris − spotpris) × (plan − faktisk levert), så kan
-                    være lav selv om <em>nedetidstap</em> er stort.
+                    <br />
+                    <strong>Ubalanse-kost</strong> = (RK-pris − spot) × (plan − faktisk) — krever at Hydrogrid hadde plan &gt; 0.
+                    <strong>RK-spike</strong> (gul stiplet ramme) markerer timer med ekstrem RK-premium uavhengig av plan,
+                    f.eks. hvis dere har solgt spotbud manuelt utenom Hydrogrid og ikke greide å levere.
                 </MudText>
             </div>
         </div>
@@ -163,6 +171,14 @@
         z-index: 1;
         position: relative;
     }
+    /* RK-spike: gul stiplet kantlinje for å skille fra HighCost (rød heltrukket).
+       Fanger ekstreme oppregulerings-spikes uavhengig av Plan-verdien. */
+    .dk-timeline-cellRkSpike {
+        outline: 2px dashed #FFC107;
+        outline-offset: -1px;
+        box-shadow: 0 0 6px rgba(255, 193, 7, 0.5);
+        z-index: 1;
+    }
 </style>
 
 @code {
@@ -171,6 +187,16 @@
 
     /// <summary>NOK-terskel for å regne en time som "stor" ubalanse-kost (rød border).</summary>
     [Parameter] public double HighCostThresholdNok { get; set; } = 5_000;
+
+    /// <summary>
+    /// NOK/MWh-terskel for å markere en time som "RK-spike" — dvs. ekstremt
+    /// høy oppregulerings-premium uavhengig av om Hydrogrid-plan fanget den.
+    /// Brukes for å varsle om risiko-timer hvor producent kan ha tapt store
+    /// summer på spotbud-ubalanse selv om plan=0 i settlement-data.
+    /// Default 10 000 NOK/MWh — fanger ekstreme spikes (eks. Haukland
+    /// 09.03.2026 16:00 hadde 40 412 NOK/MWh premium).
+    /// </summary>
+    [Parameter] public double RkSpikeThresholdNokMwh { get; set; } = 10_000;
 
     /// <summary>
     /// Fyrer når brukeren klikker en celle. Caller (Produksjon-siden) kan da
@@ -189,7 +215,7 @@
     /// filter highlighter kun matchende timer; resten dimmes til 15% opacity.
     /// Klikk samme knapp igjen for å rydde filteret.
     /// </summary>
-    private enum CellFilter { Produksjon, Overlop, Ubalanse, StorUbalanse, IngenDrift }
+    private enum CellFilter { Produksjon, Overlop, Ubalanse, StorUbalanse, RkSpike, IngenDrift }
     private CellFilter? _activeFilter;
 
     private void ToggleFilter(CellFilter f)
@@ -213,6 +239,7 @@
         CellFilter.Overlop      => cell.HasOverlop,
         CellFilter.Ubalanse     => cell.HasUbalanse,
         CellFilter.StorUbalanse => cell.IsHighCost,
+        CellFilter.RkSpike      => cell.IsRkSpike,
         CellFilter.IngenDrift   => !cell.HasProduksjon && !cell.HasOverlop && !cell.HasUbalanse,
         _ => true,
     };
@@ -255,6 +282,13 @@
                 var isHighCost = hour.UbalanseKostNok > HighCostThresholdNok;
                 var hasProduksjon = hour.ElhubMwh.HasValue && hour.ElhubMwh.Value > 0;
                 var hasUbalanse = hour.UbalanseKostNok > 0;
+                // RK-spike: ekstrem oppregulerings-premium uavhengig av plan.
+                // Fanger timer hvor producent KAN ha tapt mye på Spotbud-
+                // ubalanse selv om Hydrogrid-plan=0 (= modellen klarer ikke
+                // beregne ubalanse-kost basert på Plan-Elhub-formelen).
+                var rkPremium = (hour.RkPrisNokMwh.HasValue && hour.SpotprisNokMwh.HasValue)
+                    ? Math.Max(0, hour.RkPrisNokMwh.Value - hour.SpotprisNokMwh.Value) : 0;
+                var isRkSpike = rkPremium > RkSpikeThresholdNokMwh;
 
                 var lines = new List<string>(6)
                 {
@@ -271,11 +305,13 @@
                     lines.Add($"RK: {hour.RkPrisNokMwh:F0} NOK/MWh");
                 if (hasUbalanse)
                     lines.Add($"Ubalanse-kost: {FormatNok(hour.UbalanseKostNok)} NOK");
+                if (isRkSpike)
+                    lines.Add($"⚠ RK-spike: premium {rkPremium:F0} NOK/MWh — hvis solgt spotbud + ikke produsert, tapte du opp mot {FormatNok(rkPremium * 4.9)} NOK (4.9 MW basis)");
                 if (hour.HarOverlop)
                     lines.Add("⚠ Overløp på terminal-dam");
 
                 cells[h] = new HourCell(color, string.Join('\n', lines), isHighCost,
-                    hasProduksjon, hour.HarOverlop, hasUbalanse);
+                    hasProduksjon, hour.HarOverlop, hasUbalanse, isRkSpike, rkPremium);
             }
             rows.Add(new DayRow(day, cells));
         }
@@ -336,7 +372,10 @@
         // ubalanse-kost; lilla vinner i fargevalg, men begge er sanne her).
         bool HasProduksjon,
         bool HasOverlop,
-        bool HasUbalanse);
+        bool HasUbalanse,
+        // RK-spike: ekstrem oppregulerings-premium uavhengig av plan.
+        bool IsRkSpike,
+        double RkPremium);
 
     private sealed record DayRow(DateTime Date, HourCell?[] Cells);
 }
