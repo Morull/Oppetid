@@ -119,8 +119,11 @@
             }
             if (!Filter.FromDate.HasValue || !Filter.ToDate.HasValue)
             {
-                var (from, to) = PeriodCalculator.ForrigeManed(DateTime.Today);
-                Filter.SetPeriod(from, to, PeriodGranularity.Maned);
+                // Default = Hittil i år (drifts-leder vil typisk se total-bildet
+                // siden januar). Brukeren kan bytte til Måned/Kvartal/År etc.
+                // via hurtigknappene i AppBarPlantPeriodSelector.
+                var (from, to) = PeriodCalculator.HittilIAr(DateTime.Today);
+                Filter.SetPeriod(from, to, PeriodGranularity.HittilIAr);
             }
         }
         catch
