@@ -69,8 +69,11 @@ public static class OverflowModeSeeder
                   AND dam_id = 'orsdalen_main'
                   AND overflow_proxy_threshold_cm IS NULL;
                 """;
+            // NB: parameter-listen må wrappes som object[] (eller IEnumerable<object>)
+            // — ellers velger EF params-overloaden og prøver å mappe 'ct' som SQL-parameter.
             var orsdalenDamUpdated = await db.Database
-                .ExecuteSqlRawAsync(updateOrsdalenDamSql, DefaultLevelProxyThresholdCm, ct)
+                .ExecuteSqlRawAsync(updateOrsdalenDamSql,
+                    new object[] { DefaultLevelProxyThresholdCm }, ct)
                 .ConfigureAwait(false);
             if (orsdalenDamUpdated > 0)
             {

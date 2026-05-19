@@ -115,7 +115,31 @@ public sealed class HotFolderDetector
             }
         }
 
-        // 2b. Plant — filnavn-regex først
+        // 2b. Pre-flight multi-plant-deteksjon for CSV-er FØR filnavn-regex.
+        // Filer som har vært gjennom done/-mappa har plant-navn i filnavnet
+        // (eks. "vikesa_scada_TIMESTAMP_orig.csv"), som ellers ville fått
+        // filnavn-regexen til å treffe vikesa selv om innholdet er multi-plant.
+        // Innhold har alltid forrang for ruting-beslutninger.
+        if (sourceType == SourceType.ScadaTrends)
+        {
+            var (_, isMulti) = AnalyzeCsvContent(file, diag);
+            if (isMulti)
+            {
+                diag.Attempts.Add("Multi-plant SCADA-trends (innhold) — ruter til /scada/multi-plant.");
+                return DetectionResult.Ok("_multi_", SourceType.ScadaTrendsMultiPlant, diag);
+            }
+        }
+        else if (sourceType == SourceType.ScadaAlarms)
+        {
+            var stationResult = DetectPlantsFromOperlog(file, diag);
+            if (stationResult.IsMultiPlant)
+            {
+                diag.Attempts.Add("Multi-plant operlog (innhold) — ruter til /operlog/multi-plant.");
+                return DetectionResult.Ok("_multi_", SourceType.ScadaAlarmsMultiPlant, diag);
+            }
+        }
+
+        // 2c. Single-plant — filnavn-regex først
         var plantId = DetectPlantFromFilename(name, diag);
 
         // 3. Content-sniff fallback hvis filnavn ikke ga svar
@@ -127,22 +151,12 @@ public sealed class HotFolderDetector
             }
             else if (sourceType == SourceType.ScadaTrends)
             {
-                var (csvPlant, isMulti) = AnalyzeCsvContent(file, diag);
-                if (isMulti)
-                {
-                    diag.Attempts.Add("Multi-plant SCADA-trends — ruter til /scada/multi-plant.");
-                    return DetectionResult.Ok("_multi_", SourceType.ScadaTrendsMultiPlant, diag);
-                }
+                var (csvPlant, _) = AnalyzeCsvContent(file, diag);
                 plantId = csvPlant;
             }
             else if (sourceType == SourceType.ScadaAlarms)
             {
                 var stationResult = DetectPlantsFromOperlog(file, diag);
-                if (stationResult.IsMultiPlant)
-                {
-                    diag.Attempts.Add("Multi-plant operlog (≥ 2 stations med signifikant volum).");
-                    return DetectionResult.Ok("_multi_", SourceType.ScadaAlarmsMultiPlant, diag);
-                }
                 plantId = stationResult.DominantPlant;
             }
         }
