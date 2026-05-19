@@ -197,7 +197,7 @@ else if (_data is not null)
         @if (_data.Hourly.Count > 0)
         {
             <div class="mb-4">
-                <ProduksjonTimeline Hours="_data.Hourly" />
+                <ProduksjonTimeline Hours="_data.Hourly" OnDayClick="OnTimelineDayClicked" />
             </div>
         }
 
@@ -557,6 +557,20 @@ else if (_data is not null)
         var monthStart = new DateTime(row.Year, row.Month, 1);
         var monthEnd = monthStart.AddMonths(1);
         Filter.SetPeriod(monthStart, monthEnd, PeriodGranularity.Maned);
+        Nav.NavigateTo($"nedetid/{Filter.PlantId}");
+    }
+
+    /// <summary>
+    /// Drill fra én time/celle i driftslinjen til Nedetid-siden filtrert på
+    /// den dagen. Brukeren kan så se alle nedetids-events i detalj. Periode
+    /// settes til ett døgn slik at Nedetid viser kun den dagen.
+    /// </summary>
+    private void OnTimelineDayClicked(DateTime day)
+    {
+        if (string.IsNullOrEmpty(Filter.PlantId)) return;
+        var dayStart = day.Date;
+        var dayEnd = dayStart.AddDays(1);
+        Filter.SetPeriod(dayStart, dayEnd, PeriodGranularity.Egendefinert);
         Nav.NavigateTo($"nedetid/{Filter.PlantId}");
     }
 

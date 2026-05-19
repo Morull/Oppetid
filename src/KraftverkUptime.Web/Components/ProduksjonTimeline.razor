@@ -54,12 +54,14 @@
                             var matches = _activeFilter is null || CellMatchesFilter(cell, _activeFilter.Value);
                             if (matches && matchCount.HasValue) matchCount++;
                             var style = matches
-                                ? $"background-color:{cell.Color};"
-                                : $"background-color:{cell.Color}; opacity:0.15;";
+                                ? $"background-color:{cell.Color}; cursor:pointer;"
+                                : $"background-color:{cell.Color}; opacity:0.15; cursor:pointer;";
                             var classes = "dk-timeline-cell"
                                 + (cell.IsHighCost ? " dk-timeline-cellHighCost" : "")
                                 + (matches && _activeFilter is not null ? " dk-timeline-cellHighlighted" : "");
-                            <div class="@classes" style="@style" title="@cell.Tooltip"></div>
+                            var cellDate = day.Date;
+                            <div class="@classes" style="@style" title="@cell.Tooltip"
+                                 @onclick="() => OnCellClicked(cellDate)"></div>
                         }
                     }
                 </div>
@@ -83,12 +85,12 @@
                         </MudText>
                     }
                 </div>
-                <div class="dk-timeline-legendGroupItems">
+                <div class="dk-prod-legend-grid">
                     @* Klikkbare filter-knapper: aktiv = highlight matching, andre dimmes ut. *@
                     <button type="button" class="@LegendBtnClass(CellFilter.Produksjon)"
                             @onclick="() => ToggleFilter(CellFilter.Produksjon)">
                         <span class="dk-timeline-legendSwatch" style="background-color:#2A9D8F;"></span>
-                        <span>Produksjon (mørkere = nær plan)</span>
+                        <span>Produksjon</span>
                     </button>
                     <button type="button" class="@LegendBtnClass(CellFilter.Overlop)"
                             @onclick="() => ToggleFilter(CellFilter.Overlop)">
@@ -98,26 +100,37 @@
                     <button type="button" class="@LegendBtnClass(CellFilter.Ubalanse)"
                             @onclick="() => ToggleFilter(CellFilter.Ubalanse)">
                         <span class="dk-timeline-legendSwatch" style="background-color:#7E57C2;"></span>
-                        <span>Ubalanse-kost (mørkere = større)</span>
+                        <span>Ubalanse-kost</span>
                     </button>
                     <button type="button" class="@LegendBtnClass(CellFilter.StorUbalanse)"
                             @onclick="() => ToggleFilter(CellFilter.StorUbalanse)">
                         <span class="dk-timeline-legendSwatch" style="background-color:#7E57C2; outline: 2px solid #E76F51;"></span>
-                        <span>Stor ubalanse-kost (&gt; @FormatNok(HighCostThresholdNok) NOK)</span>
+                        <span>Stor ub.-kost (&gt; @FormatNok(HighCostThresholdNok) NOK)</span>
                     </button>
                     <button type="button" class="@LegendBtnClass(CellFilter.IngenDrift)"
                             @onclick="() => ToggleFilter(CellFilter.IngenDrift)">
                         <span class="dk-timeline-legendSwatch" style="background-color:#9AA5B0;"></span>
-                        <span>Ingen drift / ingen plan</span>
+                        <span>Ingen drift</span>
                     </button>
                 </div>
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mt-2 d-block">
+                    💡 <strong>Klikk en celle</strong> i tidslinjen for å se hendelser den dagen.
+                    "Ubalanse-kost" = (RK-pris − spotpris) × (plan − faktisk levert), så kan
+                    være lav selv om <em>nedetidstap</em> er stort.
+                </MudText>
             </div>
         </div>
     }
 </div>
 
 <style>
-    /* Klikkbare legende-knapper med highlight-modus */
+    /* Klikkbare legende-knapper i kompakt grid-layout (5 knapper får plass
+       på én linje i wide screen, wrapper til 2-3 kolonner i smale viewer). */
+    .dk-prod-legend-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 4px 8px;
+    }
     .dk-timeline-legendBtn {
         background: transparent;
         border: 1px solid transparent;
@@ -131,6 +144,9 @@
         align-items: center;
         gap: 8px;
         transition: background-color 120ms, border-color 120ms;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .dk-timeline-legendBtn:hover {
         background: rgba(255,255,255,0.05);
@@ -155,6 +171,16 @@
 
     /// <summary>NOK-terskel for å regne en time som "stor" ubalanse-kost (rød border).</summary>
     [Parameter] public double HighCostThresholdNok { get; set; } = 5_000;
+
+    /// <summary>
+    /// Fyrer når brukeren klikker en celle. Caller (Produksjon-siden) kan da
+    /// drill-ned til Nedetid-siden for samme dag. Hvis ikke koblet — ingen
+    /// effekt utenom hover-tooltip.
+    /// </summary>
+    [Parameter] public EventCallback<DateTime> OnDayClick { get; set; }
+
+    private Task OnCellClicked(DateTime day)
+        => OnDayClick.HasDelegate ? OnDayClick.InvokeAsync(day) : Task.CompletedTask;
 
     private IReadOnlyList<DayRow> Days { get; set; } = Array.Empty<DayRow>();
 
