@@ -152,4 +152,74 @@ public class VaktTidsmodellTests
         opts.OppmoteTidspunkt.Should().Be(new TimeSpan(8, 0, 0));
         opts.VaktResponstid.Should().Be(TimeSpan.FromHours(1.0));
     }
+
+    // ─── No-wrap-tilfelle: vakt slutter samme dag (eks. 15-23) ─────────────
+
+    /// <summary>
+    /// Bug 2026-05-19: når drifts-leder simulerer kveldsvakt 15:00-23:00
+    /// (slutt > start, ingen wrap over midnatt), MÅ ikke modellen tolke
+    /// "tid &lt; 23:00" som "fortsatt vakt fra forrige natt" — det ville
+    /// gjort hele døgnet vakt og blåst opp Vakt-ROI-totalen.
+    /// </summary>
+    [Fact]
+    public void NoWrap_Kveldsvakt_15_23_TolkerKun_Innenfor_Vinduet()
+    {
+        var kveldsvakt = VaktTidsmodellOptions.Default with
+        {
+            EttermiddagStart = new TimeSpan(15, 0, 0),
+            MorgenCutoff = new TimeSpan(23, 0, 0), // "slutt" — samme døgn
+        };
+        var modell = new VaktTidsmodell(kveldsvakt);
+
+        // Onsdag 4. feb 2026 — hverdag
+        modell.ErInnenforVakt(OsloLokal(2026, 2, 4, 2))
+            .Should().BeFalse("02:00 er natt — ikke vakt når slutt=23:00 samme dag");
+        modell.ErInnenforVakt(OsloLokal(2026, 2, 4, 10))
+            .Should().BeFalse("10:00 er arbeidstid");
+        modell.ErInnenforVakt(OsloLokal(2026, 2, 4, 14, 59))
+            .Should().BeFalse("rett før 15:00 = arbeidstid");
+        modell.ErInnenforVakt(OsloLokal(2026, 2, 4, 15))
+            .Should().BeTrue("15:00 = start kveldsvakt");
+        modell.ErInnenforVakt(OsloLokal(2026, 2, 4, 22, 59))
+            .Should().BeTrue("rett før 23:00 = fortsatt kveldsvakt");
+        modell.ErInnenforVakt(OsloLokal(2026, 2, 4, 23))
+            .Should().BeFalse("23:00 = slutt kveldsvakt (eksklusiv)");
+        modell.ErInnenforVakt(OsloLokal(2026, 2, 4, 23, 30))
+            .Should().BeFalse("23:30 = ingen nattvakt");
+    }
+
+    [Fact]
+    public void NoWrap_Kveldsvakt_HelgFortsattFullVakt()
+    {
+        // Helg-håndteringen skal IKKE påvirkes av no-wrap-konfig.
+        var kveldsvakt = VaktTidsmodellOptions.Default with
+        {
+            EttermiddagStart = new TimeSpan(15, 0, 0),
+            MorgenCutoff = new TimeSpan(23, 0, 0),
+        };
+        var modell = new VaktTidsmodell(kveldsvakt);
+
+        // Lørdag 7. feb 2026 kl 03:00 — helg, fortsatt vakt
+        modell.ErInnenforVakt(OsloLokal(2026, 2, 7, 3))
+            .Should().BeTrue("lørdag = vakt hele døgnet, uavhengig av vakt-vindu");
+        // Søndag 8. feb 2026 kl 10:00 — helg
+        modell.ErInnenforVakt(OsloLokal(2026, 2, 8, 10))
+            .Should().BeTrue("søndag = vakt hele døgnet");
+    }
+
+    [Fact]
+    public void Wrap_StandardVakt_OverlevdesUendret()
+    {
+        // Regresjons-sjekk: default-konfig (slutt=07, start=15) wrapper over
+        // midnatt — same dag-tester som tidligere.
+        var modell = new VaktTidsmodell();
+        modell.ErInnenforVakt(OsloLokal(2026, 2, 4, 2))
+            .Should().BeTrue("02:00 = fortsatt nattvakt fra forrige kveld");
+        modell.ErInnenforVakt(OsloLokal(2026, 2, 4, 6, 59))
+            .Should().BeTrue("06:59 = rett før morgen-cutoff = vakt");
+        modell.ErInnenforVakt(OsloLokal(2026, 2, 4, 7))
+            .Should().BeFalse("07:00 = morgen-cutoff (eksklusiv) → arbeidstid");
+        modell.ErInnenforVakt(OsloLokal(2026, 2, 4, 23, 30))
+            .Should().BeTrue("23:30 = fortsatt kveldsvakt før midnatt");
+    }
 }

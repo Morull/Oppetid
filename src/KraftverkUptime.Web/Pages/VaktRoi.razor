@@ -470,9 +470,19 @@ else if (!IsPortfolioMode && _response is not null)
     {
         Filter.OnChange += OnFilterChanged;
 
+        // Når brukeren klikker på "Vakt-ROI"-fanen (URL = /vakt-roi uten plant-
+        // param) MEN har et anlegg valgt i AppBar, redirect rett til
+        // /vakt-roi/{plant} så plant-velgeren faktisk gjenspeiler innholdet.
+        // Portefølje-modus er fortsatt tilgjengelig — brukeren kommer dit ved
+        // å eksplisitt navigere til /vakt-roi når ingen plant er valgt.
+        if (IsPortfolioMode && !string.IsNullOrEmpty(Filter.PlantId))
+        {
+            _lastLoadedPlantId = Filter.PlantId;
+            Nav.NavigateTo($"vakt-roi/{Filter.PlantId}", replace: true);
+            return;
+        }
+
         // Per-plant: route-parameter overstyrer FilterState ved direkte navigering.
-        // Portefølje: vi rører ikke Filter.PlantId — brukeren kan fortsatt ha et
-        // anlegg valgt i AppBar (ignorert her).
         if (!IsPortfolioMode && !string.IsNullOrEmpty(PlantId) && PlantId != Filter.PlantId)
         {
             Filter.PlantId = PlantId;

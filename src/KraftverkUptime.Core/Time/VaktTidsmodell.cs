@@ -55,21 +55,32 @@ public sealed class VaktTidsmodell
         if (lokal.DayOfWeek == DayOfWeek.Saturday) return true;
         if (NorgesHelligdager.ErHelligdagEllerSondag(dato)) return true;
 
-        // Hverdager (mandag-fredag): vakt aktiv før morgen-cutoff
-        // ELLER fra ettermiddag-start. Hvis nattens "neste-dag" er helligdag/helg
-        // er det også vakt — men det dekkes av at MORGEN-sjekken på neste dag
-        // går mot den datoen.
-        // For et hverdags-tidspunkt:
-        //   - Tid < morgen-cutoff (07:00): vakt fra forrige dag løper fortsatt.
-        //     Men bare hvis FORRIGE dag var hverdag (ellers var vakten "helg"-
-        //     vakt og er allerede dekket over). Helligdag som strekker seg
-        //     forbi midnatt: håndteres ved at hverdagens 00:00-07:00 anses som
-        //     vakt-tid (drifts-leder bekreftet at morgen-cutoff = 07:00).
-        //   - Tid >= ettermiddag-start (15:00): vakt aktiv resten av dagen.
-        if (tid < _options.MorgenCutoff) return true;
-        if (tid >= _options.EttermiddagStart) return true;
+        // Hverdager (mandag-fredag): to scenarier basert på om vakt-vinduet
+        // wraps over midnatt (default: start 15:00 → slutt 07:00 neste morgen)
+        // eller er innenfor samme døgn (eks. kveldsvakt 15:00 → 23:00).
+        var start = _options.EttermiddagStart;
+        var slutt = _options.MorgenCutoff;
 
-        // Mellom 07:00 og 15:00 på en hverdag: ordinær arbeidstid, ingen vakt.
+        if (slutt <= start)
+        {
+            // WRAP-tilfelle (default 15→07): vakt aktiv hvis enten
+            //   - vi er FØR slutt-tid (forrige natts vakt løper fortsatt), eller
+            //   - vi er ETTER eller PÅ start-tid (vakt starter for kvelden).
+            // Helligdag/helg som strekker seg forbi midnatt: dekkes av
+            // helg/helligdag-blokken over for selve dagen 00:00-23:59.
+            if (tid < slutt) return true;
+            if (tid >= start) return true;
+        }
+        else
+        {
+            // NO-WRAP-tilfelle (eks. kveldsvakt 15→23): vakt aktiv kun
+            // innenfor [start, slutt). Hverken før start eller fra og med
+            // slutt regnes som vakt — drifts-leder har simulert at det IKKE
+            // er nattvakt mellom 23:00 og neste dags 15:00.
+            if (tid >= start && tid < slutt) return true;
+        }
+
+        // Utenfor vakt-vinduet: ordinær arbeidstid (eller "ikke vakt").
         return false;
     }
 
