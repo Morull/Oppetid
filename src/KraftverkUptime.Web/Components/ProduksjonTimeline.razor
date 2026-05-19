@@ -36,6 +36,9 @@
                     <div class="dk-timeline-hourLabel">@(hour % 3 == 0 ? hour.ToString("D2") : "")</div>
                 }
             </div>
+            @{
+                int? matchCount = _activeFilter is null ? null : 0;
+            }
             @foreach (var day in Days)
             {
                 <div class="dk-timeline-row">
@@ -48,10 +51,15 @@
                         }
                         else
                         {
-                            <div class="dk-timeline-cell @(cell.IsHighCost ? "dk-timeline-cellHighCost" : "")"
-                                 style="@($"background-color:{cell.Color};")"
-                                 title="@cell.Tooltip">
-                            </div>
+                            var matches = _activeFilter is null || CellMatchesFilter(cell, _activeFilter.Value);
+                            if (matches && matchCount.HasValue) matchCount++;
+                            var style = matches
+                                ? $"background-color:{cell.Color};"
+                                : $"background-color:{cell.Color}; opacity:0.15;";
+                            var classes = "dk-timeline-cell"
+                                + (cell.IsHighCost ? " dk-timeline-cellHighCost" : "")
+                                + (matches && _activeFilter is not null ? " dk-timeline-cellHighlighted" : "");
+                            <div class="@classes" style="@style" title="@cell.Tooltip"></div>
                         }
                     }
                 </div>
@@ -60,33 +68,86 @@
 
         <div class="dk-timeline-legend mt-3">
             <div class="dk-timeline-legendGroup">
-                <div class="dk-timeline-legendGroupTitle">Status per time</div>
+                <div class="d-flex align-center justify-space-between mb-2">
+                    <div class="dk-timeline-legendGroupTitle" style="margin-bottom:0;">Status per time</div>
+                    @if (_activeFilter is not null)
+                    {
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Primary">
+                            Viser <strong>@matchCount</strong> matchende timer · klikk samme knapp for å rydde
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                            Klikk en kategori for å markere kun de timene
+                        </MudText>
+                    }
+                </div>
                 <div class="dk-timeline-legendGroupItems">
-                    <div class="dk-timeline-legendItem">
+                    @* Klikkbare filter-knapper: aktiv = highlight matching, andre dimmes ut. *@
+                    <button type="button" class="@LegendBtnClass(CellFilter.Produksjon)"
+                            @onclick="() => ToggleFilter(CellFilter.Produksjon)">
                         <span class="dk-timeline-legendSwatch" style="background-color:#2A9D8F;"></span>
                         <span>Produksjon (mørkere = nær plan)</span>
-                    </div>
-                    <div class="dk-timeline-legendItem">
+                    </button>
+                    <button type="button" class="@LegendBtnClass(CellFilter.Overlop)"
+                            @onclick="() => ToggleFilter(CellFilter.Overlop)">
                         <span class="dk-timeline-legendSwatch" style="background-color:#00BCD4;"></span>
                         <span>Overløp</span>
-                    </div>
-                    <div class="dk-timeline-legendItem">
+                    </button>
+                    <button type="button" class="@LegendBtnClass(CellFilter.Ubalanse)"
+                            @onclick="() => ToggleFilter(CellFilter.Ubalanse)">
                         <span class="dk-timeline-legendSwatch" style="background-color:#7E57C2;"></span>
                         <span>Ubalanse-kost (mørkere = større)</span>
-                    </div>
-                    <div class="dk-timeline-legendItem">
+                    </button>
+                    <button type="button" class="@LegendBtnClass(CellFilter.StorUbalanse)"
+                            @onclick="() => ToggleFilter(CellFilter.StorUbalanse)">
                         <span class="dk-timeline-legendSwatch" style="background-color:#7E57C2; outline: 2px solid #E76F51;"></span>
                         <span>Stor ubalanse-kost (&gt; @FormatNok(HighCostThresholdNok) NOK)</span>
-                    </div>
-                    <div class="dk-timeline-legendItem">
+                    </button>
+                    <button type="button" class="@LegendBtnClass(CellFilter.IngenDrift)"
+                            @onclick="() => ToggleFilter(CellFilter.IngenDrift)">
                         <span class="dk-timeline-legendSwatch" style="background-color:#9AA5B0;"></span>
                         <span>Ingen drift / ingen plan</span>
-                    </div>
+                    </button>
                 </div>
             </div>
         </div>
     }
 </div>
+
+<style>
+    /* Klikkbare legende-knapper med highlight-modus */
+    .dk-timeline-legendBtn {
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        padding: 4px 8px;
+        cursor: pointer;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: background-color 120ms, border-color 120ms;
+    }
+    .dk-timeline-legendBtn:hover {
+        background: rgba(255,255,255,0.05);
+        border-color: rgba(255,255,255,0.1);
+    }
+    .dk-timeline-legendBtn.active {
+        background: rgba(46,157,143,0.15);
+        border-color: #2A9D8F;
+    }
+    /* Markerte celler får tykkere kantlinje i highlight-modus */
+    .dk-timeline-cellHighlighted {
+        outline: 2px solid #FFFFFF;
+        outline-offset: -1px;
+        z-index: 1;
+        position: relative;
+    }
+</style>
 
 @code {
     [Parameter, EditorRequired]
@@ -96,6 +157,39 @@
     [Parameter] public double HighCostThresholdNok { get; set; } = 5_000;
 
     private IReadOnlyList<DayRow> Days { get; set; } = Array.Empty<DayRow>();
+
+    /// <summary>
+    /// Mulige filtre brukeren kan trykke i legenden. Single-select: aktivt
+    /// filter highlighter kun matchende timer; resten dimmes til 15% opacity.
+    /// Klikk samme knapp igjen for å rydde filteret.
+    /// </summary>
+    private enum CellFilter { Produksjon, Overlop, Ubalanse, StorUbalanse, IngenDrift }
+    private CellFilter? _activeFilter;
+
+    private void ToggleFilter(CellFilter f)
+    {
+        _activeFilter = _activeFilter == f ? null : f;
+    }
+
+    private string LegendBtnClass(CellFilter f)
+        => "dk-timeline-legendBtn" + (_activeFilter == f ? " active" : "");
+
+    /// <summary>
+    /// Avgjør om en time matcher gjeldende filter. Et filter ser på de
+    /// underliggende boolean-flaggene direkte (HarOverlop, UbalanseKostNok,
+    /// ElhubMwh) — ikke bare den dominerende fargen. F.eks. en time som
+    /// både hadde overløp OG ubalanse-kost (vises lilla av prioritets-
+    /// grunner) blir markert ved Overlop-filter også.
+    /// </summary>
+    private bool CellMatchesFilter(HourCell cell, CellFilter f) => f switch
+    {
+        CellFilter.Produksjon   => cell.HasProduksjon,
+        CellFilter.Overlop      => cell.HasOverlop,
+        CellFilter.Ubalanse     => cell.HasUbalanse,
+        CellFilter.StorUbalanse => cell.IsHighCost,
+        CellFilter.IngenDrift   => !cell.HasProduksjon && !cell.HasOverlop && !cell.HasUbalanse,
+        _ => true,
+    };
 
     protected override void OnParametersSet()
     {
@@ -133,6 +227,8 @@
 
                 var (color, label) = ChooseCellStyle(hour, maxCostScale);
                 var isHighCost = hour.UbalanseKostNok > HighCostThresholdNok;
+                var hasProduksjon = hour.ElhubMwh.HasValue && hour.ElhubMwh.Value > 0;
+                var hasUbalanse = hour.UbalanseKostNok > 0;
 
                 var lines = new List<string>(6)
                 {
@@ -147,12 +243,13 @@
                     lines.Add($"Spot: {hour.SpotprisNokMwh:F0} NOK/MWh");
                 if (hour.RkPrisNokMwh.HasValue)
                     lines.Add($"RK: {hour.RkPrisNokMwh:F0} NOK/MWh");
-                if (hour.UbalanseKostNok > 0)
+                if (hasUbalanse)
                     lines.Add($"Ubalanse-kost: {FormatNok(hour.UbalanseKostNok)} NOK");
                 if (hour.HarOverlop)
                     lines.Add("⚠ Overløp på terminal-dam");
 
-                cells[h] = new HourCell(color, string.Join('\n', lines), isHighCost);
+                cells[h] = new HourCell(color, string.Join('\n', lines), isHighCost,
+                    hasProduksjon, hour.HarOverlop, hasUbalanse);
             }
             rows.Add(new DayRow(day, cells));
         }
@@ -204,6 +301,16 @@
 
     private static string FormatNok(double nok) => nok.ToString("N0", NorskTall);
 
-    private sealed record HourCell(string Color, string Tooltip, bool IsHighCost);
+    private sealed record HourCell(
+        string Color,
+        string Tooltip,
+        bool IsHighCost,
+        // Underliggende flagg for legende-filteret. Settes uavhengig av
+        // hvilken farge cellen får (en time kan ha både produksjon og
+        // ubalanse-kost; lilla vinner i fargevalg, men begge er sanne her).
+        bool HasProduksjon,
+        bool HasOverlop,
+        bool HasUbalanse);
+
     private sealed record DayRow(DateTime Date, HourCell?[] Cells);
 }
