@@ -35,6 +35,7 @@
                     <div class="dk-timeline-hourLabel">@(hour % 3 == 0 ? hour.ToString("D2") : "")</div>
                 }
             </div>
+            @{ int matchCount = 0; }
             @foreach (var day in Days)
             {
                 <div class="dk-timeline-row">
@@ -48,9 +49,16 @@
                         else
                         {
                             var c = cell;
-                            <div class="dk-timeline-cell @(IsInDragRange(c) ? "dk-timeline-cellSelected" : "")"
-                                 style="@($"background-color:{c.Color};")"
-                                 title="@c.Tooltip"
+                            var matches = _filterColor is null
+                                || string.Equals(_filterColor, c.Color, StringComparison.OrdinalIgnoreCase);
+                            if (matches && _filterColor is not null) matchCount++;
+                            var style = matches
+                                ? $"background-color:{c.Color};"
+                                : $"background-color:{c.Color}; opacity:0.15;";
+                            var classes = "dk-timeline-cell"
+                                + (IsInDragRange(c) ? " dk-timeline-cellSelected" : "")
+                                + (matches && _filterColor is not null ? " dk-timeline-cellHighlighted" : "");
+                            <div class="@classes" style="@style" title="@c.Tooltip"
                                  @onmousedown="@(() => StartDrag(c))"
                                  @onmousedown:preventDefault="true"
                                  @onmouseenter="@(() => DragEnter(c))"
@@ -63,6 +71,22 @@
         </div>
 
         <div class="dk-timeline-legend mt-3">
+            @if (_filterColor is not null)
+            {
+                <div class="d-flex justify-end mb-2">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Primary">
+                        Viser <strong>@matchCount</strong> matchende timer · klikk samme kategori for å rydde
+                    </MudText>
+                </div>
+            }
+            else
+            {
+                <div class="d-flex justify-end mb-2">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                        Klikk en kategori for å markere kun de timene
+                    </MudText>
+                </div>
+            }
             @foreach (var group in LegendGroups)
             {
                 <div class="dk-timeline-legendGroup">
@@ -70,10 +94,12 @@
                     <div class="dk-timeline-legendGroupItems">
                         @foreach (var entry in group.Items)
                         {
-                            <div class="dk-timeline-legendItem">
-                                <span class="dk-timeline-legendSwatch" style="@($"background-color:{entry.Color};")"></span>
+                            var color = entry.Color;
+                            <button type="button" class="@LegendBtnClass(color)"
+                                    @onclick="() => ToggleFilter(color)">
+                                <span class="dk-timeline-legendSwatch" style="@($"background-color:{color};")"></span>
                                 <span>@entry.Label</span>
-                            </div>
+                            </button>
                         }
                     </div>
                 </div>
@@ -81,6 +107,38 @@
         </div>
     }
 </div>
+
+<style>
+    /* Klikkbare legende-knapper med highlight-modus (delt med ProduksjonTimeline) */
+    .dk-timeline-legendBtn {
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        padding: 4px 8px;
+        cursor: pointer;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: background-color 120ms, border-color 120ms;
+    }
+    .dk-timeline-legendBtn:hover {
+        background: rgba(255,255,255,0.05);
+        border-color: rgba(255,255,255,0.1);
+    }
+    .dk-timeline-legendBtn.active {
+        background: rgba(46,157,143,0.15);
+        border-color: #2A9D8F;
+    }
+    .dk-timeline-cellHighlighted {
+        outline: 2px solid #FFFFFF;
+        outline-offset: -1px;
+        z-index: 1;
+        position: relative;
+    }
+</style>
 
 @code {
     [Parameter, EditorRequired]
@@ -97,6 +155,24 @@
 
     private IReadOnlyList<DayRow> Days { get; set; } = Array.Empty<DayRow>();
     private IReadOnlyList<LegendGroup> LegendGroups { get; set; } = Array.Empty<LegendGroup>();
+
+    /// <summary>
+    /// Aktiv farge-filter: når satt highlightes kun celler med matchende farge,
+    /// resten dimmes til 15% opacity. Single-select med toggle-off på samme
+    /// knapp. (Driftslinjen kategoriseres ved farge — én farge per legend-
+    /// entry, så farge-match er entydig.)
+    /// </summary>
+    private string? _filterColor;
+
+    private void ToggleFilter(string color)
+    {
+        _filterColor = string.Equals(_filterColor, color, StringComparison.OrdinalIgnoreCase)
+            ? null : color;
+    }
+
+    private string LegendBtnClass(string color)
+        => "dk-timeline-legendBtn"
+            + (string.Equals(_filterColor, color, StringComparison.OrdinalIgnoreCase) ? " active" : "");
 
     protected override void OnParametersSet()
     {

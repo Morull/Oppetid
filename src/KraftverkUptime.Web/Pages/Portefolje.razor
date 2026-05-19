@@ -1,23 +1,17 @@
 @page "/portefolje"
+@implements IDisposable
 @inject NedetidApi NedetidApi
+@inject FilterState Filter
 
 <PageTitle>Portefølje-rapport</PageTitle>
 
-<MudGrid Class="mb-4">
-    <MudItem xs="12">
-        <MudText Typo="Typo.h1">Portefølje-rapport</MudText>
-        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
-            Samlet rapport på tvers av alle anlegg: drift-KPI-er, økonomi,
-            capture rate, vakt-ROI og nedetid for valgt periode. Klikk på
-            anleggs-navn for detalj-visning per anlegg.
-        </MudText>
-    </MudItem>
-</MudGrid>
-
-@* ---- Filter ---- *@
-<MudPaper Class="pa-4 mb-4" Elevation="1">
-    <DateRangeFilter From="_fromDate" To="_toDate" OnChanged="@OnRangeChanged" />
-</MudPaper>
+<MudText Typo="Typo.h1" Class="mb-1">Portefølje-rapport</MudText>
+<MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary" Class="mb-4">
+    Samlet rapport på tvers av alle anlegg: drift-KPI-er, økonomi,
+    capture rate, vakt-ROI og nedetid for valgt periode (styres av
+    anlegg- og periode-velgeren øverst). Klikk anleggs-navn for detaljer.
+    Hold musepekeren over kolonneoverskriftene for forklaringer.
+</MudText>
 
 @if (_error is not null)
 {
@@ -53,50 +47,9 @@ else if (_rows is not null)
             </MudAlert>
         }
 
-        @* ---- Lønnsomhets-vurdering for vaktordningen ---- *@
-        <MudPaper Class="pa-4 mb-4" Elevation="1">
-            <MudGrid>
-                <MudItem xs="12" md="3">
-                    <MudText Typo="Typo.h3" Class="mb-2">Vurdering av vaktordningen</MudText>
-                    <MudNumericField T="double" @bind-Value="_aarligVaktKostNok"
-                                     Label="Årlig vakt-kost (NOK)"
-                                     Step="50000" Format="N0"
-                                     HelperText="Drifts-leders estimat"
-                                     Variant="Variant.Outlined" Margin="Margin.Dense" />
-                </MudItem>
-                <MudItem xs="6" sm="3" md="2">
-                    <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
-                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Total reddet</MudText>
-                        <MudText Typo="Typo.h3">@FormatNok(_totalReddetNok)</MudText>
-                        <MudText Typo="Typo.caption">NOK i perioden</MudText>
-                    </MudPaper>
-                </MudItem>
-                <MudItem xs="6" sm="3" md="2">
-                    <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
-                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Annualisert</MudText>
-                        <MudText Typo="Typo.h3">@FormatNok(AnnualisertReddet())</MudText>
-                        <MudText Typo="Typo.caption">NOK/år (skalert)</MudText>
-                    </MudPaper>
-                </MudItem>
-                <MudItem xs="6" sm="3" md="2">
-                    <MudPaper Class="pa-3" Elevation="2" Style="@VaktKostStyle()">
-                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Vakt-kost / år</MudText>
-                        <MudText Typo="Typo.h3">@FormatNok(_aarligVaktKostNok)</MudText>
-                    </MudPaper>
-                </MudItem>
-                <MudItem xs="6" sm="3" md="3">
-                    <MudPaper Class="pa-3" Elevation="2" Style="@VurderingStyle()">
-                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Vurdering</MudText>
-                        <MudText Typo="Typo.h3">@VurderingText()</MudText>
-                        <MudText Typo="Typo.caption">@VurderingForklaring()</MudText>
-                    </MudPaper>
-                </MudItem>
-            </MudGrid>
-            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mt-2">
-                Annualisering: total reddet × (365 / antall_dager_i_periode). ROI = annualisert reddet / årlig vakt-kost.
-                Lønnsom ≥ 1.0, marginal 0.5–1.0, ikke lønnsom &lt; 0.5.
-            </MudText>
-        </MudPaper>
+        @* "Vurdering av vaktordningen" er flyttet til /vakt-roi i portefølje-modus
+           (2026-05-19). Brukeren kommer dit ved å trykke Vakt-ROI-fanen uten et
+           anlegg valgt. *@
 
         @* ---- Hovedtabell ---- *@
         <MudPaper Class="pa-4 mb-4" Elevation="1">
@@ -104,22 +57,71 @@ else if (_rows is not null)
                 @_rows.Count anlegg med data for perioden
             </MudText>
             <div style="overflow-x: auto;">
-                <MudTable Items="_rows" Hover="true" Dense="true" Elevation="0" SortLabel="Sortér">
+                <MudTable Items="_rows" Hover="true" Dense="true" Elevation="0" SortLabel="Sortér"
+                          Style="white-space: nowrap;">
                     <HeaderContent>
-                        <MudTh><MudTableSortLabel SortBy="@SortByName">Anlegg</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByCapacity">Effekt (MW)</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByAf">AF</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByFor">FOR</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByMwh">Produksjon (MWh)</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByNok"
-                                InitialDirection="SortDirection.Descending">Spotoms (NOK)</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByCr">CR</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByMerverdi">Merverdi</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByNedetid">Nedetid (t)</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByTapNok">Tap (NOK)</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByReddetNok">Reddet vakt (NOK)</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right">Reddbare</MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByDq">Datakvalitet</MudTableSortLabel></MudTh>
+                        <MudTh Style="min-width: 110px;"><MudTableSortLabel SortBy="@SortByName">Anlegg</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right">
+                            <MudTooltip Text="Installert effekt på generatoren(e) i megawatt. Brukes som baseline-kapasitet i KPI-ene.">
+                                <MudTableSortLabel SortBy="@SortByCapacity">Effekt (MW)</MudTableSortLabel>
+                            </MudTooltip>
+                        </MudTh>
+                        <MudTh Style="text-align:right">
+                            <MudTooltip Text="Availability Factor — andel av perioden anlegget var tilgjengelig for produksjon (uten planlagt/uplanlagt nedetid). Høyt tall = bra.">
+                                <MudTableSortLabel SortBy="@SortByAf">AF</MudTableSortLabel>
+                            </MudTooltip>
+                        </MudTh>
+                        <MudTh Style="text-align:right">
+                            <MudTooltip Text="Forced Outage Rate — andel av perioden anlegget var nede på grunn av uplanlagte feil (trip, alarm). Lavt tall = bra.">
+                                <MudTableSortLabel SortBy="@SortByFor">FOR</MudTableSortLabel>
+                            </MudTooltip>
+                        </MudTh>
+                        <MudTh Style="text-align:right">
+                            <MudTooltip Text="Total levert energi til Elhub i perioden (MWh).">
+                                <MudTableSortLabel SortBy="@SortByMwh">Produksjon (MWh)</MudTableSortLabel>
+                            </MudTooltip>
+                        </MudTh>
+                        <MudTh Style="text-align:right">
+                            <MudTooltip Text="Spotomsetning — produksjon × spotpris time-for-time. Det du teoretisk ville fått hvis du solgte alt på spot.">
+                                <MudTableSortLabel SortBy="@SortByNok"
+                                    InitialDirection="SortDirection.Descending">Spotoms (NOK)</MudTableSortLabel>
+                            </MudTooltip>
+                        </MudTh>
+                        <MudTh Style="text-align:right">
+                            <MudTooltip Text="Capture Rate — gjennomsnittlig oppnådd pris ÷ snitt-spotpris. Over 1.0× = du traff bedre tider; under 1.0× = du solgte når prisen var lav.">
+                                <MudTableSortLabel SortBy="@SortByCr">CR</MudTableSortLabel>
+                            </MudTooltip>
+                        </MudTh>
+                        <MudTh Style="text-align:right">
+                            <MudTooltip Text="Merverdi over flat spotomsetning. Positiv = Hydrogrid/planen ga ekstra inntekter ved smart timing. Negativ = motsatt.">
+                                <MudTableSortLabel SortBy="@SortByMerverdi">Merverdi</MudTableSortLabel>
+                            </MudTooltip>
+                        </MudTh>
+                        <MudTh Style="text-align:right">
+                            <MudTooltip Text="Sum nedetidstimer fra klassifisert settlement-data. Inkluderer både planlagt og uplanlagt.">
+                                <MudTableSortLabel SortBy="@SortByNedetid">Nedetid (t)</MudTableSortLabel>
+                            </MudTooltip>
+                        </MudTh>
+                        <MudTh Style="text-align:right">
+                            <MudTooltip Text="Estimert tap i nedetid: nedetid-timer × forventet produksjon × spotpris.">
+                                <MudTableSortLabel SortBy="@SortByTapNok">Tap (NOK)</MudTableSortLabel>
+                            </MudTooltip>
+                        </MudTh>
+                        <MudTh Style="text-align:right">
+                            <MudTooltip Text="Sum NOK vakten reddet ved å fikse nedetid utenom arbeidstid. Sammenlign mot vakt-kost på /vakt-roi.">
+                                <MudTableSortLabel SortBy="@SortByReddetNok">Reddet vakt (NOK)</MudTableSortLabel>
+                            </MudTooltip>
+                        </MudTh>
+                        <MudTh Style="text-align:right">
+                            <MudTooltip Text="Antall reddbare events (innenfor vakt-vindu og av rett kategori) / totalt antall events i perioden.">
+                                <span>Reddbare</span>
+                            </MudTooltip>
+                        </MudTh>
+                        <MudTh Style="text-align:right">
+                            <MudTooltip Text="Andel timer med god data (alle kilder + Elhub stemmer overens med plan). Lavt tall flagges som varsel.">
+                                <MudTableSortLabel SortBy="@SortByDq">Datakvalitet</MudTableSortLabel>
+                            </MudTooltip>
+                        </MudTh>
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd>
@@ -168,22 +170,22 @@ else if (_rows is not null)
                         </MudTd>
                     </RowTemplate>
                     <FooterContent>
-                        <MudTFootRow>
+                        <MudTFootRow Style="background: rgba(46,157,143,0.08); font-weight: 600;">
                             <MudTd><strong>SUM</strong></MudTd>
-                            <MudTd Style="text-align:right"><strong>@_rows.Sum(r => r.InstalledCapacityMw).ToString("F1")</strong></MudTd>
-                            <MudTd></MudTd>
-                            <MudTd></MudTd>
-                            <MudTd Style="text-align:right"><strong>@FormatMwh(_rows.Sum(r => r.TotalProductionMwh))</strong></MudTd>
-                            <MudTd Style="text-align:right"><strong>@FormatNok(_rows.Sum(r => r.SpotomsetningNok))</strong></MudTd>
-                            <MudTd></MudTd>
-                            <MudTd Style="text-align:right"><strong>@FormatNokSigned(_rows.Sum(r => r.MerverdiNok))</strong></MudTd>
-                            <MudTd Style="text-align:right"><strong>@FormatHours(_rows.Sum(r => r.NedetidTimer))</strong></MudTd>
-                            <MudTd Style="text-align:right"><strong>@FormatNok(_rows.Sum(r => r.TapNok))</strong></MudTd>
-                            <MudTd Style="text-align:right"><strong>@FormatNok(_totalReddetNok)</strong></MudTd>
-                            <MudTd Style="text-align:right">
-                                <strong>@_rows.Sum(r => r.AntallReddbare) / @_rows.Sum(r => r.AntallEvents)</strong>
+                            <MudTd Style="text-align:right; white-space: nowrap;">@_rows.Sum(r => r.InstalledCapacityMw).ToString("F1")</MudTd>
+                            <MudTd Style="text-align:right; color: var(--mud-palette-text-secondary);">—</MudTd>
+                            <MudTd Style="text-align:right; color: var(--mud-palette-text-secondary);">—</MudTd>
+                            <MudTd Style="text-align:right; white-space: nowrap;">@FormatMwh(_rows.Sum(r => r.TotalProductionMwh))</MudTd>
+                            <MudTd Style="text-align:right; white-space: nowrap;">@FormatNok(_rows.Sum(r => r.SpotomsetningNok))</MudTd>
+                            <MudTd Style="text-align:right; color: var(--mud-palette-text-secondary);">—</MudTd>
+                            <MudTd Style="text-align:right; white-space: nowrap;">@FormatNokSigned(_rows.Sum(r => r.MerverdiNok))</MudTd>
+                            <MudTd Style="text-align:right; white-space: nowrap;">@FormatHours(_rows.Sum(r => r.NedetidTimer))</MudTd>
+                            <MudTd Style="text-align:right; white-space: nowrap;">@FormatNok(_rows.Sum(r => r.TapNok))</MudTd>
+                            <MudTd Style="text-align:right; white-space: nowrap;">@FormatNok(_totalReddetNok)</MudTd>
+                            <MudTd Style="text-align:right; white-space: nowrap;">
+                                @_rows.Sum(r => r.AntallReddbare) / @_rows.Sum(r => r.AntallEvents)
                             </MudTd>
-                            <MudTd Style="text-align:right"><strong>@FormatPortfolioGoodPct()</strong></MudTd>
+                            <MudTd Style="text-align:right; white-space: nowrap;">@FormatPortfolioGoodPct()</MudTd>
                         </MudTFootRow>
                     </FooterContent>
                 </MudTable>
@@ -193,14 +195,10 @@ else if (_rows is not null)
 }
 
 @code {
-    private DateTime? _fromDate;
-    private DateTime? _toDate;
     private bool _loading;
     private string? _error;
     private List<Row>? _rows;
     private double _totalReddetNok;
-    // Default vakt-kost — drifts-leder kan justere i input
-    private double _aarligVaktKostNok = 360_000;
 
 
     /// <summary>
@@ -229,20 +227,23 @@ else if (_rows is not null)
 
     protected override async Task OnInitializedAsync()
     {
-        // Default-periode: forrige måned
-        var today = DateTime.Today;
-        var firstThis = new DateTime(today.Year, today.Month, 1);
-        _fromDate = firstThis.AddMonths(-1);
-        _toDate = firstThis;
+        Filter.OnChange += OnFilterChanged;
         await LoadAsync();
     }
 
-    /// <summary>Kalles automatisk fra DateRangeFilter når perioden endres.</summary>
-    private async Task OnRangeChanged((DateTime From, DateTime To) range)
+    public void Dispose()
     {
-        _fromDate = range.From;
-        _toDate = range.To;
-        await LoadAsync();
+        Filter.OnChange -= OnFilterChanged;
+    }
+
+    private async void OnFilterChanged()
+    {
+        try { await LoadAsync(); }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke oppdatere portefølje: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     /// <summary>
@@ -253,17 +254,17 @@ else if (_rows is not null)
     /// </summary>
     private async Task LoadAsync()
     {
-        if (!_fromDate.HasValue || !_toDate.HasValue) return;
+        if (!Filter.FromDate.HasValue || !Filter.ToDate.HasValue) return;
         _loading = true;
         _error = null;
         _rows = null;
         _totalReddetNok = 0;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
 
         try
         {
-            var fromUtc = _fromDate.ToUtcOffsetSafe();
-            var toUtc = _toDate.ToUtcOffsetSafe();
+            var fromUtc = Filter.FromDate.Value.ToUtcOffsetSafe();
+            var toUtc = Filter.ToDate.Value.ToUtcOffsetSafe();
 
             var portfolio = await NedetidApi.GetPortfolioKpisAsync(fromUtc, toUtc);
 
@@ -333,46 +334,6 @@ else if (_rows is not null)
             DataQuality: dq,
             MissingData: missing);
     }
-
-    // -- Lønnsomhets-vurdering --
-
-    private double AnnualisertReddet()
-    {
-        if (!_fromDate.HasValue || !_toDate.HasValue) return 0;
-        var dager = (_toDate.Value - _fromDate.Value).TotalDays;
-        return dager <= 0 ? 0 : _totalReddetNok * (365.0 / dager);
-    }
-
-    private double Roi() => _aarligVaktKostNok <= 0 ? 0 : AnnualisertReddet() / _aarligVaktKostNok;
-
-    private string VurderingText()
-    {
-        var r = Roi();
-        if (r >= 1.0) return $"Lønnsom ({r:F2}×)";
-        if (r >= 0.5) return $"Marginal ({r:F2}×)";
-        if (r > 0) return $"Ikke lønnsom ({r:F2}×)";
-        return "–";
-    }
-
-    private string VurderingForklaring()
-    {
-        var r = Roi();
-        if (r >= 1.0) return "Vakt-ordningen tjener inn kostnaden.";
-        if (r >= 0.5) return "Halv inntjening — vurder bemanningsmodell.";
-        if (r > 0) return "Underdekning — vurder reduksjon.";
-        return "Ikke nok data til vurdering.";
-    }
-
-    private string VurderingStyle()
-    {
-        var r = Roi();
-        if (r >= 1.0) return "border-left: 4px solid #2A9D8F;";
-        if (r >= 0.5) return "border-left: 4px solid #F39C12;";
-        if (r > 0) return "border-left: 4px solid #E76F51;";
-        return "border-left: 4px solid #999;";
-    }
-
-    private string VaktKostStyle() => "border-left: 4px solid #6E59A5;";
 
     // -- Sort-funksjoner --
     private static readonly Func<Row, object> SortByName     = r => r.PlantName;

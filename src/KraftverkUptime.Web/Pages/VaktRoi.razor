@@ -111,6 +111,52 @@ else if (IsPortfolioMode && _portfolio is not null)
 {
     @* ============== PORTEFØLJE-MODUS ============== *@
 
+    @* ---- Vurdering av vaktordningen (flyttet fra /portefolje 2026-05-19) ---- *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudGrid>
+            <MudItem xs="12" md="3">
+                <MudText Typo="Typo.h3" Class="mb-2">Vurdering av vaktordningen</MudText>
+                <MudNumericField T="double" @bind-Value="_aarligVaktKost"
+                                 Label="Årlig vakt-kost (NOK)"
+                                 Step="50000" Format="N0"
+                                 HelperText="Drifts-leders estimat"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="6" sm="3" md="2">
+                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Total reddet</MudText>
+                    <MudText Typo="Typo.h3">@FormatNok(_portfolio.TotalReddetNok)</MudText>
+                    <MudText Typo="Typo.caption">NOK i perioden</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="3" md="2">
+                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Annualisert</MudText>
+                    <MudText Typo="Typo.h3">@FormatNok(AnnualisertReddetPortfolio())</MudText>
+                    <MudText Typo="Typo.caption">NOK/år (skalert)</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="3" md="2">
+                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #6E59A5;">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Vakt-kost / år</MudText>
+                    <MudText Typo="Typo.h3">@FormatNok(_aarligVaktKost)</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="3" md="3">
+                <MudPaper Class="pa-3" Elevation="2" Style="@VaktVurderingStyle()">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Vurdering</MudText>
+                    <MudText Typo="Typo.h3">@VaktVurderingText()</MudText>
+                    <MudText Typo="Typo.caption">@VaktVurderingForklaring()</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mt-2">
+            Annualisering: total reddet × (365 / antall_dager_i_periode).
+            ROI = annualisert reddet / årlig vakt-kost.
+            Lønnsom ≥ 1.0, marginal 0.5–1.0, ikke lønnsom &lt; 0.5.
+        </MudText>
+    </MudPaper>
+
     <MudGrid Class="mb-4">
         <MudItem xs="12" sm="6" md="3">
             <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
@@ -511,7 +557,7 @@ else if (!IsPortfolioMode && _response is not null)
 @code {
     [Parameter] public string? PlantId { get; set; }
 
-    private double _aarligVaktKost = 200_000;
+    private double _aarligVaktKost = 360_000;
     private bool _loading;
     private string? _error;
 
@@ -569,6 +615,44 @@ else if (!IsPortfolioMode && _response is not null)
 
     private static string FormatVaktVindu(string start, string slutt, string oppmote) =>
         $"{start}-{slutt} (oppmøte {oppmote})";
+
+    // ----- Vakt-vurdering (flyttet fra /portefolje) -----
+
+    private double AnnualisertReddetPortfolio()
+    {
+        if (_portfolio is null) return 0;
+        var dager = (Filter.ToDate - Filter.FromDate)?.TotalDays ?? 0;
+        return dager <= 0 ? 0 : _portfolio.TotalReddetNok * (365.0 / dager);
+    }
+
+    private double VaktRoiRatio() => _aarligVaktKost <= 0 ? 0 : AnnualisertReddetPortfolio() / _aarligVaktKost;
+
+    private string VaktVurderingText()
+    {
+        var r = VaktRoiRatio();
+        if (r >= 1.0) return $"Lønnsom ({r:F2}×)";
+        if (r >= 0.5) return $"Marginal ({r:F2}×)";
+        if (r > 0) return $"Ikke lønnsom ({r:F2}×)";
+        return "–";
+    }
+
+    private string VaktVurderingForklaring()
+    {
+        var r = VaktRoiRatio();
+        if (r >= 1.0) return "Vakt-ordningen tjener inn kostnaden.";
+        if (r >= 0.5) return "Halv inntjening — vurder bemanningsmodell.";
+        if (r > 0) return "Underdekning — vurder reduksjon.";
+        return "Ikke nok data til vurdering.";
+    }
+
+    private string VaktVurderingStyle()
+    {
+        var r = VaktRoiRatio();
+        if (r >= 1.0) return "border-left: 4px solid #2A9D8F;";
+        if (r >= 0.5) return "border-left: 4px solid #F39C12;";
+        if (r > 0) return "border-left: 4px solid #E76F51;";
+        return "border-left: 4px solid #999;";
+    }
 
     private async Task ReloadAsync()
     {
