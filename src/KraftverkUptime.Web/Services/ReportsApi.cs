@@ -263,6 +263,29 @@ public sealed class ReportsApi
     }
 
     /// <summary>
+    /// Laster opp én SCADA master-CSV med tags fra flere anlegg.
+    /// Speiler <c>POST /api/v1/scada/multi-plant</c>. Splitter per signal-prefiks
+    /// og oppretter én data_imports-rad per anlegg.
+    /// </summary>
+    public async Task<MultiPlantScadaResponse> UploadMultiPlantScadaMasterAsync(
+        Stream fileStream, string fileName, CancellationToken ct = default)
+    {
+        using var form = new MultipartFormDataContent();
+        using var fileContent = new StreamContent(fileStream);
+        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("text/csv");
+        form.Add(fileContent, "file", fileName);
+
+        var resp = await _http.PostAsync(
+            new Uri("api/v1/scada/multi-plant", UriKind.Relative), form, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+
+        return await resp.Content
+            .ReadFromJsonAsync<MultiPlantScadaResponse>(JsonOptions, ct)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Tom respons fra multi-plant SCADA upload.");
+    }
+
+    /// <summary>
     /// Laster opp en multi-anleggs-eksport (én Excel med flere plant-faner).
     /// Speiler <c>POST /api/v1/settlements/multi-plant</c>. Auto-oppretter
     /// nye plants ved behov.
@@ -374,7 +397,8 @@ public sealed record DamDto(
     bool IsTurbineIntake,
     double? HrvMoh,
     double? LrvMoh,
-    double? VolumeMm3);
+    double? VolumeMm3,
+    int? OverflowProxyThresholdCm = null);
 
 public sealed record UpdateDamRequestDto(
     string? Name,
@@ -382,7 +406,8 @@ public sealed record UpdateDamRequestDto(
     bool IsTurbineIntake,
     double? HrvMoh,
     double? LrvMoh,
-    double? VolumeMm3);
+    double? VolumeMm3,
+    int? OverflowProxyThresholdCm = null);
 
 public sealed record CreateDamRequestDto(
     string DamId,
@@ -391,7 +416,8 @@ public sealed record CreateDamRequestDto(
     bool IsTurbineIntake,
     double? HrvMoh,
     double? LrvMoh,
-    double? VolumeMm3);
+    double? VolumeMm3,
+    int? OverflowProxyThresholdCm = null);
 
 public sealed record SignalMapDto(
     string PlantId,
@@ -472,6 +498,17 @@ public sealed record MultiPlantOperlogResponse(
 public sealed record PlantOperlogResultDto(
     string PlantId,
     int EventsImported);
+
+public sealed record MultiPlantScadaResponse(
+    int TotalRowsParsed,
+    int TotalRowsSkipped,
+    IReadOnlyList<string> UnknownSignals,
+    IReadOnlyList<PlantScadaResultDto> PerPlant);
+
+public sealed record PlantScadaResultDto(
+    string PlantId,
+    int SignalCount,
+    int SamplesWritten);
 
 public sealed record MultiPlantImportResultDto(
     string PlantId,

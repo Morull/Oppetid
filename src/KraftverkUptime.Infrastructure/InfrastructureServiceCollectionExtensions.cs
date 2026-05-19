@@ -92,6 +92,8 @@ public static class InfrastructureServiceCollectionExtensions
         // --- Kaskade-modell (dammer per anlegg) ---
         services.AddScoped<KraftverkUptime.Core.Domain.IDamRepository,
                           KraftverkUptime.Infrastructure.Persistence.DbDamRepository>();
+        services.AddScoped<KraftverkUptime.Core.Domain.IPlantOverflowConfigProvider,
+                          KraftverkUptime.Infrastructure.Persistence.DbPlantOverflowConfigProvider>();
 
         // --- Settlement-import persistens + period provider ---
         // Infrastructure eier KraftverkDbContext og er derfor riktig sted for

@@ -127,7 +127,13 @@ public sealed class HotFolderDetector
             }
             else if (sourceType == SourceType.ScadaTrends)
             {
-                plantId = DetectPlantFromCsvContent(file, diag);
+                var (csvPlant, isMulti) = AnalyzeCsvContent(file, diag);
+                if (isMulti)
+                {
+                    diag.Attempts.Add("Multi-plant SCADA-trends — ruter til /scada/multi-plant.");
+                    return DetectionResult.Ok("_multi_", SourceType.ScadaTrendsMultiPlant, diag);
+                }
+                plantId = csvPlant;
             }
             else if (sourceType == SourceType.ScadaAlarms)
             {
@@ -456,6 +462,19 @@ public sealed class HotFolderDetector
 
     private string? DetectPlantFromCsvContent(FileInfo file, DetectionDiagnostics diag)
     {
+        var (plantId, _) = AnalyzeCsvContent(file, diag);
+        return plantId;
+    }
+
+    /// <summary>
+    /// Telmer alle plant-prefikser i CSV-headeren og avgjør om fila er
+    /// single-plant (én dominant prefix), multi-plant (≥ 2 prefikser som
+    /// hver har ≥ 2 tags) eller ukjent. Returnerer en (plantId, isMulti)-
+    /// tupel: <c>plantId</c> er navnet på det entydige anlegget for single-
+    /// plant, og <c>"_multi_"</c> for multi-plant. Begge null hvis ukjent.
+    /// </summary>
+    internal (string? PlantId, bool IsMultiPlant) AnalyzeCsvContent(FileInfo file, DetectionDiagnostics diag)
+    {
         try
         {
             using var reader = new StreamReader(file.FullName);
@@ -466,7 +485,7 @@ public sealed class HotFolderDetector
             }
 
             var prefixCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            var matches = Regex.Matches(firstLine, @"Cluster1\.([A-Z]+)_", RegexOptions.IgnoreCase);
+            var matches = Regex.Matches(firstLine, @"Cluster1\.([A-Z0-9]+)_", RegexOptions.IgnoreCase);
             foreach (Match m in matches)
             {
                 var prefix = m.Groups[1].Value.ToUpperInvariant();
@@ -475,24 +494,50 @@ public sealed class HotFolderDetector
             if (prefixCounts.Count == 0)
             {
                 diag.Attempts.Add("CSV header har ingen 'Cluster1.PREFIKS_'-tags.");
-                return null;
+                return (null, false);
             }
             diag.ScadaPrefixCounts = prefixCounts.OrderByDescending(kv => kv.Value)
                 .Take(10).ToDictionary(kv => kv.Key, kv => kv.Value);
 
-            var dominant = prefixCounts.OrderByDescending(kv => kv.Value).First();
-            if (_options.PlantPrefixMap.TryGetValue(dominant.Key, out var plant))
+            // Mapper prefikser til plant-id'er. Tell tags per UNIK plant — to
+            // prefikser som mapper til samme plant (eks. OGREY1 + OGREY2 →
+            // ogreyfoss) regnes som ett anlegg.
+            var tagsByPlant = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var (prefix, count) in prefixCounts)
             {
-                diag.Attempts.Add($"SCADA prefiks '{dominant.Key}' ({dominant.Value} tags) → plant '{plant}'.");
-                return plant;
+                if (_options.PlantPrefixMap.TryGetValue(prefix, out var plant))
+                {
+                    tagsByPlant[plant] = tagsByPlant.GetValueOrDefault(plant) + count;
+                }
             }
-            diag.Attempts.Add($"SCADA prefiks '{dominant.Key}' ikke i PlantPrefixMap.");
-            return null;
+            if (tagsByPlant.Count == 0)
+            {
+                diag.Attempts.Add(
+                    $"Ingen SCADA prefikser i {prefixCounts.Count} stk matchet PlantPrefixMap.");
+                return (null, false);
+            }
+
+            // Multi-plant: minst 2 ulike plant-id'er har ≥ 2 tags hver.
+            // Terskelen på 2 unngår at en enkelt feil-mappet tag i en ellers
+            // single-plant fil utløser multi-plant-flow.
+            var multiPlantCount = tagsByPlant.Count(kv => kv.Value >= 2);
+            if (multiPlantCount >= 2)
+            {
+                diag.Attempts.Add(
+                    $"Multi-plant SCADA: {tagsByPlant.Count} anlegg matchet ({string.Join(", ", tagsByPlant.Select(kv => $"{kv.Key}={kv.Value}"))}).");
+                return ("_multi_", true);
+            }
+
+            // Single-plant: anlegget med flest tags.
+            var dominant = tagsByPlant.OrderByDescending(kv => kv.Value).First();
+            diag.Attempts.Add(
+                $"Single-plant SCADA: {dominant.Value} tags → plant '{dominant.Key}'.");
+            return (dominant.Key, false);
         }
         catch (Exception ex)
         {
             diag.Attempts.Add($"CSV-content-detect feilet: {ex.GetType().Name}: {ex.Message}");
-            return null;
+            return (null, false);
         }
     }
 }
@@ -502,6 +547,7 @@ public enum SourceType
     Settlement,
     SettlementMultiPlant,    // én xlsx med flere plant-faner — rutes til /settlements/multi-plant
     ScadaTrends,             // master-CSV (tidsserier)
+    ScadaTrendsMultiPlant,   // master-CSV med tags fra flere anlegg — rutes til /scada/multi-plant
     ScadaAlarms,             // operlog (events) for ett anlegg
     ScadaAlarmsMultiPlant,   // operlog med events fra flere stations — rutes til /operlog/multi-plant
 }
@@ -513,6 +559,7 @@ public static class SourceTypeExtensions
         SourceType.Settlement => "settlement",
         SourceType.SettlementMultiPlant => "settlement",
         SourceType.ScadaTrends => "scada",
+        SourceType.ScadaTrendsMultiPlant => "scada",
         SourceType.ScadaAlarms => "operlog",
         SourceType.ScadaAlarmsMultiPlant => "operlog",
         _ => throw new ArgumentOutOfRangeException(nameof(type)),

@@ -120,6 +120,137 @@ public sealed class ScadaMasterCsvParser
     }
 
     /// <summary>
+    /// Parser en multi-anlegg master-CSV der hver signal-kolonne mappes til
+    /// en plant_id via <paramref name="signalToPlantId"/>. Brukes for filer
+    /// som inneholder tags fra flere anlegg (eks. samlet eksport av Vikeså,
+    /// Stølskraft, Ørsdalen, Øgreyfoss og Løgjen i ett dokument).
+    ///
+    /// Signaler som mapper til <c>null</c> (ukjent prefix) hoppes over og
+    /// telles i <see cref="MultiPlantScadaParseResult.UnmappedSignals"/>.
+    /// Hver sample får <c>asset_id</c> satt til plant_id-en som signal-prefiks
+    /// mappet til, slik at OverflowQueryService og signal_map-oppslag fungerer
+    /// likt som ved single-plant import.
+    /// </summary>
+    public MultiPlantScadaParseResult ParseMultiPlant(
+        TextReader reader,
+        TimeZoneInfo plantTimeZone,
+        Func<string, string?> signalToPlantId)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+        ArgumentNullException.ThrowIfNull(plantTimeZone);
+        ArgumentNullException.ThrowIfNull(signalToPlantId);
+
+        var headerLine = reader.ReadLine()
+            ?? throw new InvalidDataException("Tom CSV — manglende header-rad.");
+        var headerCols = headerLine.Split(';');
+        if (headerCols.Length < 3 || !headerCols[0].Trim().Equals("DateTime", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                "Forventet header som starter med 'DateTime;Value (Cluster1.NAME1);Unit (...)'.");
+        }
+
+        // Bygg liste (col-index, signal-id, plant_id, unit-col-index). Ukjente
+        // signal-prefikser (plantId=null) lagres i unmapped-lista for diagnose.
+        var mappedSignals = new List<(int ValueIdx, string SignalId, string PlantId, int UnitIdx)>();
+        var unmappedSignals = new List<string>();
+        for (var i = 1; i < headerCols.Length; i++)
+        {
+            var col = headerCols[i].Trim();
+            var match = SignalNameRegex.Match(col);
+            if (!match.Success)
+            {
+                continue;
+            }
+            var signalId = match.Groups["name"].Value;
+            var plantId = signalToPlantId(signalId);
+            var unitIdx = i + 1;
+            if (plantId is null)
+            {
+                unmappedSignals.Add(signalId);
+                continue;
+            }
+            mappedSignals.Add((i, signalId, plantId, unitIdx));
+        }
+
+        if (mappedSignals.Count == 0)
+        {
+            throw new InvalidDataException(
+                "Ingen signaler i CSV-en mapper til kjente plant-prefikser. " +
+                $"Sett opp prefiks-mapping for: {string.Join(", ", unmappedSignals.Take(5))}");
+        }
+
+        var samplesByPlant = new Dictionary<string, List<ScadaSample>>(StringComparer.Ordinal);
+        var signalCountByPlant = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        var unitsBySignal = new Dictionary<string, string>(StringComparer.Ordinal);
+        var rowsParsed = 0;
+        var rowsSkipped = 0;
+
+        string? line;
+        var lineNo = 1;
+        while ((line = reader.ReadLine()) is not null)
+        {
+            lineNo++;
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            var cols = line.Split(';');
+            if (cols.Length < headerCols.Length)
+            {
+                rowsSkipped++;
+                continue;
+            }
+
+            if (!TryParseTimestamp(cols[0], plantTimeZone, out var timestampUtc))
+            {
+                rowsSkipped++;
+                continue;
+            }
+
+            foreach (var (valueIdx, signalId, plantId, unitIdx) in mappedSignals)
+            {
+                var rawValue = cols[valueIdx];
+                var rawUnit = unitIdx < cols.Length ? cols[unitIdx] : "";
+
+                if (!string.IsNullOrEmpty(rawUnit) && !unitsBySignal.ContainsKey(signalId))
+                {
+                    unitsBySignal[signalId] = rawUnit.Trim();
+                }
+
+                var (value, quality) = ParseValue(rawValue);
+
+                if (!samplesByPlant.TryGetValue(plantId, out var plantSamples))
+                {
+                    plantSamples = new List<ScadaSample>();
+                    samplesByPlant[plantId] = plantSamples;
+                }
+                plantSamples.Add(new ScadaSample(plantId, signalId, timestampUtc, value, quality));
+
+                if (!signalCountByPlant.TryGetValue(plantId, out var signalSet))
+                {
+                    signalSet = new HashSet<string>(StringComparer.Ordinal);
+                    signalCountByPlant[plantId] = signalSet;
+                }
+                signalSet.Add(signalId);
+            }
+            rowsParsed++;
+        }
+
+        var perPlant = samplesByPlant
+            .Select(kv => new PlantScadaParseResult(
+                PlantId: kv.Key,
+                SignalCount: signalCountByPlant[kv.Key].Count,
+                Samples: kv.Value))
+            .OrderBy(p => p.PlantId, StringComparer.Ordinal)
+            .ToList();
+
+        return new MultiPlantScadaParseResult(
+            RowsParsed: rowsParsed,
+            RowsSkipped: rowsSkipped,
+            UnmappedSignals: unmappedSignals,
+            UnitsBySignal: unitsBySignal,
+            PerPlant: perPlant);
+    }
+
+    /// <summary>
     /// Parser tidspunkt i format <c>"2026-02-01 10:00:00.000"</c> som lokal anlegg-tid
     /// og konverterer til UTC. CSV-en har ikke tidssone-info — vi antar at eksport-en
     /// bruker anleggets konfigurerte tidssone (typisk Europe/Oslo).
@@ -196,3 +327,20 @@ public sealed record ScadaParseResult(
     int RowsSkipped,
     IReadOnlyList<ScadaSample> Samples,
     IReadOnlyDictionary<string, string> UnitsBySignal);
+
+/// <summary>
+/// Resultat av en multi-anlegg master-CSV-parse. Samples er splittet pr.
+/// <c>asset_id</c>, slik at hver <see cref="PlantScadaParseResult"/> kan
+/// batch-skrives uavhengig og logges som egen <c>data_imports</c>-rad.
+/// </summary>
+public sealed record MultiPlantScadaParseResult(
+    int RowsParsed,
+    int RowsSkipped,
+    IReadOnlyList<string> UnmappedSignals,
+    IReadOnlyDictionary<string, string> UnitsBySignal,
+    IReadOnlyList<PlantScadaParseResult> PerPlant);
+
+public sealed record PlantScadaParseResult(
+    string PlantId,
+    int SignalCount,
+    IReadOnlyList<ScadaSample> Samples);

@@ -13,10 +13,17 @@ namespace KraftverkUptime.Modules.Reporting.Nedetid;
 /// produksjon — vannet renner ned til neste dam og kan fanges der. Først når
 /// den siste dam i kaskaden flommer er vannet definitivt tapt.
 ///
-/// Strategi:
-///   1. Slå opp terminal-dam (IsTurbineIntake=true) via <see cref="IDamRepository"/>
-///   2. Hent OverflowFlow-tags som er knyttet til den dammen
-///   3. Hent samples og returner timer over støyterskel
+/// Overflow-modus per anlegg (Spec OVERFLOW-PROXY):
+/// <list type="bullet">
+///   <item><b>NativeTag</b> (default): SCADA-tag med rolle OverflowFlow på
+///     terminal-dam. Brukes når anlegget har egen overløpsmåler.</item>
+///   <item><b>LevelProxy</b>: utledet fra terminal-damens UpstreamLevel mot HRV
+///     + terskel (cm over HRV). Brukes for Ørsdalen som mangler egen tag.</item>
+///   <item><b>ProductionStateProxy</b>: utledet fra GeneratorActivePower-historikk
+///     (timer der produksjon var aktiv). Brukes for Stølskraft (drikkevann
+///     uten magasin-telemetri) — hvis maskinen produserte når alarmen kom,
+///     ville produksjon pågått videre uten vakt.</item>
+/// </list>
 ///
 /// Hvis anlegget ikke har terminal-dam (dataintegritets-feil — backfill skal
 /// garantere én pr anlegg): returner <c>DataAvailable = false</c>.
@@ -30,20 +37,31 @@ public sealed class OverflowQueryService : IOverflowQueryService
     /// </summary>
     public const double OverflowThresholdM3PerS = 0.001;
 
+    /// <summary>
+    /// Terskel for å skille reell produksjon fra noise/idle i
+    /// <see cref="OverflowMode.ProductionStateProxy"/>. 1 kW dekker både
+    /// støy ved 0 og lave egenforbruks-verdier; under er anlegget reelt sett
+    /// ikke i produksjon.
+    /// </summary>
+    public const double ProductionThresholdKw = 1.0;
+
     private readonly ISignalMapRepository _signalMaps;
     private readonly IScadaSampleRepository _samples;
     private readonly IDamRepository _dams;
+    private readonly IPlantOverflowConfigProvider _overflowConfig;
     private readonly ILogger<OverflowQueryService> _log;
 
     public OverflowQueryService(
         ISignalMapRepository signalMaps,
         IScadaSampleRepository samples,
         IDamRepository dams,
+        IPlantOverflowConfigProvider overflowConfig,
         ILogger<OverflowQueryService> log)
     {
         _signalMaps = signalMaps ?? throw new ArgumentNullException(nameof(signalMaps));
         _samples = samples ?? throw new ArgumentNullException(nameof(samples));
         _dams = dams ?? throw new ArgumentNullException(nameof(dams));
+        _overflowConfig = overflowConfig ?? throw new ArgumentNullException(nameof(overflowConfig));
         _log = log ?? throw new ArgumentNullException(nameof(log));
     }
 
@@ -56,34 +74,62 @@ public sealed class OverflowQueryService : IOverflowQueryService
             return new OverflowDataset(new HashSet<DateTimeOffset>(), DataAvailable: false);
         }
 
-        // 1) Finn terminal-dam (siste før turbin). Beskytter mot multi-dam-anlegg
-        // der vi ellers ville plukket opp overløp på øvre dammer som ikke koster
-        // produksjon.
+        var mode = await _overflowConfig.GetOverflowModeAsync(plantId, ct).ConfigureAwait(false);
+
+        return mode switch
+        {
+            OverflowMode.LevelProxy => await QueryLevelProxyAsync(plantId, fromUtc, toUtc, ct).ConfigureAwait(false),
+            OverflowMode.ProductionStateProxy => await QueryProductionStateProxyAsync(plantId, fromUtc, toUtc, ct).ConfigureAwait(false),
+            _ => await QueryNativeTagAsync(plantId, fromUtc, toUtc, ct).ConfigureAwait(false),
+        };
+    }
+
+    public async Task<bool> HasOverflowTagAsync(string plantId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+
+        // Proxy-modus regnes som "har overflow-detektering" selv om det ikke
+        // er en native tag — UI bruker dette til å vise/skjule advarsler.
+        var mode = await _overflowConfig.GetOverflowModeAsync(plantId, ct).ConfigureAwait(false);
+        if (mode is OverflowMode.LevelProxy or OverflowMode.ProductionStateProxy)
+        {
+            return true;
+        }
+
+        var terminalDam = await _dams.GetTerminalDamAsync(plantId, ct).ConfigureAwait(false);
+        if (terminalDam is null) return false;
+        var tags = await _signalMaps
+            .GetByPlantDamAndRoleAsync(plantId, terminalDam.DamId, SignalRole.OverflowFlow, ct)
+            .ConfigureAwait(false);
+        return tags.Count > 0;
+    }
+
+    // ─────────── Native overflow-tag (default-modus) ────────────────────────
+
+    private async Task<OverflowDataset> QueryNativeTagAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
+    {
         var terminalDam = await _dams.GetTerminalDamAsync(plantId, ct).ConfigureAwait(false);
         if (terminalDam is null)
         {
             _log.LogWarning(
-                "Overflow-query for {PlantId}: ingen dam med IsTurbineIntake=true. " +
+                "Overflow-query for {PlantId} (NativeTag): ingen dam med IsTurbineIntake=true. " +
                 "Sjekk at backfill er kjørt og at PlantAdmin-konfig er konsistent.",
                 plantId);
             return new OverflowDataset(new HashSet<DateTimeOffset>(), DataAvailable: false);
         }
 
-        // 2) Hent OverflowFlow-tags som hører til terminal-dam.
         var overflowTags = await _signalMaps
             .GetByPlantDamAndRoleAsync(plantId, terminalDam.DamId, SignalRole.OverflowFlow, ct)
             .ConfigureAwait(false);
         if (overflowTags.Count == 0)
         {
             _log.LogDebug(
-                "Overflow-query for {PlantId}/{DamId}: ingen OverflowFlow-tag på terminal-dam.",
+                "Overflow-query for {PlantId}/{DamId} (NativeTag): ingen OverflowFlow-tag på terminal-dam.",
                 plantId, terminalDam.DamId);
             return new OverflowDataset(new HashSet<DateTimeOffset>(), DataAvailable: false);
         }
 
-        // 3) Hent samples for alle terminal-dam-overflow-tags. Vanligvis bare én
-        // tag per dam, men listen gir robusthet hvis et anlegg har redundante
-        // målere på samme magasin.
         var signalIds = overflowTags.Select(t => t.SignalId).ToArray();
         var samples = await _samples
             .ListAsync(plantId, signalIds, fromUtc, toUtc, ct)
@@ -96,29 +142,112 @@ public sealed class OverflowQueryService : IOverflowQueryService
             if (s.Value.Value <= OverflowThresholdM3PerS) continue;
             hours.Add(TruncateToHour(s.TimeUtc));
         }
-
-        // Data anses som tilgjengelig så lenge minst ett sample finnes i
-        // perioden — selv hvis verdien er null/0 (= "kjent ingen overløp").
-        // Tom samples-liste = SCADA-importen dekker ikke perioden → flagges
-        // som missing slik at drifts-leder ser at ROI ikke er beregnet.
         var dataAvailable = samples.Count > 0;
 
         _log.LogDebug(
-            "Overflow-query for {PlantId}/{DamId} [{From},{To}): {HourCount} timer med overløp av {SampleCount} samples (data tilgjengelig: {Available}).",
+            "Overflow-query (NativeTag) for {PlantId}/{DamId} [{From},{To}): {HourCount} timer av {SampleCount} samples (data: {Available}).",
             plantId, terminalDam.DamId, fromUtc, toUtc, hours.Count, samples.Count, dataAvailable);
 
         return new OverflowDataset(hours, dataAvailable);
     }
 
-    public async Task<bool> HasOverflowTagAsync(string plantId, CancellationToken ct)
+    // ─────────── Level-proxy (Ørsdalen): level - HRV > terskel ──────────────
+
+    private async Task<OverflowDataset> QueryLevelProxyAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
         var terminalDam = await _dams.GetTerminalDamAsync(plantId, ct).ConfigureAwait(false);
-        if (terminalDam is null) return false;
-        var tags = await _signalMaps
-            .GetByPlantDamAndRoleAsync(plantId, terminalDam.DamId, SignalRole.OverflowFlow, ct)
+        if (terminalDam is null)
+        {
+            _log.LogWarning(
+                "Overflow-query for {PlantId} (LevelProxy): ingen terminal-dam — kan ikke beregne proxy.",
+                plantId);
+            return new OverflowDataset(new HashSet<DateTimeOffset>(), DataAvailable: false);
+        }
+
+        if (terminalDam.HrvMoh is null || terminalDam.OverflowProxyThresholdCm is null)
+        {
+            _log.LogWarning(
+                "Overflow-query for {PlantId}/{DamId} (LevelProxy): HRV eller terskel ikke konfigurert "
+                + "(HRV={Hrv}, threshold={Threshold} cm). Fyll inn via PlantAdmin.",
+                plantId, terminalDam.DamId, terminalDam.HrvMoh, terminalDam.OverflowProxyThresholdCm);
+            return new OverflowDataset(new HashSet<DateTimeOffset>(), DataAvailable: false);
+        }
+
+        var levelTags = await _signalMaps
+            .GetByPlantDamAndRoleAsync(plantId, terminalDam.DamId, SignalRole.UpstreamLevel, ct)
             .ConfigureAwait(false);
-        return tags.Count > 0;
+        if (levelTags.Count == 0)
+        {
+            _log.LogWarning(
+                "Overflow-query for {PlantId}/{DamId} (LevelProxy): ingen UpstreamLevel-tag — kan ikke beregne proxy.",
+                plantId, terminalDam.DamId);
+            return new OverflowDataset(new HashSet<DateTimeOffset>(), DataAvailable: false);
+        }
+
+        var signalIds = levelTags.Select(t => t.SignalId).ToArray();
+        var samples = await _samples
+            .ListAsync(plantId, signalIds, fromUtc, toUtc, ct)
+            .ConfigureAwait(false);
+
+        var hrv = terminalDam.HrvMoh.Value;
+        var thresholdMeters = terminalDam.OverflowProxyThresholdCm.Value / 100.0;
+
+        var hours = new HashSet<DateTimeOffset>();
+        foreach (var s in samples)
+        {
+            if (!s.Value.HasValue) continue;
+            if (s.Value.Value - hrv <= thresholdMeters) continue;
+            hours.Add(TruncateToHour(s.TimeUtc));
+        }
+        var dataAvailable = samples.Count > 0;
+
+        _log.LogDebug(
+            "Overflow-query (LevelProxy) for {PlantId}/{DamId} [{From},{To}): HRV={Hrv} moh, terskel={Cm} cm → "
+            + "{HourCount} overløps-timer av {SampleCount} samples (data: {Available}).",
+            plantId, terminalDam.DamId, fromUtc, toUtc, hrv, terminalDam.OverflowProxyThresholdCm.Value,
+            hours.Count, samples.Count, dataAvailable);
+
+        return new OverflowDataset(hours, dataAvailable);
+    }
+
+    // ─────────── Production-state-proxy (Stølskraft): GEN_P > 0 ─────────────
+
+    private async Task<OverflowDataset> QueryProductionStateProxyAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
+    {
+        var prodTags = await _signalMaps
+            .GetByPlantDamAndRoleAsync(plantId, damId: null, SignalRole.GeneratorActivePower, ct)
+            .ConfigureAwait(false);
+        if (prodTags.Count == 0)
+        {
+            _log.LogWarning(
+                "Overflow-query for {PlantId} (ProductionStateProxy): ingen GeneratorActivePower-tag — "
+                + "kan ikke beregne proxy.",
+                plantId);
+            return new OverflowDataset(new HashSet<DateTimeOffset>(), DataAvailable: false);
+        }
+
+        var signalIds = prodTags.Select(t => t.SignalId).ToArray();
+        var samples = await _samples
+            .ListAsync(plantId, signalIds, fromUtc, toUtc, ct)
+            .ConfigureAwait(false);
+
+        var hours = new HashSet<DateTimeOffset>();
+        foreach (var s in samples)
+        {
+            if (!s.Value.HasValue) continue;
+            if (s.Value.Value <= ProductionThresholdKw) continue;
+            hours.Add(TruncateToHour(s.TimeUtc));
+        }
+        var dataAvailable = samples.Count > 0;
+
+        _log.LogDebug(
+            "Overflow-query (ProductionStateProxy) for {PlantId} [{From},{To}): {HourCount} produserende timer "
+            + "av {SampleCount} samples (data: {Available}).",
+            plantId, fromUtc, toUtc, hours.Count, samples.Count, dataAvailable);
+
+        return new OverflowDataset(hours, dataAvailable);
     }
 
     private static DateTimeOffset TruncateToHour(DateTimeOffset t)

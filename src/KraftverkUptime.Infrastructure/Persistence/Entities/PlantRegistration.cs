@@ -22,6 +22,15 @@ public sealed class PlantRegistration : IOwnedEntity, ISoftDeletable
     /// </summary>
     public string PriceArea { get; set; } = "NO2";
 
+    /// <summary>
+    /// Strategi for hvordan Vakt-ROI bestemmer overløp i counterfactual-vinduet.
+    /// Default <see cref="Core.Domain.OverflowMode.NativeTag"/> = bruk SCADA
+    /// overflow-tag. <see cref="Core.Domain.OverflowMode.LevelProxy"/> = utled
+    /// fra terminal-damens nivå vs HRV. <see cref="Core.Domain.OverflowMode.ProductionStateProxy"/> =
+    /// utled fra produksjonshistorikk (for drikkevannskraftverk uten magasin).
+    /// </summary>
+    public OverflowMode OverflowMode { get; set; } = OverflowMode.NativeTag;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? DeletedAt { get; set; }
     public string? DeletedBy { get; set; }

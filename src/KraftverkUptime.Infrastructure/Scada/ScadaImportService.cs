@@ -265,6 +265,111 @@ public sealed class ScadaImportService : IScadaImportService
             PerPlant: perPlant);
     }
 
+    public async Task<MultiPlantScadaImportResult> ImportMasterCsvMultiPlantAsync(
+        string ownerOrgId,
+        Stream csvStream,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerOrgId);
+        ArgumentNullException.ThrowIfNull(csvStream);
+
+        using var buffer = new MemoryStream();
+        await csvStream.CopyToAsync(buffer, ct).ConfigureAwait(false);
+        buffer.Position = 0;
+
+        using var reader = new StreamReader(
+            buffer,
+            Encoding.UTF8,
+            detectEncodingFromByteOrderMarks: true,
+            leaveOpen: true);
+
+        var parser = new ScadaMasterCsvParser();
+        var result = parser.ParseMultiPlant(reader, DefaultPlantTimeZone, MapSignalToPlantId);
+
+        const int batchSize = 5_000;
+        var perPlant = new List<PlantScadaImportResult>(result.PerPlant.Count);
+
+        foreach (var plant in result.PerPlant)
+        {
+            var written = 0;
+            for (var i = 0; i < plant.Samples.Count; i += batchSize)
+            {
+                var slice = plant.Samples
+                    .Skip(i)
+                    .Take(batchSize)
+                    .ToList();
+                written += await _sampleRepo.BulkInsertAsync(slice, ct).ConfigureAwait(false);
+            }
+            perPlant.Add(new PlantScadaImportResult(plant.PlantId, plant.SignalCount, written));
+
+            // Logg data_imports per anlegg basert på faktisk data-spenn.
+            if (plant.Samples.Count == 0) continue;
+            var minTime = plant.Samples.Min(s => s.TimeUtc);
+            var maxTime = plant.Samples.Max(s => s.TimeUtc);
+            var minHourly = new DateTimeOffset(minTime.Year, minTime.Month, minTime.Day,
+                minTime.Hour, 0, 0, TimeSpan.Zero);
+            var maxHourly = new DateTimeOffset(maxTime.Year, maxTime.Month, maxTime.Day,
+                maxTime.Hour, 0, 0, TimeSpan.Zero);
+            var actualSpanHours = (int)((maxHourly - minHourly).TotalHours) + 1;
+            var uniqueHours = plant.Samples.Select(s => s.TimeUtc).Distinct().Count();
+            var coverage = actualSpanHours > 0
+                ? Math.Min(1.0, uniqueHours / (double)actualSpanHours)
+                : 1.0;
+            var periodFrom = minHourly;
+            var periodTo = maxHourly.AddHours(1);
+
+            try
+            {
+                await _dataImportLogger.LogAsync(new DataImportLogEntry(
+                    PlantId: plant.PlantId,
+                    SourceType: "scada",
+                    PeriodFromUtc: periodFrom,
+                    PeriodToUtc: periodTo,
+                    FileName: null,
+                    FileHash: null,
+                    RowsImported: written,
+                    CoveragePct: coverage,
+                    UserId: "system",
+                    Notes: $"{plant.SignalCount} signaler (multi-plant), {uniqueHours} unike timer i "
+                        + $"{actualSpanHours} t-spenn ({minHourly:yyyy-MM-dd HH}–{maxHourly:yyyy-MM-dd HH})."
+                ), ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "data_imports-logging feilet for multi-plant SCADA {PlantId}.", plant.PlantId);
+            }
+        }
+
+        _logger.LogInformation(
+            "Multi-plant SCADA-import: {Parsed} timer, {Skipped} skip, {PlantCount} anlegg, " +
+            "{UnknownSignals} ukjente signaler.",
+            result.RowsParsed, result.RowsSkipped, perPlant.Count, result.UnmappedSignals.Count);
+
+        return new MultiPlantScadaImportResult(
+            TotalRowsParsed: result.RowsParsed,
+            TotalRowsSkipped: result.RowsSkipped,
+            UnknownSignals: result.UnmappedSignals,
+            PerPlant: perPlant);
+    }
+
+    /// <summary>
+    /// Mapping fra signal-id (eks. "VIKESA_G1_GEN_P_PV") til plant-id (eks. "vikesa").
+    /// Bruker prefiks før første underscore + slår opp i <see cref="KnownPrefixesByPlant"/>.
+    /// Returnerer null hvis prefiks ikke matcher noe kjent anlegg.
+    /// </summary>
+    private static string? MapSignalToPlantId(string signalId)
+    {
+        if (string.IsNullOrEmpty(signalId)) return null;
+        var idx = signalId.AsSpan().IndexOfAny(PrefixSeparators);
+        var prefix = idx > 0 ? signalId[..idx] : signalId;
+        foreach (var (plantId, knownPrefixes) in KnownPrefixesByPlant)
+        {
+            if (knownPrefixes.Contains(prefix)) return plantId;
+        }
+        return null;
+    }
+
     /// <summary>
     /// Logger én rad til <c>data_imports</c> for en operlog-batch. Periode
     /// rundes til hele måneds-grenser (måneds-start for første event,

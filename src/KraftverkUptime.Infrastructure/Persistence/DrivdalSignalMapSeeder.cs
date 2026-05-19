@@ -53,6 +53,9 @@ public static class DrivdalSignalMapSeeder
 
         ("DRIVDAL_G1_KONTROLL_AGC_DB_SP",           "Cluster1.DRIVDAL_G1_KONTROLL_AGC_DB_SP",           "None",    SignalRole.Other),
         ("DRIVDAL_KRST_KONTROLL_KOM_AL",            "Cluster1.DRIVDAL_KRST_KONTROLL_KOM_AL",            "None",    SignalRole.CommunicationAlarm),
+
+        // NETT-side (lagt til 2026-05-18-eksport): fase L3-L-N spenning på avgangsside.
+        ("DRIVDAL_NETT_LINJE_FASE_L3_U_L3_N_PV",    "Cluster1.DRIVDAL_NETT_LINJE_FASE_L3_U_L3_N_PV",    "kV",      SignalRole.ElectricalMeasurement),
     ];
 
     public static async Task SeedAsync(IServiceProvider services, CancellationToken ct = default)
