@@ -115,7 +115,8 @@ public static class DamsEndpoints
             IsTurbineIntake: body.IsTurbineIntake,
             HrvMoh: body.HrvMoh,
             LrvMoh: body.LrvMoh,
-            VolumeMm3: body.VolumeMm3);
+            VolumeMm3: body.VolumeMm3,
+            OverflowProxyThresholdCm: body.OverflowProxyThresholdCm);
         await dams.AddAsync(newDam, ct).ConfigureAwait(false);
 
         await audit.LogAsync(
@@ -244,6 +245,7 @@ public static class DamsEndpoints
             HrvMoh = body.HrvMoh,
             LrvMoh = body.LrvMoh,
             VolumeMm3 = body.VolumeMm3,
+            OverflowProxyThresholdCm = body.OverflowProxyThresholdCm,
         };
         await dams.UpdateAsync(updated, ct).ConfigureAwait(false);
 
@@ -273,7 +275,7 @@ public static class DamsEndpoints
 
     private static DamDto ToDto(Dam d) => new(
         d.PlantId, d.DamId, d.Name, d.CascadePosition, d.IsTurbineIntake,
-        d.HrvMoh, d.LrvMoh, d.VolumeMm3);
+        d.HrvMoh, d.LrvMoh, d.VolumeMm3, d.OverflowProxyThresholdCm);
 }
 
 public sealed record DamDto(
@@ -284,7 +286,8 @@ public sealed record DamDto(
     bool IsTurbineIntake,
     double? HrvMoh,
     double? LrvMoh,
-    double? VolumeMm3);
+    double? VolumeMm3,
+    int? OverflowProxyThresholdCm);
 
 public sealed record UpdateDamRequest(
     string? Name,
@@ -292,7 +295,8 @@ public sealed record UpdateDamRequest(
     bool IsTurbineIntake,
     double? HrvMoh,
     double? LrvMoh,
-    double? VolumeMm3);
+    double? VolumeMm3,
+    int? OverflowProxyThresholdCm);
 
 public sealed record CreateDamRequest(
     string DamId,
@@ -301,4 +305,5 @@ public sealed record CreateDamRequest(
     bool IsTurbineIntake,
     double? HrvMoh,
     double? LrvMoh,
-    double? VolumeMm3);
+    double? VolumeMm3,
+    int? OverflowProxyThresholdCm);

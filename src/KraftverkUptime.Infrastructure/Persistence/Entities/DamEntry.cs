@@ -20,6 +20,14 @@ public sealed class DamEntry : IOwnedEntity
     public double? HrvMoh { get; set; }
     public double? LrvMoh { get; set; }
     public double? VolumeMm3 { get; set; }
+
+    /// <summary>
+    /// Terskel for level-baserte overflow-proxy (cm over HRV) — brukes når
+    /// anleggets <see cref="PlantRegistration.OverflowMode"/> er
+    /// <see cref="OverflowMode.LevelProxy"/> og dette er terminal-dammen.
+    /// </summary>
+    public int? OverflowProxyThresholdCm { get; set; }
+
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
     // IOwnedEntity — multi-tenant filter via global query filter på (OwnerOrgId, PlantId)

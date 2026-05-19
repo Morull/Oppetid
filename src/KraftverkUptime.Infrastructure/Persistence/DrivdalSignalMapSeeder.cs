@@ -72,6 +72,9 @@ public static class DrivdalSignalMapSeeder
         // Inntak-tags (DRIVDAL_INNTAK_NIVA_OVERLOP_VF_PV finnes allerede over)
         ("DRIVDAL_INNTAK_NIVA_NEDSTROM_KOTE_PV",               "Cluster1.DRIVDAL_INNTAK_NIVA_NEDSTROM_KOTE_PV",               "moh",  SignalRole.DownstreamLevel),
         ("DRIVDAL_INNTAK_RIST_FALLTAP_PV",                     "Cluster1.DRIVDAL_INNTAK_RIST_FALLTAP_PV",                     "cm",   SignalRole.Other),
+
+        // NETT-side (lagt til 2026-05-18-eksport): fase L3-L-N spenning på avgangsside.
+        ("DRIVDAL_NETT_LINJE_FASE_L3_U_L3_N_PV",               "Cluster1.DRIVDAL_NETT_LINJE_FASE_L3_U_L3_N_PV",               "kV",   SignalRole.ElectricalMeasurement),
     ];
 
     public static async Task SeedAsync(IServiceProvider services, CancellationToken ct = default)

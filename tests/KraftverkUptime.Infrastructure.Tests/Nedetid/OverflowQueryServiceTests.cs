@@ -26,14 +26,17 @@ public class OverflowQueryServiceTests
     /// </summary>
     private static OverflowQueryService Build(
         Dictionary<SignalRole, string?> rolemap,
-        IReadOnlyList<ScadaSample> samples)
+        IReadOnlyList<ScadaSample> samples,
+        OverflowMode overflowMode = OverflowMode.NativeTag,
+        Dam? terminalDamOverride = null)
     {
         return BuildWithDams(
-            terminalDam: new Dam(PlantId, "drivdal_main", "Drivdal", 1, true, null, null, null),
+            terminalDam: terminalDamOverride ?? new Dam(PlantId, "drivdal_main", "Drivdal", 1, true, null, null, null),
             allDams: null,
             rolemap: rolemap,
             terminalRolemap: rolemap, // alle overflow-tags hører til terminal-dam i én-dam-anlegg
-            samples: samples);
+            samples: samples,
+            overflowMode: overflowMode);
     }
 
     private static OverflowQueryService BuildWithDams(
@@ -41,12 +44,15 @@ public class OverflowQueryServiceTests
         IReadOnlyList<Dam>? allDams,
         Dictionary<SignalRole, string?> rolemap,
         Dictionary<SignalRole, string?> terminalRolemap,
-        IReadOnlyList<ScadaSample> samples)
+        IReadOnlyList<ScadaSample> samples,
+        OverflowMode overflowMode = OverflowMode.NativeTag)
     {
         var signalMaps = new StubSignalMapRepository(PlantId, rolemap, terminalDam?.DamId, terminalRolemap);
         var sampleRepo = new StubScadaSampleRepository(samples);
         var damRepo = new StubDamRepository(terminalDam, allDams);
-        return new OverflowQueryService(signalMaps, sampleRepo, damRepo, NullLogger<OverflowQueryService>.Instance);
+        var overflowConfig = new StubPlantOverflowConfigProvider(PlantId, overflowMode);
+        return new OverflowQueryService(signalMaps, sampleRepo, damRepo, overflowConfig,
+            NullLogger<OverflowQueryService>.Instance);
     }
 
     private static DateTimeOffset T(int day, int hour) =>
@@ -245,6 +251,158 @@ public class OverflowQueryServiceTests
         ds.DataAvailable.Should().BeFalse();
     }
 
+    // ──────── LevelProxy-modus (Ørsdalen-mønster) ────────────────────────────
+
+    [Fact]
+    public async Task GetOverflowDatasetAsync_LevelProxy_LevelOverHrvOgTerskel_GirOverflow()
+    {
+        // HRV = 100.00 moh, terskel = 10 cm → overflow når level > 100.10
+        var dam = new Dam(PlantId, "drivdal_main", "Drivdal", 1, true,
+            HrvMoh: 100.00, LrvMoh: null, VolumeMm3: null, OverflowProxyThresholdCm: 10);
+
+        var samples = new List<ScadaSample>
+        {
+            new(PlantId, "LEVEL_TAG", T(1, 0), 99.95, 0),  // under HRV → ikke overflow
+            new(PlantId, "LEVEL_TAG", T(1, 1), 100.05, 0), // 5cm over HRV, under terskel
+            new(PlantId, "LEVEL_TAG", T(1, 2), 100.15, 0), // 15cm over HRV → overflow
+            new(PlantId, "LEVEL_TAG", T(1, 3), 100.50, 0), // 50cm over HRV → overflow
+        };
+
+        var svc = Build(
+            rolemap: new() { [SignalRole.UpstreamLevel] = "LEVEL_TAG" },
+            samples: samples,
+            overflowMode: OverflowMode.LevelProxy,
+            terminalDamOverride: dam);
+
+        var ds = await svc.GetOverflowDatasetAsync(PlantId, T(1, 0), T(2, 0), default);
+        ds.DataAvailable.Should().BeTrue();
+        ds.OverflowHours.Should().BeEquivalentTo(new[] { T(1, 2), T(1, 3) });
+    }
+
+    [Fact]
+    public async Task GetOverflowDatasetAsync_LevelProxy_HrvIkkeSatt_DataAvailableFalse()
+    {
+        // LevelProxy-modus konfigurert, men drifts-leder har ikke fylt inn HRV ennå.
+        // Skal returnere tomt sett + DataAvailable=false slik at brukeren ser at
+        // konfigurasjon mangler.
+        var dam = new Dam(PlantId, "drivdal_main", "Drivdal", 1, true,
+            HrvMoh: null, LrvMoh: null, VolumeMm3: null, OverflowProxyThresholdCm: 10);
+
+        var svc = Build(
+            rolemap: new() { [SignalRole.UpstreamLevel] = "LEVEL_TAG" },
+            samples: new List<ScadaSample>
+            {
+                new(PlantId, "LEVEL_TAG", T(1, 0), 99.95, 0),
+            },
+            overflowMode: OverflowMode.LevelProxy,
+            terminalDamOverride: dam);
+
+        var ds = await svc.GetOverflowDatasetAsync(PlantId, T(1, 0), T(2, 0), default);
+        ds.OverflowHours.Should().BeEmpty();
+        ds.DataAvailable.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetOverflowDatasetAsync_LevelProxy_IngenLevelTag_DataAvailableFalse()
+    {
+        var dam = new Dam(PlantId, "drivdal_main", "Drivdal", 1, true,
+            HrvMoh: 100.00, LrvMoh: null, VolumeMm3: null, OverflowProxyThresholdCm: 10);
+
+        var svc = Build(
+            rolemap: new(), // ingen UpstreamLevel mappet
+            samples: Array.Empty<ScadaSample>(),
+            overflowMode: OverflowMode.LevelProxy,
+            terminalDamOverride: dam);
+
+        var ds = await svc.GetOverflowDatasetAsync(PlantId, T(1, 0), T(2, 0), default);
+        ds.OverflowHours.Should().BeEmpty();
+        ds.DataAvailable.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task HasOverflowTagAsync_LevelProxy_ReturnererTrueSelv_UtenNativeTag()
+    {
+        // I LevelProxy-modus regnes proxy-konfigurasjonen som "har overflow-detektering",
+        // så UI ikke viser "data missing"-advarsel.
+        var svc = Build(
+            rolemap: new(), // ingen native overflow-tag
+            samples: Array.Empty<ScadaSample>(),
+            overflowMode: OverflowMode.LevelProxy);
+
+        (await svc.HasOverflowTagAsync(PlantId, default)).Should().BeTrue();
+    }
+
+    // ──────── ProductionStateProxy-modus (Stølskraft-mønster) ────────────────
+
+    [Fact]
+    public async Task GetOverflowDatasetAsync_ProductionStateProxy_GenPOverTerskel_GirOverflow()
+    {
+        const string GenPTag = "STOLSKRAFT_G1_GEN_P_PV";
+        var samples = new List<ScadaSample>
+        {
+            new(PlantId, GenPTag, T(1, 0), 0.0, 0),    // ikke i produksjon
+            new(PlantId, GenPTag, T(1, 1), 0.5, 0),    // under 1 kW-terskel
+            new(PlantId, GenPTag, T(1, 2), 100.0, 0),  // i produksjon
+            new(PlantId, GenPTag, T(1, 3), 500.0, 0),  // i produksjon
+        };
+
+        var svc = Build(
+            rolemap: new() { [SignalRole.GeneratorActivePower] = GenPTag },
+            samples: samples,
+            overflowMode: OverflowMode.ProductionStateProxy);
+
+        var ds = await svc.GetOverflowDatasetAsync(PlantId, T(1, 0), T(2, 0), default);
+        ds.DataAvailable.Should().BeTrue();
+        ds.OverflowHours.Should().BeEquivalentTo(new[] { T(1, 2), T(1, 3) });
+    }
+
+    [Fact]
+    public async Task GetOverflowDatasetAsync_ProductionStateProxy_IngenGenPTag_DataAvailableFalse()
+    {
+        var svc = Build(
+            rolemap: new(), // ingen GeneratorActivePower mappet
+            samples: Array.Empty<ScadaSample>(),
+            overflowMode: OverflowMode.ProductionStateProxy);
+
+        var ds = await svc.GetOverflowDatasetAsync(PlantId, T(1, 0), T(2, 0), default);
+        ds.OverflowHours.Should().BeEmpty();
+        ds.DataAvailable.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetOverflowDatasetAsync_ProductionStateProxy_AlleHourerProduksjon0_DataAvailableTrue_MenTomt()
+    {
+        // Anlegget har GEN_P-tag og samples er importert, men plantet produserer ikke
+        // i perioden (drikkevannskraftverk med lav drift). DataAvailable=true,
+        // OverflowHours tomt → Vakt-ROI får 0 NOK med forklaring "ingen produksjon".
+        const string GenPTag = "STOLSKRAFT_G1_GEN_P_PV";
+        var samples = new List<ScadaSample>
+        {
+            new(PlantId, GenPTag, T(1, 0), 0.0, 0),
+            new(PlantId, GenPTag, T(1, 1), 0.0, 0),
+        };
+
+        var svc = Build(
+            rolemap: new() { [SignalRole.GeneratorActivePower] = GenPTag },
+            samples: samples,
+            overflowMode: OverflowMode.ProductionStateProxy);
+
+        var ds = await svc.GetOverflowDatasetAsync(PlantId, T(1, 0), T(2, 0), default);
+        ds.DataAvailable.Should().BeTrue();
+        ds.OverflowHours.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task HasOverflowTagAsync_ProductionStateProxy_ReturnererTrue()
+    {
+        var svc = Build(
+            rolemap: new(),
+            samples: Array.Empty<ScadaSample>(),
+            overflowMode: OverflowMode.ProductionStateProxy);
+
+        (await svc.HasOverflowTagAsync(PlantId, default)).Should().BeTrue();
+    }
+
     private sealed class StubSignalMapRepository : ISignalMapRepository
     {
         private readonly string _plantId;
@@ -281,10 +439,12 @@ public class OverflowQueryServiceTests
             throw new NotImplementedException();
 
         /// <summary>
-        /// Returnerer signal kun hvis (plantId, damId, role) matcher
-        /// terminal-dam-konfigurasjonen. For øvre dammer i kaskade-tester
-        /// returneres tom liste — speilbilde av at OverflowQueryService skal
-        /// IGNORERE overløp på øvre dammer.
+        /// Returnerer signal hvis (plantId, damId, role) matcher konfigurasjonen:
+        /// <list type="bullet">
+        ///   <item>For terminal-dam (damId = <c>_terminalDamId</c>): bruk _terminalRolemap.</item>
+        ///   <item>For damId=null (generator/sentral-tags): bruk _roleMap.</item>
+        ///   <item>Ellers (øvre kaskade-dammer): tom liste.</item>
+        /// </list>
         /// </summary>
         public Task<IReadOnlyList<SignalMap>> GetByPlantDamAndRoleAsync(
             string plantId, string? damId, SignalRole role, CancellationToken ct)
@@ -295,9 +455,16 @@ public class OverflowQueryServiceTests
             }
             // For terminal-dam: returner signal fra _terminalRolemap
             if (damId == _terminalDamId
-                && _terminalRolemap.TryGetValue(role, out var id) && id is not null)
+                && _terminalRolemap.TryGetValue(role, out var terminalId) && terminalId is not null)
             {
-                var sm = new SignalMap(plantId, id, id, "m3/s", role, true, true, damId);
+                var sm = new SignalMap(plantId, terminalId, terminalId, "m3/s", role, true, true, damId);
+                return Task.FromResult<IReadOnlyList<SignalMap>>(new[] { sm });
+            }
+            // For damId=null (generator-tags som GeneratorActivePower): bruk hovedroleMap
+            if (damId is null
+                && _roleMap.TryGetValue(role, out var plantId2) && plantId2 is not null)
+            {
+                var sm = new SignalMap(plantId, plantId2, plantId2, "kW", role, true, true, null);
                 return Task.FromResult<IReadOnlyList<SignalMap>>(new[] { sm });
             }
             return Task.FromResult<IReadOnlyList<SignalMap>>(Array.Empty<SignalMap>());
@@ -326,6 +493,30 @@ public class OverflowQueryServiceTests
         public Task AddAsync(Dam dam, CancellationToken ct) => throw new NotImplementedException();
         public Task UpdateAsync(Dam dam, CancellationToken ct) => throw new NotImplementedException();
         public Task DeleteAsync(string plantId, string damId, CancellationToken ct) => throw new NotImplementedException();
+    }
+
+    /// <summary>
+    /// Stub for IPlantOverflowConfigProvider — returnerer konfigurert modus for
+    /// PlantId, NativeTag for andre plant-IDs (matcher prod-default).
+    /// </summary>
+    private sealed class StubPlantOverflowConfigProvider : IPlantOverflowConfigProvider
+    {
+        private readonly string _plantId;
+        private readonly OverflowMode _mode;
+
+        public StubPlantOverflowConfigProvider(string plantId, OverflowMode mode)
+        {
+            _plantId = plantId;
+            _mode = mode;
+        }
+
+        public Task<OverflowMode> GetOverflowModeAsync(string plantId, CancellationToken ct)
+        {
+            var mode = string.Equals(plantId, _plantId, StringComparison.Ordinal)
+                ? _mode
+                : OverflowMode.NativeTag;
+            return Task.FromResult(mode);
+        }
     }
 
     private sealed class StubScadaSampleRepository : IScadaSampleRepository

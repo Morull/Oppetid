@@ -113,6 +113,19 @@ public static class DatabaseBootstrapper
             // på SPEC-LINDLAND-MAPPING phase 2.
             await LindlandSignalMapSeeder.SeedAsync(services, ct).ConfigureAwait(false);
 
+            // Seed signal-map for resterende 5 anlegg fra 2026-05-18-eksporten
+            // (Vikeså, Stølskraft, Ørsdalen, Øgreyfoss, Løgjen — 72 tags).
+            // Bruker default 'main'-dam opprettet av DefaultDamSeeder. Idempotent.
+            // Stølskraft + Ørsdalen har tynn dekning; flere tags må eksporteres
+            // før Vakt-ROI/alarm-deteksjon fungerer for de to.
+            await DalanePortfolioSignalMapSeeder.SeedAsync(services, ct).ConfigureAwait(false);
+
+            // Sett overflow-modus for anlegg som krever proxy-strategi:
+            //   - Stølskraft → ProductionStateProxy (drikkevannskraftverk)
+            //   - Ørsdalen → LevelProxy med 10cm terskel
+            // Idempotent — endrer kun rader med default-verdi.
+            await OverflowModeSeeder.SeedAsync(services, ct).ConfigureAwait(false);
+
             // Backfill data_imports fra eksisterende settlement_imports-historikk
             // (SPEC-IMPORT-COMPLETENESS steg 3). Idempotent — NOT EXISTS-filter.
             await DataImportsBackfillSeeder.SeedAsync(services, ct).ConfigureAwait(false);
@@ -400,6 +413,15 @@ public static class DatabaseBootstrapper
 
             CREATE INDEX IF NOT EXISTS ix_signal_map_dam
                 ON core.signal_map (plant_id, dam_id, role);
+
+            -- Overflow-modus per anlegg (Spec OVERFLOW-PROXY): NativeTag (default) |
+            -- LevelProxy (Ørsdalen, level vs HRV) | ProductionStateProxy (Stølskraft).
+            ALTER TABLE core.plants
+                ADD COLUMN IF NOT EXISTS overflow_mode varchar(32) NOT NULL DEFAULT 'NativeTag';
+
+            -- Terskel for level-baserte overflow-proxy (cm over HRV), per terminal-dam.
+            ALTER TABLE core.dams
+                ADD COLUMN IF NOT EXISTS overflow_proxy_threshold_cm integer NULL;
             """;
 
         try

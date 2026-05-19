@@ -317,6 +317,23 @@ public sealed class HotFolderWatcher : BackgroundService
                     resp.EnsureSuccessStatusCode();
                     break;
                 }
+            case SourceType.ScadaTrendsMultiPlant:
+                {
+                    // Multi-plant SCADA master-CSV: ruter til /api/v1/scada/multi-plant
+                    // som splitter per signal-prefiks og oppretter én data_imports-
+                    // rad per anlegg. Brukes for samlet eksport av Vikeså,
+                    // Stølskraft, Ørsdalen, Øgreyfoss, Løgjen i én fil.
+                    var httpClient = scope.ServiceProvider.GetRequiredService<IHttpClientFactory>()
+                        .CreateClient("HotFolderUpload");
+                    using var content = new MultipartFormDataContent();
+                    using var fileContent = new StreamContent(stream);
+                    fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
+                    content.Add(fileContent, "file", file.Name);
+                    var requestUri = new Uri("api/v1/scada/multi-plant", UriKind.Relative);
+                    var resp = await httpClient.PostAsync(requestUri, content, ct);
+                    resp.EnsureSuccessStatusCode();
+                    break;
+                }
         }
     }
 

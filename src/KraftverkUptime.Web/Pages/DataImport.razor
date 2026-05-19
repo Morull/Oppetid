@@ -524,6 +524,48 @@
                     </MudPaper>
                 </MudItem>
 
+                @* Multi-plant SCADA master *@
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="2">
+                        <MudText Typo="Typo.h4" Class="mb-2">Multi-anleggs SCADA-trender</MudText>
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mb-3">
+                            Én master-.csv med tags fra flere anlegg (eks. samlet eksport for
+                            Vikeså, Stølskraft, Ørsdalen, Øgreyfoss, Løgjen) — splittes per
+                            signal-prefiks og oppretter <em>én data_imports-rad per anlegg</em>.
+                        </MudText>
+
+                        <MudFileUpload T="IBrowserFile" Accept=".csv" MaximumFileCount="1"
+                                       FilesChanged="@OnMultiPlantScadaDroppedAsync"
+                                       Class="@(_multiScadaState.IsUploading ? "dk-multi-dropzone dk-multi-dropzone--busy" : "dk-multi-dropzone")">
+                            <ActivatorContent>
+                                <MudButton HtmlTag="label" Variant="Variant.Outlined"
+                                           Color="MudBlazor.Color.Primary" FullWidth="true"
+                                           StartIcon="@Icons.Material.Filled.Insights"
+                                           Disabled="@_multiScadaState.IsUploading">
+                                    @(_multiScadaState.IsUploading ? "Laster opp…" : "Velg / dra multi-plant SCADA .csv")
+                                </MudButton>
+                            </ActivatorContent>
+                        </MudFileUpload>
+
+                        @if (_multiScadaState.LastSuccessMessage is not null)
+                        {
+                            <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3">@_multiScadaState.LastSuccessMessage</MudAlert>
+                            @if (_multiScadaState.UnknownSignals.Count > 0)
+                            {
+                                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                                    Ukjente signal-prefikser skippet (@_multiScadaState.UnknownSignals.Count):
+                                    @string.Join(", ", _multiScadaState.UnknownSignals.Take(5))
+                                    @(_multiScadaState.UnknownSignals.Count > 5 ? $" (+{_multiScadaState.UnknownSignals.Count - 5} til)" : "")
+                                </MudAlert>
+                            }
+                        }
+                        else if (_multiScadaState.Error is not null)
+                        {
+                            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">@_multiScadaState.Error</MudAlert>
+                        }
+                    </MudPaper>
+                </MudItem>
+
                 @* Per-anleggs SCADA / operlog (CSV) — bruker single-plant valgt over *@
                 <MudItem xs="12" md="6">
                     <MudPaper Class="pa-4" Elevation="2">
@@ -1215,6 +1257,7 @@
     // Multi-plant
     private readonly MultiPlantState _multiState = new();
     private readonly MultiPlantOperlogState _multiOperlogState = new();
+    private readonly MultiPlantScadaState _multiScadaState = new();
 
     private sealed class MultiPlantState
     {
@@ -1228,6 +1271,13 @@
         public string? Error { get; set; }
         public string? LastSuccessMessage { get; set; }
         public List<string> UnknownStations { get; } = new();
+    }
+    private sealed class MultiPlantScadaState
+    {
+        public bool IsUploading { get; set; }
+        public string? Error { get; set; }
+        public string? LastSuccessMessage { get; set; }
+        public List<string> UnknownSignals { get; } = new();
     }
 
     protected override async Task OnInitializedAsync()
@@ -1817,6 +1867,52 @@
         finally
         {
             _multiOperlogState.IsUploading = false;
+            StateHasChanged();
+        }
+    }
+
+    // ----- Multi-plant SCADA master -----
+    private async Task OnMultiPlantScadaDroppedAsync(IBrowserFile? file)
+    {
+        if (file is null || _multiScadaState.IsUploading) return;
+        if (!file.Name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+        {
+            _multiScadaState.Error = $"Forventer .csv. Fikk: {file.Name}";
+            return;
+        }
+        if (file.Size > MaxOperlogBytes)
+        {
+            _multiScadaState.Error = $"Filen er for stor ({file.Size / 1_048_576} MB). Maks 100 MB.";
+            return;
+        }
+        _multiScadaState.IsUploading = true;
+        _multiScadaState.Error = null;
+        _multiScadaState.LastSuccessMessage = null;
+        _multiScadaState.UnknownSignals.Clear();
+        StateHasChanged();
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxOperlogBytes);
+            var result = await ReportsApi.UploadMultiPlantScadaMasterAsync(stream, file.Name);
+            var totalSamples = result.PerPlant.Sum(p => p.SamplesWritten);
+            _multiScadaState.LastSuccessMessage =
+                $"{totalSamples} samples importert til {result.PerPlant.Count} anlegg "
+                + $"({result.TotalRowsParsed} timer parset, {result.TotalRowsSkipped} skip).";
+            if (result.UnknownSignals.Count > 0)
+            {
+                _multiScadaState.UnknownSignals.AddRange(result.UnknownSignals);
+            }
+            Snackbar.Add(_multiScadaState.LastSuccessMessage, Severity.Success);
+            await LoadStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            _multiScadaState.Error = $"Multi-plant SCADA-import feilet: {ex.Message}";
+            Snackbar.Add(_multiScadaState.Error, Severity.Error);
+        }
+        finally
+        {
+            _multiScadaState.IsUploading = false;
             StateHasChanged();
         }
     }

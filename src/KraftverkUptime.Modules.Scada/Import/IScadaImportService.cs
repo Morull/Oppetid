@@ -31,6 +31,19 @@ public interface IScadaImportService
         Stream csvStream,
         Func<string, string?> stationToPlantId,
         CancellationToken ct);
+
+    /// <summary>
+    /// Multi-anlegg master-CSV-import: én CSV med tags fra flere anlegg
+    /// (eks. samlet eksport av Vikeså, Stølskraft, Ørsdalen, Øgreyfoss, Løgjen).
+    /// Hver signal-kolonne ruter til riktig plant via prefix-map. Resultatet
+    /// blir én <c>data_imports</c>-rad per anlegg som har samples i fila.
+    /// Signaler med ukjent prefiks skippes og rapporteres i
+    /// <see cref="MultiPlantScadaImportResult.UnknownSignals"/>.
+    /// </summary>
+    Task<MultiPlantScadaImportResult> ImportMasterCsvMultiPlantAsync(
+        string ownerOrgId,
+        Stream csvStream,
+        CancellationToken ct);
 }
 
 public sealed record ScadaImportResult(
@@ -61,3 +74,18 @@ public sealed record MultiPlantOperlogImportResult(
 public sealed record PlantOperlogResult(
     string PlantId,
     int EventsImported);
+
+/// <summary>
+/// Resultat fra multi-anlegg master-CSV-import. Inneholder per-plant-statistikk
+/// pluss en liste over ukjente signal-prefikser som ble skippet.
+/// </summary>
+public sealed record MultiPlantScadaImportResult(
+    int TotalRowsParsed,
+    int TotalRowsSkipped,
+    IReadOnlyList<string> UnknownSignals,
+    IReadOnlyList<PlantScadaImportResult> PerPlant);
+
+public sealed record PlantScadaImportResult(
+    string PlantId,
+    int SignalCount,
+    int SamplesWritten);

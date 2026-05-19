@@ -20,4 +20,8 @@ public sealed record Dam(
     bool IsTurbineIntake,
     double? HrvMoh,
     double? LrvMoh,
-    double? VolumeMm3);
+    double? VolumeMm3,
+    int? OverflowProxyThresholdCm = null);
+// OverflowProxyThresholdCm: terskel (cm over HRV) for level-baserte overflow-
+// proxy. Kun relevant når anleggets OverflowMode = LevelProxy og dette er
+// terminal-dammen. Typisk 10 cm, settes per dam via PlantAdmin.

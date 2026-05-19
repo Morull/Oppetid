@@ -187,6 +187,11 @@ else
                                  Label="Volum (Mill.m³) — frivillig"
                                  Step="0.01" Format="F2"
                                  Variant="Variant.Outlined" />
+                <MudNumericField T="int?" @bind-Value="_addForm.OverflowProxyThresholdCm"
+                                 Label="Overløps-terskel (cm over HRV) — frivillig"
+                                 HelperText="Brukes når anlegget har OverflowMode = LevelProxy. Typisk 10."
+                                 Min="0" Max="500"
+                                 Variant="Variant.Outlined" />
             </MudStack>
         </DialogContent>
         <DialogActions>
@@ -222,6 +227,11 @@ else
                     <MudNumericField T="double?" @bind-Value="_editForm.VolumeMm3"
                                      Label="Volum (Mill.m³)" Step="0.01" Format="F2"
                                      HelperText="Magasin-volum mellom HRV og LRV."
+                                     Variant="Variant.Outlined" />
+                    <MudNumericField T="int?" @bind-Value="_editForm.OverflowProxyThresholdCm"
+                                     Label="Overløps-terskel (cm over HRV)"
+                                     Min="0" Max="500"
+                                     HelperText="Brukes når anlegget kjører OverflowMode = LevelProxy (f.eks. Ørsdalen). 10 = 10 cm over HRV regnes som overløp."
                                      Variant="Variant.Outlined" />
                 </MudStack>
             </DialogContent>
@@ -531,6 +541,7 @@ else
         public double? HrvMoh { get; set; }
         public double? LrvMoh { get; set; }
         public double? VolumeMm3 { get; set; }
+        public int? OverflowProxyThresholdCm { get; set; }
     }
 
     private sealed class DamAddForm
@@ -542,6 +553,7 @@ else
         public double? HrvMoh { get; set; }
         public double? LrvMoh { get; set; }
         public double? VolumeMm3 { get; set; }
+        public int? OverflowProxyThresholdCm { get; set; }
     }
 
     protected override async Task OnInitializedAsync()
@@ -743,6 +755,7 @@ else
             HrvMoh = dam.HrvMoh,
             LrvMoh = dam.LrvMoh,
             VolumeMm3 = dam.VolumeMm3,
+            OverflowProxyThresholdCm = dam.OverflowProxyThresholdCm,
         };
         _editingDamOpen = true;
         return Task.CompletedTask;
@@ -761,7 +774,8 @@ else
                 IsTurbineIntake: _editForm.IsTurbineIntake,
                 HrvMoh: _editForm.HrvMoh,
                 LrvMoh: _editForm.LrvMoh,
-                VolumeMm3: _editForm.VolumeMm3);
+                VolumeMm3: _editForm.VolumeMm3,
+                OverflowProxyThresholdCm: _editForm.OverflowProxyThresholdCm);
             await Api.UpdateDamAsync(PlantId, _editingDam.DamId, body);
             Snackbar.Add($"{_editForm.Name} oppdatert.", Severity.Success);
             _editingDamOpen = false;
@@ -807,7 +821,8 @@ else
                 IsTurbineIntake: _addForm.IsTurbineIntake,
                 HrvMoh: _addForm.HrvMoh,
                 LrvMoh: _addForm.LrvMoh,
-                VolumeMm3: _addForm.VolumeMm3);
+                VolumeMm3: _addForm.VolumeMm3,
+                OverflowProxyThresholdCm: _addForm.OverflowProxyThresholdCm);
             await Api.CreateDamAsync(PlantId, body);
             Snackbar.Add($"{_addForm.Name} opprettet.", Severity.Success);
             _addingDamOpen = false;

@@ -70,6 +70,7 @@ public sealed class KraftverkDbContext : DbContext
             b.Property(x => x.Name).HasMaxLength(200).IsRequired();
             b.Property(x => x.Type).HasConversion<string>().HasMaxLength(32);
             b.Property(x => x.TimeZone).HasMaxLength(64);
+            b.Property(x => x.OverflowMode).HasConversion<string>().HasMaxLength(32).IsRequired();
             b.Ignore(x => x.PlantId); // Computed fra Id – ikke mappet til kolonne.
         });
 
