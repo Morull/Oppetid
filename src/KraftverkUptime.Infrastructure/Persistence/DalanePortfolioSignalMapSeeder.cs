@@ -19,8 +19,10 @@ namespace KraftverkUptime.Infrastructure.Persistence;
 ///
 /// Øgreyfoss er spesiell: SCADA-eksporten har to prefikser — <c>OGREY1_</c>
 /// (G1-side, inneholder INNTAK/magasin) og <c>OGREY2_</c> (G2-side, kun
-/// generator-tags). Begge mapper til samme <c>plant_id = "ogreyfoss"</c>
-/// og samme <c>ogreyfoss_main</c>-dam.
+/// generator-tags). Begge mapper til samme <c>plant_id = "ogreyfoss"</c>.
+/// INNTAK-tags festes til <c>ogreyfoss_ogreyvatn</c> som er terminal-dam i
+/// 7-dam-kaskaden (se <see cref="PlantTopologySeeder"/>) — ikke til en
+/// hypotetisk <c>ogreyfoss_main</c> som PlantTopologySeeder ville slettet.
 ///
 /// Idempotent — hopper over tags som allerede finnes i signal_map for
 /// gjeldende plant_id. Fremtidige eksporter med nye tags blir upserted via
@@ -61,7 +63,15 @@ public static class DalanePortfolioSignalMapSeeder
         }
 
         var plantId = match.PlantId;
-        var damId = $"{plantId}_main";
+        // Default: SingleDam-anlegg har terminal-dam '{plant}_main'. MultiDam-
+        // anlegg (Øgreyfoss = 7-dam-kaskade) bruker terminal-dam som
+        // PlantTopologySeeder oppretter. Listen MÅ holdes synkronisert med
+        // PlantTopologySeeder.Topologies — ellers blir INNTAK-tags foreldreløst.
+        var damId = plantId switch
+        {
+            "ogreyfoss" => "ogreyfoss_ogreyvatn",
+            _ => $"{plantId}_main",
+        };
         var withoutPrefix = tagId[match.Prefix.Length..];
 
         // KRST = sensor-stasjon på utløp, ikke dam

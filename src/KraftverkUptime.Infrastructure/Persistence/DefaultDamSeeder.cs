@@ -85,6 +85,27 @@ public static class DefaultDamSeeder
                     "DefaultDamSeeder: oppdaterte {Count} signal_map-rader med default dam-id.",
                     sigsUpdated);
             }
+
+            // Idempotent fixup (2026-05-19): Øgreyfoss er MultiDam og har ingen
+            // 'ogreyfoss_main' lenger (PlantTopologySeeder sletter den og setter
+            // ogreyfoss_ogreyvatn som terminal). DalanePortfolioSignalMapSeeder
+            // skrev foreldreløse 'ogreyfoss_main'-referanser før vi oppdaget
+            // det. Flytt FK-en til terminal-dammen.
+            const string ogreyfossFixupSql = """
+                UPDATE core.signal_map
+                SET dam_id = 'ogreyfoss_ogreyvatn'
+                WHERE plant_id = 'ogreyfoss'
+                  AND dam_id   = 'ogreyfoss_main';
+                """;
+            var ogreyfossFixed = await db.Database
+                .ExecuteSqlRawAsync(ogreyfossFixupSql, ct).ConfigureAwait(false);
+            if (ogreyfossFixed > 0)
+            {
+                logger.LogInformation(
+                    "DefaultDamSeeder: flyttet {Count} foreldreløse signal_map-rader fra " +
+                    "'ogreyfoss_main' til 'ogreyfoss_ogreyvatn' (terminal-dam).",
+                    ogreyfossFixed);
+            }
         }
         catch (Exception ex)
         {

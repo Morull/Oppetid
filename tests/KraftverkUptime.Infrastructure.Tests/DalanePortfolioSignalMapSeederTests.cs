@@ -63,11 +63,11 @@ public sealed class DalanePortfolioSignalMapSeederTests
     [InlineData("OGREY1_KRST_KONTROLL_KOM_AL", SignalRole.CommunicationAlarm, null)]
     [InlineData("OGREY1_G1_KONTROLL_REG_P_SP_SP_LAST", SignalRole.Other, null)]
     // ØGREYFOSS — INNTAK (felles mellom G1 og G2)
-    [InlineData("OGREY1_INNTAK_NIVA_OVERLOP_VF_PV", SignalRole.OverflowFlow, "ogreyfoss_main")]
-    [InlineData("OGREY1_INNTAK_MAGASIN_FYLLGRAD_PV", SignalRole.ReservoirFillFactor, "ogreyfoss_main")]
-    [InlineData("OGREY1_INNTAK_MAGASIN_VOLUM_PV", SignalRole.ReservoirVolume, "ogreyfoss_main")]
-    [InlineData("OGREY1_INNTAK_MAGASIN_TOT_VF_PV", SignalRole.TotalDamFlow, "ogreyfoss_main")]
-    [InlineData("OGREY1_INNTAK_NIVA_OPPSTROM_KOTE_PV", SignalRole.UpstreamLevel, "ogreyfoss_main")]
+    [InlineData("OGREY1_INNTAK_NIVA_OVERLOP_VF_PV", SignalRole.OverflowFlow, "ogreyfoss_ogreyvatn")]
+    [InlineData("OGREY1_INNTAK_MAGASIN_FYLLGRAD_PV", SignalRole.ReservoirFillFactor, "ogreyfoss_ogreyvatn")]
+    [InlineData("OGREY1_INNTAK_MAGASIN_VOLUM_PV", SignalRole.ReservoirVolume, "ogreyfoss_ogreyvatn")]
+    [InlineData("OGREY1_INNTAK_MAGASIN_TOT_VF_PV", SignalRole.TotalDamFlow, "ogreyfoss_ogreyvatn")]
+    [InlineData("OGREY1_INNTAK_NIVA_OPPSTROM_KOTE_PV", SignalRole.UpstreamLevel, "ogreyfoss_ogreyvatn")]
     [InlineData("OGREY1_INNTAK_NIVA_NEDSTROM_REF_HRV_PV", SignalRole.Other, null)]
     [InlineData("OGREY1_INNTAK_NIVA_VTA_PV", SignalRole.Other, null)]
     // ØGREYFOSS — OGREY2-prefix (G2-side, deler INNTAK med OGREY1)
@@ -183,5 +183,34 @@ public sealed class DalanePortfolioSignalMapSeederTests
         perPlant["orsdalen"].Should().Be(5, "Ørsdalen mangler TURB_VF og overflow");
         perPlant["ogreyfoss"].Should().Be(31, "Øgreyfoss = OGREY1 (20) + OGREY2 (11)");
         perPlant["logjen"].Should().Be(16);
+    }
+
+    [Fact]
+    public void MapTag_MultiDamAnlegg_DamIdMatcherTerminalTopologi()
+    {
+        // Regresjons-test (Øgreyfoss-bug 2026-05-19): når et anlegg har MultiDam-
+        // topologi i PlantTopologySeeder, må Dalane-seeder-en mappe INNTAK-tags
+        // til den faktiske terminal-dammen — ikke til en hypotetisk '_main' som
+        // PlantTopologySeeder ville slettet. Hvis denne testen feiler, sjekk at
+        // damId-switch'en i DalanePortfolioSignalMapSeeder.MapTag holdes
+        // synkronisert med PlantTopologySeeder.Topologies.
+        //
+        // Listen MÅ holdes synkronisert med PlantTopologySeeder.Topologies —
+        // hvis en MultiDam-plant legges til/endres der må også denne dict-en
+        // oppdateres. (Topologies er internal, så vi kan ikke importere direkte.)
+        var expectedTerminalByPlant = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["ogreyfoss"] = "ogreyfoss_ogreyvatn",
+        };
+
+        foreach (var tag in DalanePortfolio72TagCatalog.Tags)
+        {
+            var (plantId, _, damId, _) = DalanePortfolioSignalMapSeeder.MapTag(tag);
+            if (damId is null) continue;
+            if (!expectedTerminalByPlant.TryGetValue(plantId, out var expectedTerminal)) continue;
+
+            damId.Should().Be(expectedTerminal,
+                $"tag '{tag}' i MultiDam-anlegg '{plantId}' må peke på terminal-dam");
+        }
     }
 }
