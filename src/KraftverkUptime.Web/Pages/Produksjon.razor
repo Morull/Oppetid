@@ -215,6 +215,13 @@ else if (_data is not null)
                     Hydrogrid-merverdi måned-for-måned. Ser man en stigende trend i timing-
                     merverdi, blir Hydrogrid bedre. Plan-treff bør holde seg stabilt høy.
                 </MudText>
+                <div class="d-flex justify-end mb-2">
+                    <MudSwitch T="bool" @bind-Value="_showAllColumns"
+                               Color="MudBlazor.Color.Primary"
+                               Size="MudBlazor.Size.Small">
+                        Vis alle kolonner (@(_showAllColumns ? "12" : "7") synlige)
+                    </MudSwitch>
+                </div>
                 <MudTable Items="_data.Monthly" Hover="true" Dense="true" Elevation="0"
                           OnRowClick="@((TableRowClickEventArgs<ProduksjonMonthlyDto> args) => OnMonthRowClick(args.Item))"
                           RowStyle="cursor: pointer;">
@@ -228,13 +235,16 @@ else if (_data is not null)
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortKap">Kap.utn.</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortOverlop">Overløp (t)</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortElhub">Elhub (MWh)</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortPlan">Plan (MWh)</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortPlanTreff">Plan-treff</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortToppPris">Topp-pris-andel</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortBunnPris">Bunn-pris-andel</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortHgMerverdi">Hydrogrid-merverdi</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortFaktiskMerverdi">Faktisk merverdi</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortSnittSpot">Snitt-spot</MudTableSortLabel></MudTh>
+                        @if (_showAllColumns)
+                        {
+                            <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortPlan">Plan (MWh)</MudTableSortLabel></MudTh>
+                            <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortToppPris">Topp-pris-andel</MudTableSortLabel></MudTh>
+                            <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortBunnPris">Bunn-pris-andel</MudTableSortLabel></MudTh>
+                            <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortFaktiskMerverdi">Faktisk merverdi</MudTableSortLabel></MudTh>
+                            <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortSnittSpot">Snitt-spot</MudTableSortLabel></MudTh>
+                        }
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd>@($"{context.Year}-{context.Month:D2}")</MudTd>
@@ -278,27 +288,30 @@ else if (_data is not null)
                             }
                         </MudTd>
                         <MudTd Style="text-align:right">@context.ElhubMwh.ToString("F0")</MudTd>
-                        <MudTd Style="text-align:right">@context.PlanMwh.ToString("F0")</MudTd>
                         <MudTd Style="text-align:right">
-                            <span style="@($"color: {(context.PlanTreffProsent >= 0.85 ? "#2A9D8F" : context.PlanTreffProsent >= 0.65 ? "#F39C12" : "#E76F51")}; font-weight: 600;")">
+                            <span style="@($"color: {(context.PlanTreffProsent >= 0.85 ? "var(--mud-palette-success)" : context.PlanTreffProsent >= 0.65 ? "var(--mud-palette-warning)" : "var(--mud-palette-error)")}; font-weight: 600;")">
                                 @((context.PlanTreffProsent * 100).ToString("F0")) %
                             </span>
                         </MudTd>
-                        <MudTd Style="text-align:right">
-                            <span style="@($"color: {(context.AndelProdIToppKvartil >= 0.30 ? "#2A9D8F" : context.AndelProdIToppKvartil >= 0.20 ? "inherit" : "#E76F51")};")">
-                                @((context.AndelProdIToppKvartil * 100).ToString("F0")) %
-                            </span>
-                        </MudTd>
-                        <MudTd Style="text-align:right">
-                            @* Høy bunn-andel = produserte mest når prisen var lav. Hvis bunn > topp er det
-                               et tydelig drifts-flagg (overløp-tvang eller minstevannføring). *@
-                            <span style="@($"color: {(context.AndelProdIBunnKvartil > context.AndelProdIToppKvartil ? "#E76F51" : "inherit")};")">
-                                @((context.AndelProdIBunnKvartil * 100).ToString("F0")) %
-                            </span>
-                        </MudTd>
                         <MudTd Style="text-align:right">@FormatNokSigned(context.HydrogridMerverdiNok)</MudTd>
-                        <MudTd Style="text-align:right">@FormatNokSigned(context.FaktiskMerverdiNok)</MudTd>
-                        <MudTd Style="text-align:right">@context.SnittSpotprisNokMwh.ToString("F0")</MudTd>
+                        @if (_showAllColumns)
+                        {
+                            <MudTd Style="text-align:right">@context.PlanMwh.ToString("F0")</MudTd>
+                            <MudTd Style="text-align:right">
+                                <span style="@($"color: {(context.AndelProdIToppKvartil >= 0.30 ? "var(--mud-palette-success)" : context.AndelProdIToppKvartil >= 0.20 ? "inherit" : "var(--mud-palette-error)")};")">
+                                    @((context.AndelProdIToppKvartil * 100).ToString("F0")) %
+                                </span>
+                            </MudTd>
+                            <MudTd Style="text-align:right">
+                                @* Høy bunn-andel = produserte mest når prisen var lav. Hvis bunn > topp er det
+                                   et tydelig drifts-flagg (overløp-tvang eller minstevannføring). *@
+                                <span style="@($"color: {(context.AndelProdIBunnKvartil > context.AndelProdIToppKvartil ? "var(--mud-palette-error)" : "inherit")};")">
+                                    @((context.AndelProdIBunnKvartil * 100).ToString("F0")) %
+                                </span>
+                            </MudTd>
+                            <MudTd Style="text-align:right">@FormatNokSigned(context.FaktiskMerverdiNok)</MudTd>
+                            <MudTd Style="text-align:right">@context.SnittSpotprisNokMwh.ToString("F0")</MudTd>
+                        }
                     </RowTemplate>
                 </MudTable>
             </MudPaper>
@@ -314,6 +327,10 @@ else if (_data is not null)
     private ProduksjonAnalyseDto? _data;
     private ProduksjonAnalyseDto? _previous;
     private DataQualitySummaryDto? _dataQuality;
+
+    // Kolonnesynlighet for månedstabellen: default 7 kjerne-kolonner, 5 ekstra
+    // bak switch. UI-gjennomgang 2026-05-20 tiltak 3.
+    private bool _showAllColumns;
 
     private ApexChartOptions<DailyPoint> _chartOptions = new();
     private ApexChartOptions<DailyPoint> _spotOptions = new();

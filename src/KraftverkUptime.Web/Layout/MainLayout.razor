@@ -65,7 +65,11 @@
             <AppBarPlantPeriodSelector />
         }
 
-        <MudContainer MaxWidth="MaxWidth.Large" Class="pa-6">
+        @* MaxWidth styres per-side: tabelltunge rapport-sider (Portefølje,
+           Produksjon, Vakt-ROI) får full bredde fordi de ellers tvinges til
+           horisontal scroll på en wide-screen. Skjema- og detalj-sider beholder
+           Large (~1280px) for behagelig lesbarhet. UI-gjennomgang 2026-05-20 tiltak 3. *@
+        <MudContainer MaxWidth="@ContainerWidth" Class="pa-6">
             @Body
         </MudContainer>
     </MudMainContent>
@@ -86,6 +90,36 @@
         "/upload",
         "/behandles",
     };
+
+    // Sider med brede tabeller som tjener på full bredde framfor 1280px-cap.
+    // Match-stilen er prefix — gjelder også sub-paths som /vakt-roi/{plantId}.
+    private static readonly string[] FullWidthPathPrefixes =
+    {
+        "/portefolje",
+        "/produksjon",
+        "/vakt-roi",
+        "/nedetid",
+        "/capture-rate",
+        "/effektivitet",
+        "/data-import",
+    };
+
+    private MaxWidth ContainerWidth
+    {
+        get
+        {
+            var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
+            if (string.IsNullOrEmpty(path)) path = "/";
+            foreach (var prefix in FullWidthPathPrefixes)
+            {
+                if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return MaxWidth.False;
+                }
+            }
+            return MaxWidth.Large;
+        }
+    }
 
     private bool ShowGlobalSelector
     {
