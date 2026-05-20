@@ -151,12 +151,13 @@ else if (_data is not null)
         @if (_dailyPoints.Count > 0)
         {
             <MudPaper Class="pa-4 mb-4" Elevation="1">
-                <MudText Typo="Typo.h3" Class="mb-2">Plan vs. faktisk produksjon (MWh)</MudText>
+                <MudText Typo="Typo.h3" Class="mb-2">Plan vs. Spotbud vs. Faktisk (MWh)</MudText>
                 <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-2">
-                    @_grafForklaring Når plan- og faktisk-linjene følger hverandre tett er
-                    Hydrogrid riktig og operasjonen følger planen. Stort avvik betyr enten
-                    at planen feilet (Hydrogrid var off), eller at vi ikke greide å følge
-                    den (nedetid, manuell justering osv.).
+                    @_grafForklaring <strong>Plan</strong> = Hydrogrid-anbefaling.
+                    <strong>Spotbud</strong> = faktisk meldt bud til NordPool (= forpliktelse).
+                    <strong>Faktisk</strong> = levert til Elhub. Avvik mellom Spotbud og Faktisk
+                    er det som koster i ubalanse-gebyr. Avvik mellom Plan og Spotbud betyr
+                    at producent overstyrte Hydrogrid manuelt.
                 </MudText>
                 <ApexChart @key="@($"hg-{_chartVersion}")" TItem="DailyPoint"
                            Options="_chartOptions" Height="380">
@@ -166,6 +167,12 @@ else if (_data is not null)
                                      SeriesType="SeriesType.Line"
                                      XValue="d => d.Date"
                                      YValue="d => (decimal)d.PlanMwh" />
+                    <ApexPointSeries TItem="DailyPoint"
+                                     Items="_dailyPoints"
+                                     Name="Spotbud (MWh)"
+                                     SeriesType="SeriesType.Line"
+                                     XValue="d => d.Date"
+                                     YValue="d => (decimal)d.SpotbudMwh" />
                     <ApexPointSeries TItem="DailyPoint"
                                      Items="_dailyPoints"
                                      Name="Faktisk (MWh)"
@@ -321,7 +328,7 @@ else if (_data is not null)
     /// er lang (672 punkter for én måned), så vi summerer Plan/Elhub og tar
     /// snitt-spotpris per døgn. Holder grafen lesbar uten å miste signal.
     /// </summary>
-    private sealed record DailyPoint(DateTime Date, double PlanMwh, double ElhubMwh, double SnittSpot);
+    private sealed record DailyPoint(DateTime Date, double PlanMwh, double SpotbudMwh, double ElhubMwh, double SnittSpot);
 
     // Sort-funksjoner for månedstabellen
     private readonly Func<ProduksjonMonthlyDto, object> _sortMonth = m => m.Year * 100 + m.Month;
@@ -440,6 +447,7 @@ else if (_data is not null)
                 .Select(h => new DailyPoint(
                     Date: h.TimeUtc.UtcDateTime,
                     PlanMwh: h.PlanMwh ?? 0,
+                    SpotbudMwh: h.SpotbudMwh ?? 0,
                     ElhubMwh: h.ElhubMwh ?? 0,
                     SnittSpot: h.SpotprisNokMwh ?? 0))
                 .ToList();
@@ -454,6 +462,7 @@ else if (_data is not null)
                 .Select(g => new DailyPoint(
                     Date: g.Key,
                     PlanMwh: g.Sum(h => h.PlanMwh ?? 0),
+                    SpotbudMwh: g.Sum(h => h.SpotbudMwh ?? 0),
                     ElhubMwh: g.Sum(h => h.ElhubMwh ?? 0),
                     SnittSpot: g.Where(h => h.SpotprisNokMwh.HasValue)
                                 .Select(h => h.SpotprisNokMwh!.Value)
@@ -461,7 +470,7 @@ else if (_data is not null)
                                 .Average()))
                 .ToList();
             _grafForklaring = $"Daglig aggregert ({_dailyPoints.Count} dager). " +
-                              "Plan/Faktisk = sum MWh per dag, Spotpris = snitt for døgnet.";
+                              "Plan/Spotbud/Faktisk = sum MWh per dag, Spotpris = snitt for døgnet.";
         }
     }
 
@@ -479,7 +488,8 @@ else if (_data is not null)
                 new() { Title = new AxisTitle { Text = "MWh" }, DecimalsInFloat = 1 }
             },
             Legend = new Legend { Position = LegendPosition.Top },
-            Colors = new List<string> { "#1E5F8E", "#2A9D8F" },
+            // Plan (mørk blå), Spotbud (oransje — forpliktelse), Faktisk (grønn)
+            Colors = new List<string> { "#1E5F8E", "#F39C12", "#2A9D8F" },
         };
         _spotOptions = new ApexChartOptions<DailyPoint>
         {
