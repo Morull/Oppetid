@@ -80,11 +80,10 @@ else
         @foreach (var card in HighlightCards(_report))
         {
             <MudItem xs="12" sm="6" md="4" lg="3">
-                <MudPaper Class="pa-4" Elevation="2" Style="@($"border-left: 4px solid {card.Color};")">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">@card.Label</MudText>
-                    <MudText Typo="Typo.h3">@card.Value</MudText>
-                    <MudText Typo="Typo.caption">@card.Sub</MudText>
-                </MudPaper>
+                <KpiCard Label="@card.Label"
+                         Value="@card.Value"
+                         SubText="@card.Sub"
+                         Accent="@card.Accent" />
             </MudItem>
         }
 
@@ -94,31 +93,20 @@ else
         @if (_kaiaCost is not null)
         {
             <MudItem xs="12" sm="6" md="4" lg="3">
-                <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #B23A48;">
-                    <MudTooltip Text="@KaiaTooltip(_kaiaCost)">
-                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">KAIA-kostnad</MudText>
-                        <MudText Typo="Typo.h3">@FormatKaiaTotal(_kaiaCost)</MudText>
-                        <MudText Typo="Typo.caption">
-                            Megler @FormatNok(_kaiaCost.MeglerprovisjonNok)
-                            · Fast @FormatNok(_kaiaCost.FastAvgiftNok)
-                        </MudText>
-                    </MudTooltip>
-                    @if (!string.IsNullOrEmpty(_kaiaCost.Note))
-                    {
-                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Warning" Class="mt-1">
-                            @_kaiaCost.Note
-                        </MudText>
-                    }
-                </MudPaper>
+                <KpiCard Label="KAIA-kostnad"
+                         Value="@FormatKaiaTotal(_kaiaCost)"
+                         SubText="@($"Megler {FormatNok(_kaiaCost.MeglerprovisjonNok)} · Fast {FormatNok(_kaiaCost.FastAvgiftNok)}")"
+                         Accent="KpiAccent.Warning"
+                         InfoText="@KaiaTooltip(_kaiaCost)" />
             </MudItem>
         }
         else if (_kaiaCostLoading)
         {
             <MudItem xs="12" sm="6" md="4" lg="3">
-                <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #B23A48;">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">KAIA-kostnad</MudText>
-                    <MudText Typo="Typo.body2">Laster…</MudText>
-                </MudPaper>
+                <KpiCard Label="KAIA-kostnad"
+                         Value="—"
+                         Accent="KpiAccent.Warning"
+                         State="KpiState.Loading" />
             </MudItem>
         }
     </MudGrid>
@@ -964,20 +952,20 @@ async Task GoToReport(string idempotencyKey)
 
     private sealed record KpiGroup(string Category, IReadOnlyList<KpiDto> Items);
 
-    private static IEnumerable<KpiCard> HighlightCards(UptimeReportSummary r)
+    private static IEnumerable<HighlightCard> HighlightCards(UptimeReportSummary r)
     {
         double? Get(string name) => r.Kpis.FirstOrDefault(k => k.Name == name)?.Value;
 
         // Drift
-        yield return new("Drift-timer", FormatNumber(Get("ServiceHours_SH"), "F0") + " t", "Timer i drift (Elhub > 0)", "#2A9D8F");
-        yield return new("Nedetid", FormatNumber(Get("ForcedOutageHours_FOH"), "F0") + " t", "Forpliktet, men ikke produsert", "#E76F51");
-        yield return new("Tilgjengelighet", FormatRatio(Get("AvailabilityFactor_AF")), "Drift-timer / (Drift + Nedetid)", "#1E5F8E");
-        yield return new("Bud-leveranse", FormatRatio(Get("BidDelivery")), "Σ Elhub / Σ Spotbud", "#00A99D");
+        yield return new("Drift-timer", FormatNumber(Get("ServiceHours_SH"), "F0") + " t", "Timer i drift (Elhub > 0)", KpiAccent.Positive);
+        yield return new("Nedetid", FormatNumber(Get("ForcedOutageHours_FOH"), "F0") + " t", "Forpliktet, men ikke produsert", KpiAccent.Negative);
+        yield return new("Tilgjengelighet", FormatRatio(Get("AvailabilityFactor_AF")), "Drift-timer / (Drift + Nedetid)", KpiAccent.Neutral);
+        yield return new("Bud-leveranse", FormatRatio(Get("BidDelivery")), "Σ Elhub / Σ Spotbud", KpiAccent.Accent);
         // Økonomi
-        yield return new("Total produksjon", FormatNumber(Get("TotalProduction_MWh"), "F2") + " MWh", "Akkumulert Elhub", "#1E5F8E");
-        yield return new("Spotomsetning", FormatNumber(Get("Spotomsetning_NOK"), "N0") + " NOK", "Day-ahead-bruttoinntekt", "#2A9D8F");
-        yield return new("Ubalansekost", FormatNumber(Get("Ubalansekost_NOK"), "N0") + " NOK", "Total kostnad ved å avvike fra Spotbud", "#7E57C2");
-        yield return new("Oppgjør", FormatNumber(Get("Oppgjor_NOK"), "N0") + " NOK", "Sum oppgjør i perioden", "#F39C12");
+        yield return new("Total produksjon", FormatNumber(Get("TotalProduction_MWh"), "F2") + " MWh", "Akkumulert Elhub", KpiAccent.Neutral);
+        yield return new("Spotomsetning", FormatNumber(Get("Spotomsetning_NOK"), "N0") + " NOK", "Day-ahead-bruttoinntekt", KpiAccent.Positive);
+        yield return new("Ubalansekost", FormatNumber(Get("Ubalansekost_NOK"), "N0") + " NOK", "Total kostnad ved å avvike fra Spotbud", KpiAccent.Accent);
+        yield return new("Oppgjør", FormatNumber(Get("Oppgjor_NOK"), "N0") + " NOK", "Sum oppgjør i perioden", KpiAccent.Warning);
     }
 
     private static string FormatNumber(double? v, string format)
@@ -1098,7 +1086,12 @@ async Task GoToReport(string idempotencyKey)
     };
 
     public sealed record StateSlice(string CanonicalState, string Display, int Hours);
-    private sealed record KpiCard(string Label, string Value, string Sub, string Color);
+    /// <summary>
+    /// Lokal record for HighlightCards — renamed fra KpiCard for å unngå
+    /// navnekollisjon med den nye unified KpiCard-komponenten (UI-gjennomgang
+    /// 2026-05-20). Color er semantisk navn (Positive/Negative/Neutral...) ikke hex.
+    /// </summary>
+    private sealed record HighlightCard(string Label, string Value, string Sub, KpiAccent Accent);
 
     /// <summary>
     /// Synkroniserer FilterState med rapportens plant + periode slik at /nedetid

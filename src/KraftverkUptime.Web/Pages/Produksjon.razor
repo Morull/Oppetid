@@ -71,73 +71,73 @@ else if (_data is not null)
         @* ---- KPI-rad med trend mot forrige periode ---- *@
         <MudGrid Class="mb-4">
             <MudItem xs="12" sm="6" md="3">
-                <KpiTrendCard Label="Plan-treff"
-                              Value="@(_data.PlanTreffProsent * 100)"
-                              PreviousValue="@(_previous?.PlanTreffProsent * 100)"
-                              Format="F1" Unit="%"
-                              SubText="@($"1 − MAE/Σplan over {_data.AntallTimerMedPlan} timer med Hydrogrid-plan > 0")"
-                              HigherIsBetter="true" />
+                <KpiCard Label="Plan-treff"
+                         Value="@($"{(_data.PlanTreffProsent * 100):F1} %")"
+                         SubText="@($"1 − MAE/Σplan over {_data.AntallTimerMedPlan} timer med Hydrogrid-plan > 0")"
+                         TrendCurrent="@(_data.PlanTreffProsent * 100)"
+                         TrendPrevious="@(_previous is null ? null : (double?)(_previous.PlanTreffProsent * 100))"
+                         HigherIsBetter="true" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <KpiTrendCard Label="Spotbud-treff"
-                              Value="@(_data.SpotbudTreffProsent * 100)"
-                              PreviousValue="@(_previous?.SpotbudTreffProsent * 100)"
-                              Format="F1" Unit="%"
-                              SubText="@($"1 − MAE/Σspotbud over {_data.AntallTimerMedSpotbud} timer. Mål: 100 % (avvik = ubalanse-gebyr).")"
-                              HigherIsBetter="true" />
+                <KpiCard Label="Spotbud-treff"
+                         Value="@($"{(_data.SpotbudTreffProsent * 100):F1} %")"
+                         SubText="@($"1 − MAE/Σspotbud over {_data.AntallTimerMedSpotbud} timer. Mål: 100 % (avvik = ubalanse-gebyr).")"
+                         TrendCurrent="@(_data.SpotbudTreffProsent * 100)"
+                         TrendPrevious="@(_previous is null ? null : (double?)(_previous.SpotbudTreffProsent * 100))"
+                         HigherIsBetter="true" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <KpiTrendCard Label="Topp-prisperiode-utnyttelse"
-                              Value="@(_data.AndelProdIToppKvartil * 100)"
-                              PreviousValue="@(_previous?.AndelProdIToppKvartil * 100)"
-                              Format="F1" Unit="%"
-                              SubText="@($"MWh-andel i øverste 25 % spot-timer ({(_data.AndelTimerProdIToppKvartil * 100):F0} % av drifts-timer). Naiv baseline = 25 %.")"
-                              HigherIsBetter="true" />
+                <KpiCard Label="Topp-prisperiode-utnyttelse"
+                         Value="@($"{(_data.AndelProdIToppKvartil * 100):F1} %")"
+                         SubText="@($"MWh-andel i øverste 25 % spot-timer ({(_data.AndelTimerProdIToppKvartil * 100):F0} % av drifts-timer). Naiv baseline = 25 %.")"
+                         TrendCurrent="@(_data.AndelProdIToppKvartil * 100)"
+                         TrendPrevious="@(_previous is null ? null : (double?)(_previous.AndelProdIToppKvartil * 100))"
+                         HigherIsBetter="true" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <KpiTrendCard Label="Hydrogrid timing-merverdi"
-                              Value="_data.HydrogridMerverdiNok"
-                              PreviousValue="_previous?.HydrogridMerverdiNok"
-                              Format="N0" Unit="NOK"
-                              SignedValue="true"
-                              SubText="vs. flat baseline"
-                              HigherIsBetter="true" />
+                <KpiCard Label="Hydrogrid timing-merverdi"
+                         Value="@FormatNokSigned(_data.HydrogridMerverdiNok)"
+                         SubText="vs. flat baseline"
+                         TrendCurrent="_data.HydrogridMerverdiNok"
+                         TrendPrevious="_previous?.HydrogridMerverdiNok"
+                         HigherIsBetter="true" />
             </MudItem>
         </MudGrid>
 
         @* ---- KPI-rad 2: kapasitet + overløp ---- *@
         <MudGrid Class="mb-4">
             <MudItem xs="12" sm="6" md="3">
-                <KpiTrendCard Label="Kapasitetsutnyttelse"
-                              Value="@(_data.KapasitetsutnyttelseProsent * 100)"
-                              PreviousValue="@(_previous?.KapasitetsutnyttelseProsent * 100)"
-                              Format="F1" Unit="%"
-                              SubText="@KapasitetTolkning(_data.KapasitetsutnyttelseProsent)"
-                              HigherIsBetter="false" />
+                <KpiCard Label="Kapasitetsutnyttelse"
+                         Value="@($"{(_data.KapasitetsutnyttelseProsent * 100):F1} %")"
+                         SubText="@KapasitetTolkning(_data.KapasitetsutnyttelseProsent)"
+                         TrendCurrent="@(_data.KapasitetsutnyttelseProsent * 100)"
+                         TrendPrevious="@(_previous is null ? null : (double?)(_previous.KapasitetsutnyttelseProsent * 100))"
+                         HigherIsBetter="false" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <KpiTrendCard Label="Andel timer med overløp"
-                              Value="@(_data.OverlopProsent * 100)"
-                              PreviousValue="@(_previous?.OverlopProsent * 100)"
-                              Format="F1" Unit="%"
-                              SubText="@OverlopTolkning(_data)"
-                              HigherIsBetter="false" />
+                <KpiCard Label="Andel timer med overløp"
+                         Value="@($"{(_data.OverlopProsent * 100):F1} %")"
+                         SubText="@OverlopTolkning(_data)"
+                         TrendCurrent="@(_data.OverlopProsent * 100)"
+                         TrendPrevious="@(_previous is null ? null : (double?)(_previous.OverlopProsent * 100))"
+                         HigherIsBetter="false" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <KpiTrendCard Label="Antall timer overløp"
-                              Value="_data.AntallTimerOverlop"
-                              PreviousValue="_previous?.AntallTimerOverlop"
-                              Format="F0" Unit="timer"
-                              SubText="@(_data.OverlopDataTilgjengelig ? $"av {_data.AntallTimer} timer" : "Mangler SCADA-data")"
-                              HigherIsBetter="false" />
+                <KpiCard Label="Antall timer overløp"
+                         Value="@($"{_data.AntallTimerOverlop:F0} timer")"
+                         SubText="@(_data.OverlopDataTilgjengelig ? $"av {_data.AntallTimer} timer" : "Mangler SCADA-data")"
+                         TrendCurrent="_data.AntallTimerOverlop"
+                         TrendPrevious="_previous?.AntallTimerOverlop"
+                         HigherIsBetter="false"
+                         State="@(_data.OverlopDataTilgjengelig ? KpiState.Normal : KpiState.NoData)" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <KpiTrendCard Label="Produksjons-timer"
-                              Value="_data.AntallTimerProduksjon"
-                              PreviousValue="_previous?.AntallTimerProduksjon"
-                              Format="F0" Unit="timer"
-                              SubText="@($"av {_data.AntallTimer} mulige")"
-                              HigherIsBetter="true" />
+                <KpiCard Label="Produksjons-timer"
+                         Value="@($"{_data.AntallTimerProduksjon:F0} timer")"
+                         SubText="@($"av {_data.AntallTimer} mulige")"
+                         TrendCurrent="_data.AntallTimerProduksjon"
+                         TrendPrevious="_previous?.AntallTimerProduksjon"
+                         HigherIsBetter="true" />
             </MudItem>
         </MudGrid>
 

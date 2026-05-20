@@ -52,50 +52,41 @@ else if (_response is not null)
         @* ---- KPI-kort ---- *@
         <MudGrid Class="mb-4">
             <MudItem xs="12" sm="6" md="3" lg="2">
-                <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Snitt η</MudText>
-                    <MudText Typo="Typo.h3">@_response.SnittEtaPct.ToString("F1") %</MudText>
-                    <MudText Typo="Typo.caption">over @_response.ProduksjonsTimer produksjons-timer</MudText>
-                </MudPaper>
+                <KpiCard Label="Snitt η"
+                         Value="@($"{_response.SnittEtaPct:F1} %")"
+                         SubText="@($"over {_response.ProduksjonsTimer} produksjons-timer")"
+                         Accent="KpiAccent.Positive" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3" lg="2">
-                <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Sweet-spot effekt</MudText>
-                    <MudText Typo="Typo.h3">@_response.SweetSpotEffektKw.ToString("F0") kW</MudText>
-                    <MudText Typo="Typo.caption">@_response.SweetSpotEtaPct.ToString("F1") % η i bin'en</MudText>
-                </MudPaper>
+                <KpiCard Label="Sweet-spot effekt"
+                         Value="@($"{_response.SweetSpotEffektKw:F0} kW")"
+                         SubText="@($"{_response.SweetSpotEtaPct:F1} % η i bin'en")"
+                         Accent="KpiAccent.Neutral" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3" lg="2">
-                <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #F39C12;">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Spesifikt vannforbruk</MudText>
-                    <MudText Typo="Typo.h3">@_response.SnittSpesifiktVannforbrukM3PerKwh.ToString("F2")</MudText>
-                    <MudText Typo="Typo.caption">m³ per kWh</MudText>
-                </MudPaper>
+                <KpiCard Label="Spesifikt vannforbruk"
+                         Value="@_response.SnittSpesifiktVannforbrukM3PerKwh.ToString("F2")"
+                         SubText="m³ per kWh"
+                         Accent="KpiAccent.Warning" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3" lg="2">
-                <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #6E59A5;">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Total produksjon</MudText>
-                    <MudText Typo="Typo.h3">@((_response.TotalProduksjonKwh / 1000).ToString("F1")) MWh</MudText>
-                    <MudText Typo="Typo.caption">i perioden</MudText>
-                </MudPaper>
+                <KpiCard Label="Total produksjon"
+                         Value="@($"{(_response.TotalProduksjonKwh / 1000):F1} MWh")"
+                         SubText="i perioden"
+                         Accent="KpiAccent.Accent" />
             </MudItem>
             @if (_captureRate is not null)
             {
                 <MudItem xs="12" sm="6" md="3" lg="2">
-                    <MudPaper Class="pa-4" Elevation="2" Style="@CrCardStyle(_captureRate.TimesCr)">
-                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Capture rate (times)</MudText>
-                        <MudText Typo="Typo.h3">@_captureRate.TimesCr.ToString("F2")</MudText>
-                        <MudText Typo="Typo.caption">capt.pris @_captureRate.CapturePriceNokMwh.ToString("F0") NOK/MWh</MudText>
-                    </MudPaper>
+                    <KpiCard Label="Capture rate (times)"
+                             Value="@_captureRate.TimesCr.ToString("F2")"
+                             SubText="@($"capt.pris {_captureRate.CapturePriceNokMwh:F0} NOK/MWh")"
+                             Accent="@CrAccent(_captureRate.TimesCr)" />
                 </MudItem>
                 <MudItem xs="12" sm="6" md="3" lg="2">
-                    <MudPaper Class="pa-4" Elevation="2" Style="@MerverdiCardStyle(_captureRate.MerverdiNok)">
-                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Merverdi vs spot</MudText>
-                        <MudText Typo="Typo.h3">@FormatNok(_captureRate.MerverdiNok)</MudText>
-                        <MudText Typo="Typo.caption">
-                            <MudLink Href="@($"/capture-rate/{Filter.PlantId}")">Se detaljer →</MudLink>
-                        </MudText>
-                    </MudPaper>
+                    <KpiCard Label="Merverdi vs spot"
+                             Value="@FormatNok(_captureRate.MerverdiNok)"
+                             Accent="@MerverdiAccent(_captureRate.MerverdiNok)" />
                 </MudItem>
             }
         </MudGrid>
@@ -247,21 +238,17 @@ else if (_response is not null)
         }
     }
 
-    /// <summary>CR over 1.0 = grønn (bedre enn baseline), under 1.0 = rød.</summary>
-    private static string CrCardStyle(double cr)
+    /// <summary>CR over 1.0 = positiv (bedre enn baseline), under 1.0 = negativ.</summary>
+    private static KpiAccent CrAccent(double cr)
     {
-        if (cr <= 0) return "border-left: 4px solid #999;";
-        return cr >= 1.0
-            ? "border-left: 4px solid #2A9D8F;"  // grønn
-            : "border-left: 4px solid #E76F51;"; // rød
+        if (cr <= 0) return KpiAccent.Muted;
+        return cr >= 1.0 ? KpiAccent.Positive : KpiAccent.Negative;
     }
 
-    private static string MerverdiCardStyle(double nok)
+    private static KpiAccent MerverdiAccent(double nok)
     {
-        if (nok == 0) return "border-left: 4px solid #999;";
-        return nok > 0
-            ? "border-left: 4px solid #2A9D8F;"
-            : "border-left: 4px solid #E76F51;";
+        if (nok == 0) return KpiAccent.Muted;
+        return nok > 0 ? KpiAccent.Positive : KpiAccent.Negative;
     }
 
     private static readonly System.Globalization.NumberFormatInfo NorskTall = new()

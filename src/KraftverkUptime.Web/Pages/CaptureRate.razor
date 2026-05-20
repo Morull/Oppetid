@@ -43,35 +43,34 @@ else if (_aggregate is not null)
         @* ---- KPI-rad med trend-piler ---- *@
         <MudGrid Class="mb-4">
             <MudItem xs="12" sm="6" md="3">
-                <KpiTrendCard Label="Capture-pris"
-                              Value="_aggregate.CapturePriceNokMwh"
-                              PreviousValue="_previous?.CapturePriceNokMwh"
-                              Format="F0" Unit="NOK/MWh"
-                              HigherIsBetter="true" />
+                <KpiCard Label="Capture-pris"
+                         Value="@($"{_aggregate.CapturePriceNokMwh.ToString("F0", NorskTall)} NOK/MWh")"
+                         TrendCurrent="_aggregate.CapturePriceNokMwh"
+                         TrendPrevious="_previous?.CapturePriceNokMwh"
+                         HigherIsBetter="true" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <KpiTrendCard Label="CR (times)"
-                              Value="_aggregate.TimesCr"
-                              PreviousValue="_previous?.TimesCr"
-                              Format="F2"
-                              SubText="@($"baseline {_aggregate.TimesBaselineNokMwh:F0} NOK/MWh")"
-                              HigherIsBetter="true" />
+                <KpiCard Label="CR (times)"
+                         Value="@_aggregate.TimesCr.ToString("F2", NorskTall)"
+                         SubText="@($"baseline {_aggregate.TimesBaselineNokMwh.ToString("F0", NorskTall)} NOK/MWh")"
+                         TrendCurrent="_aggregate.TimesCr"
+                         TrendPrevious="_previous?.TimesCr"
+                         HigherIsBetter="true" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <KpiTrendCard Label="CR (dag, P5/P95-filtrert)"
-                              Value="_aggregate.DagCr"
-                              PreviousValue="_previous?.DagCr"
-                              Format="F2"
-                              SubText="@($"{_aggregate.AntallDagerEtterFilter} av {_aggregate.AntallDager} dager")"
-                              HigherIsBetter="true" />
+                <KpiCard Label="CR (dag, P5/P95-filtrert)"
+                         Value="@_aggregate.DagCr.ToString("F2", NorskTall)"
+                         SubText="@($"{_aggregate.AntallDagerEtterFilter} av {_aggregate.AntallDager} dager")"
+                         TrendCurrent="_aggregate.DagCr"
+                         TrendPrevious="_previous?.DagCr"
+                         HigherIsBetter="true" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <KpiTrendCard Label="Merverdi vs spot"
-                              Value="_aggregate.MerverdiNok"
-                              PreviousValue="_previous?.MerverdiNok"
-                              Format="N0" Unit="NOK"
-                              SignedValue="true"
-                              HigherIsBetter="true" />
+                <KpiCard Label="Merverdi vs spot"
+                         Value="@FormatNokSigned(_aggregate.MerverdiNok)"
+                         TrendCurrent="_aggregate.MerverdiNok"
+                         TrendPrevious="_previous?.MerverdiNok"
+                         HigherIsBetter="true" />
             </MudItem>
         </MudGrid>
 
@@ -82,18 +81,16 @@ else if (_aggregate is not null)
             var verste = _monthlyPoints.OrderBy(m => m.TimesCr).First();
             <MudGrid Class="mb-4">
                 <MudItem xs="12" md="6">
-                    <MudPaper Class="pa-4 h-100" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
-                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Beste måned</MudText>
-                        <MudText Typo="Typo.h4">@beste.Label</MudText>
-                        <MudText Typo="Typo.body2">CR @beste.TimesCr.ToString("F2") · @InterpretCr(beste.TimesCr)</MudText>
-                    </MudPaper>
+                    <KpiCard Label="Beste måned"
+                             Value="@beste.Label"
+                             SubText="@($"CR {beste.TimesCr:F2} · {InterpretCr(beste.TimesCr)}")"
+                             Accent="KpiAccent.Positive" />
                 </MudItem>
                 <MudItem xs="12" md="6">
-                    <MudPaper Class="pa-4 h-100" Elevation="2" Style="border-left: 4px solid #E76F51;">
-                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Svakeste måned</MudText>
-                        <MudText Typo="Typo.h4">@verste.Label</MudText>
-                        <MudText Typo="Typo.body2">CR @verste.TimesCr.ToString("F2") · @InterpretCr(verste.TimesCr)</MudText>
-                    </MudPaper>
+                    <KpiCard Label="Svakeste måned"
+                             Value="@verste.Label"
+                             SubText="@($"CR {verste.TimesCr:F2} · {InterpretCr(verste.TimesCr)}")"
+                             Accent="KpiAccent.Negative" />
                 </MudItem>
             </MudGrid>
         }

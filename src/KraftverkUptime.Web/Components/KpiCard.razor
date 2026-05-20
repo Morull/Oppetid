@@ -1,10 +1,40 @@
 @*
-    Gjenbrukbart KPI-kort med innebygd info-ikon for å forklare hva tallet betyr.
-    Klikk-bart info-ikon åpner popover med fullstendig forklaring (mer rom enn
-    en tooltip på hover). Bruk gjenbrukes på Anlegg, Portefølje, Vakt-ROI osv.
+   Unified KPI-kort (UI-gjennomgang 2026-05-20 tiltak 1, Vedlegg A).
+
+   Erstatter:
+     - gammel KpiCard.razor (statisk verdi + info-tooltip)
+     - KpiTrendCard.razor (verdi + trend vs. forrige periode)
+     - .dk-stat-blokken i app.css (ubrukt, lå igjen som dødt designforsøk)
+     - ~48 håndlagde inline MudPaper-kort spredt over Razor-sidene
+
+   Tre tilstander dekkes av samme komponent:
+     1. Statisk verdi: `Label` + `Value` (+ valgfri `SubText`, `InfoText`)
+     2. Verdi med trend: + `TrendCurrent` + `TrendPrevious` + `HigherIsBetter`
+     3. Ingen data / laster: `State = NoData` / `Loading`
+
+   Alle farger via semantiske tokens i Theming/SemanticColors.cs — ingen hex.
+   Dermed virker lys/mørk-modus automatisk uten attribute-string-hacks.
+
+   Bruk:
+       <KpiCard Label="Produksjon"
+                Value="@FormatMwh(total)"
+                SubText="@($"{n} anlegg · {mw:F1} MW")"
+                InfoText="Total levert energi til Elhub i perioden." />
+
+       <KpiCard Label="Spotomsetning"
+                Value="@FormatNok(spot)"
+                TrendCurrent="spot" TrendPrevious="spotForrige"
+                HigherIsBetter="true" />
+
+       <KpiCard Label="Reddet av vakt"
+                Value="@FormatNok(reddet)"
+                State="@(harData ? KpiState.Normal : KpiState.NoData)" />
 *@
 
-<MudPaper Class="pa-3 dk-kpi-card" Elevation="2" Style="@($"border-left: 4px solid {AccentColor}; position: relative;")">
+@using KraftverkUptime.Web.Theming
+
+<MudPaper Class="pa-3 h-100 dk-kpi-card" Elevation="2"
+          Style="@($"border-left: 4px solid {AccentColor}; position: relative;")">
     <div class="d-flex justify-space-between align-start" style="gap: 4px;">
         <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">@Label</MudText>
         @if (!string.IsNullOrWhiteSpace(InfoText))
@@ -15,12 +45,11 @@
                         <MudText Typo="Typo.body2" Style="font-weight: 600; margin-bottom: 4px;">
                             @Label
                         </MudText>
-                        <MudText Typo="Typo.body2">
-                            @InfoText
-                        </MudText>
+                        <MudText Typo="Typo.body2">@InfoText</MudText>
                         @if (!string.IsNullOrWhiteSpace(InfoFormula))
                         {
-                            <MudText Typo="Typo.caption" Style="margin-top: 6px; font-family: monospace; opacity: 0.85;">
+                            <MudText Typo="Typo.caption"
+                                     Style="margin-top: 6px; font-family: monospace; opacity: 0.85;">
                                 @InfoFormula
                             </MudText>
                         }
@@ -34,10 +63,36 @@
             </MudTooltip>
         }
     </div>
-    <MudText Typo="Typo.h4">@Value</MudText>
-    @if (!string.IsNullOrWhiteSpace(SubText))
+
+    @if (State == KpiState.Loading)
     {
-        <MudText Typo="Typo.caption">@SubText</MudText>
+        <MudSkeleton SkeletonType="SkeletonType.Text" Height="2.4rem" Width="80%" />
+    }
+    else if (State == KpiState.NoData)
+    {
+        <MudText Typo="Typo.h4" Class="dk-kpi-value-muted">—</MudText>
+        <MudChip T="string" Size="MudBlazor.Size.Small" Color="MudBlazor.Color.Default" Variant="Variant.Text">
+            ingen data
+        </MudChip>
+    }
+    else
+    {
+        <MudText Typo="Typo.h4" Class="dk-kpi-value">@Value</MudText>
+        @if (_showTrend)
+        {
+            <div class="d-flex align-center mt-1" style="gap:4px;">
+                <MudIcon Icon="@_trendIcon" Color="@_trendIconColor" Size="MudBlazor.Size.Small" />
+                <MudText Typo="Typo.caption" Color="@_trendIconColor">
+                    @if (_trendIsNew) { @("ny") }
+                    else { @($"{(_trendPct >= 0 ? "+" : "")}{_trendPct:F1} %") }
+                </MudText>
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">vs forrige</MudText>
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(SubText))
+        {
+            <MudText Typo="Typo.caption">@SubText</MudText>
+        }
     }
 </MudPaper>
 
@@ -45,25 +100,102 @@
     /// <summary>Tittel som vises øverst i kortet.</summary>
     [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
 
-    /// <summary>Hovedverdi (allerede formatert som streng).</summary>
+    /// <summary>Ferdigformatert hovedverdi (f.eks. "19 618 MWh").</summary>
     [Parameter, EditorRequired] public string Value { get; set; } = string.Empty;
 
-    /// <summary>Hex-farge på venstre-rammen (markerer kategori).</summary>
-    [Parameter] public string AccentColor { get; set; } = "#1E5F8E";
+    /// <summary>
+    /// Semantisk farge på venstrekanten. <see cref="KpiAccent.Auto"/> følger
+    /// trend hvis trend finnes, ellers <see cref="KpiAccent.Neutral"/>.
+    /// </summary>
+    [Parameter] public KpiAccent Accent { get; set; } = KpiAccent.Auto;
 
-    /// <summary>Valgfri liten tekst under hovedverdien (eks. enhet eller kontekst).</summary>
+    /// <summary>Liten tekst under verdien — vises kun når ingen trend.</summary>
     [Parameter] public string? SubText { get; set; }
 
-    /// <summary>
-    /// Forklaring som vises i info-tooltip. Hvis null/tom: ingen info-ikon.
-    /// Hold til 1-3 setninger som forklarer hva tallet betyr og når det er
-    /// viktig.
-    /// </summary>
+    /// <summary>Nåværende verdi for trendberegning.</summary>
+    [Parameter] public double? TrendCurrent { get; set; }
+
+    /// <summary>Forrige periodes verdi for trendberegning.</summary>
+    [Parameter] public double? TrendPrevious { get; set; }
+
+    /// <summary>True hvis oppgang er positivt (CR, AF, produksjon). False for FOR, nedetid, tap.</summary>
+    [Parameter] public bool HigherIsBetter { get; set; } = true;
+
+    /// <summary>Forklarings-tekst i info-tooltip. Null/tom = ingen info-ikon.</summary>
     [Parameter] public string? InfoText { get; set; }
 
-    /// <summary>
-    /// Valgfri formel/kilde-info som vises under InfoText i monospace.
-    /// Eks: "AF = (timer i drift + planlagt revisjon) / totale timer".
-    /// </summary>
+    /// <summary>Valgfri formel-linje i tooltip (monospace).</summary>
     [Parameter] public string? InfoFormula { get; set; }
+
+    /// <summary>Visnings-tilstand. <see cref="KpiState.NoData"/> erstatter tvetydig «–».</summary>
+    [Parameter] public KpiState State { get; set; } = KpiState.Normal;
+
+    /// <summary>
+    /// Overstyr aksent-token direkte med en CSS-fargestreng. Brukes når en
+    /// side trenger en kategori-farge som ikke passer i KpiAccent-enumen
+    /// (eks. nedetids-kategorifarger). Bør være sjeldent — foretrekk Accent.
+    /// </summary>
+    [Parameter] public string? AccentColorOverride { get; set; }
+
+    private bool _showTrend;
+    private double _trendPct;
+    private bool _trendIsNew;
+    private string _trendIcon = string.Empty;
+    private MudBlazor.Color _trendIconColor = MudBlazor.Color.Default;
+
+    private string AccentColor
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(AccentColorOverride)) return AccentColorOverride;
+            if (State == KpiState.NoData) return SemanticColors.Muted;
+            if (Accent != KpiAccent.Auto) return SemanticColors.ForAccent(Accent);
+            // Auto: følg trend hvis vi har data, ellers Neutral.
+            return SemanticColors.ForTrend(TrendCurrent, TrendPrevious, HigherIsBetter);
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        _showTrend = false;
+        _trendIsNew = false;
+        _trendPct = 0;
+        _trendIcon = string.Empty;
+        _trendIconColor = MudBlazor.Color.Default;
+
+        if (State != KpiState.Normal || !TrendCurrent.HasValue || !TrendPrevious.HasValue)
+        {
+            return;
+        }
+
+        var current = TrendCurrent.Value;
+        var previous = TrendPrevious.Value;
+
+        if (previous == 0)
+        {
+            if (current == 0) return; // begge null → ingen trend å vise
+            _showTrend = true;
+            _trendIsNew = true;
+            var isUp = current > 0;
+            _trendIcon = isUp ? Icons.Material.Filled.TrendingUp : Icons.Material.Filled.TrendingDown;
+            var isGood = isUp == HigherIsBetter;
+            _trendIconColor = isGood ? MudBlazor.Color.Success : MudBlazor.Color.Error;
+            return;
+        }
+
+        _trendPct = (current - previous) / Math.Abs(previous) * 100;
+        _showTrend = true;
+
+        if (Math.Abs(_trendPct) < 0.5)
+        {
+            _trendIcon = Icons.Material.Filled.HorizontalRule;
+            _trendIconColor = MudBlazor.Color.Secondary;
+            return;
+        }
+
+        var trendUp = _trendPct > 0;
+        _trendIcon = trendUp ? Icons.Material.Filled.TrendingUp : Icons.Material.Filled.TrendingDown;
+        var trendIsGood = trendUp == HigherIsBetter;
+        _trendIconColor = trendIsGood ? MudBlazor.Color.Success : MudBlazor.Color.Error;
+    }
 }

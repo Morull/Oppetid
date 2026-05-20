@@ -124,31 +124,27 @@ else if (IsPortfolioMode && _portfolio is not null)
                                  Variant="Variant.Outlined" Margin="Margin.Dense" />
             </MudItem>
             <MudItem xs="6" sm="3" md="2">
-                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Total reddet</MudText>
-                    <MudText Typo="Typo.h3">@FormatNok(_portfolio.TotalReddetNok)</MudText>
-                    <MudText Typo="Typo.caption">NOK i perioden</MudText>
-                </MudPaper>
+                <KpiCard Label="Total reddet"
+                         Value="@FormatNok(_portfolio.TotalReddetNok)"
+                         SubText="NOK i perioden"
+                         Accent="KpiAccent.Positive" />
             </MudItem>
             <MudItem xs="6" sm="3" md="2">
-                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Annualisert</MudText>
-                    <MudText Typo="Typo.h3">@FormatNok(AnnualisertReddetPortfolio())</MudText>
-                    <MudText Typo="Typo.caption">NOK/år (skalert)</MudText>
-                </MudPaper>
+                <KpiCard Label="Annualisert"
+                         Value="@FormatNok(AnnualisertReddetPortfolio())"
+                         SubText="NOK/år (skalert)"
+                         Accent="KpiAccent.Neutral" />
             </MudItem>
             <MudItem xs="6" sm="3" md="2">
-                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #6E59A5;">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Vakt-kost / år</MudText>
-                    <MudText Typo="Typo.h3">@FormatNok(_aarligVaktKost)</MudText>
-                </MudPaper>
+                <KpiCard Label="Vakt-kost / år"
+                         Value="@FormatNok(_aarligVaktKost)"
+                         Accent="KpiAccent.Accent" />
             </MudItem>
             <MudItem xs="6" sm="3" md="3">
-                <MudPaper Class="pa-3" Elevation="2" Style="@VaktVurderingStyle()">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Vurdering</MudText>
-                    <MudText Typo="Typo.h3">@VaktVurderingText()</MudText>
-                    <MudText Typo="Typo.caption">@VaktVurderingForklaring()</MudText>
-                </MudPaper>
+                <KpiCard Label="Vurdering"
+                         Value="@VaktVurderingText()"
+                         SubText="@VaktVurderingForklaring()"
+                         Accent="@VaktVurderingAccent()" />
             </MudItem>
         </MudGrid>
         <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mt-2">
@@ -160,32 +156,28 @@ else if (IsPortfolioMode && _portfolio is not null)
 
     <MudGrid Class="mb-4">
         <MudItem xs="12" sm="6" md="3">
-            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
-                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Total reddet</MudText>
-                <MudText Typo="Typo.h3">@FormatNok(_portfolio.TotalReddetNok)</MudText>
-                <MudText Typo="Typo.caption">NOK på tvers av @_portfolio.PlantsWithData av @_portfolio.PlantCount anlegg</MudText>
-            </MudPaper>
+            <KpiCard Label="Total reddet"
+                     Value="@FormatNok(_portfolio.TotalReddetNok)"
+                     SubText="@($"NOK på tvers av {_portfolio.PlantsWithData} av {_portfolio.PlantCount} anlegg")"
+                     Accent="KpiAccent.Positive" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
-                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Reddbare events</MudText>
-                <MudText Typo="Typo.h3">@_portfolio.TotalReddbareEvents</MudText>
-                <MudText Typo="Typo.caption">av @_portfolio.TotalEvents totale events i perioden</MudText>
-            </MudPaper>
+            <KpiCard Label="Reddbare events"
+                     Value="@_portfolio.TotalReddbareEvents.ToString()"
+                     SubText="@($"av {_portfolio.TotalEvents} totale events i perioden")"
+                     Accent="KpiAccent.Neutral" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #F39C12;">
-                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Snitt per anlegg</MudText>
-                <MudText Typo="Typo.h3">@FormatNok(SnittPerAnleggMedData())</MudText>
-                <MudText Typo="Typo.caption">NOK reddet per anlegg med data</MudText>
-            </MudPaper>
+            <KpiCard Label="Snitt per anlegg"
+                     Value="@FormatNok(SnittPerAnleggMedData())"
+                     SubText="NOK reddet per anlegg med data"
+                     Accent="KpiAccent.Warning" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #6E59A5;">
-                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Topp-anlegg</MudText>
-                <MudText Typo="Typo.h3">@(TopPlant()?.PlantName ?? "—")</MudText>
-                <MudText Typo="Typo.caption">@FormatNok(TopPlant()?.ReddetNok ?? 0) NOK reddet</MudText>
-            </MudPaper>
+            <KpiCard Label="Topp-anlegg"
+                     Value="@(TopPlant()?.PlantName ?? "—")"
+                     SubText="@($"{FormatNok(TopPlant()?.ReddetNok ?? 0)} NOK reddet")"
+                     Accent="KpiAccent.Accent" />
         </MudItem>
     </MudGrid>
 
@@ -363,32 +355,28 @@ else if (!IsPortfolioMode && _response is not null)
     @* ---- KPI-kort ---- *@
     <MudGrid Class="mb-4">
         <MudItem xs="12" sm="6" md="3">
-            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
-                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Reddet brutto</MudText>
-                <MudText Typo="Typo.h3">@FormatNok(_response.TotalReddetNok)</MudText>
-                <MudText Typo="Typo.caption">NOK i perioden (@PeriodLabel)</MudText>
-            </MudPaper>
+            <KpiCard Label="Reddet brutto"
+                     Value="@FormatNok(_response.TotalReddetNok)"
+                     SubText="@($"NOK i perioden ({PeriodLabel})")"
+                     Accent="KpiAccent.Positive" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
-                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Reddbare events innenfor vakt</MudText>
-                <MudText Typo="Typo.h3">@_response.AntallReddbareInnenforVakt</MudText>
-                <MudText Typo="Typo.caption">av @_response.AntallEventsTotalt totale events</MudText>
-            </MudPaper>
+            <KpiCard Label="Reddbare events innenfor vakt"
+                     Value="@_response.AntallReddbareInnenforVakt.ToString()"
+                     SubText="@($"av {_response.AntallEventsTotalt} totale events")"
+                     Accent="KpiAccent.Neutral" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #F39C12;">
-                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Snitt ekstra-timer spart</MudText>
-                <MudText Typo="Typo.h3">@_response.SnittEkstraTimerPerEvent.ToString("F1")</MudText>
-                <MudText Typo="Typo.caption">timer per reddbar event</MudText>
-            </MudPaper>
+            <KpiCard Label="Snitt ekstra-timer spart"
+                     Value="@_response.SnittEkstraTimerPerEvent.ToString("F1")"
+                     SubText="timer per reddbar event"
+                     Accent="KpiAccent.Warning" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <MudPaper Class="pa-4" Elevation="2" Style="@RoiCardStyle()">
-                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Årlig estimat vs. vakt-kost</MudText>
-                <MudText Typo="Typo.h3">@FormatNok(EstimertAarligReddet())</MudText>
-                <MudText Typo="Typo.caption">@RoiSubText()</MudText>
-            </MudPaper>
+            <KpiCard Label="Årlig estimat vs. vakt-kost"
+                     Value="@FormatNok(EstimertAarligReddet())"
+                     SubText="@RoiSubText()"
+                     Accent="@RoiAccent()" />
         </MudItem>
     </MudGrid>
 
@@ -680,13 +668,13 @@ else if (!IsPortfolioMode && _response is not null)
         return "Ikke nok data til vurdering.";
     }
 
-    private string VaktVurderingStyle()
+    private KpiAccent VaktVurderingAccent()
     {
         var r = VaktRoiRatio();
-        if (r >= 1.0) return "border-left: 4px solid #2A9D8F;";
-        if (r >= 0.5) return "border-left: 4px solid #F39C12;";
-        if (r > 0) return "border-left: 4px solid #E76F51;";
-        return "border-left: 4px solid #999;";
+        if (r >= 1.0) return KpiAccent.Positive;
+        if (r >= 0.5) return KpiAccent.Warning;
+        if (r > 0) return KpiAccent.Negative;
+        return KpiAccent.Muted;
     }
 
     private async Task ReloadAsync()
@@ -1064,11 +1052,10 @@ else if (!IsPortfolioMode && _response is not null)
         return $"Reddet < vakt-kost (~{ratio:F1}×)";
     }
 
-    private string RoiCardStyle()
+    private KpiAccent RoiAccent()
     {
         var diff = EstimertAarligReddet() - _aarligVaktKost;
-        var color = diff >= 0 ? "#2A9D8F" : "#E76F51";
-        return $"border-left: 4px solid {color};";
+        return diff >= 0 ? KpiAccent.Positive : KpiAccent.Negative;
     }
 
     private static DateTimeOffset StartOfMonth(DateTimeOffset dt)

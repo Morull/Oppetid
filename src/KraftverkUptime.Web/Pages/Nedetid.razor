@@ -64,32 +64,28 @@ else if (_response is not null)
     @* ---- KPI-kort ---- *@
     <MudGrid Class="mb-4">
         <MudItem xs="12" sm="6" md="3">
-            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #E76F51;">
-                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Antall events</MudText>
-                <MudText Typo="Typo.h3">@_response.AntallEvents</MudText>
-                <MudText Typo="Typo.caption">@_response.AntallEvents nedetid-hendelser</MudText>
-            </MudPaper>
+            <KpiCard Label="Antall events"
+                     Value="@_response.AntallEvents.ToString()"
+                     SubText="@($"{_response.AntallEvents} nedetid-hendelser")"
+                     Accent="KpiAccent.Negative" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #F39C12;">
-                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Total nedetid</MudText>
-                <MudText Typo="Typo.h3">@_response.TotalNedetidTimer.ToString("F1")</MudText>
-                <MudText Typo="Typo.caption">timer</MudText>
-            </MudPaper>
+            <KpiCard Label="Total nedetid"
+                     Value="@_response.TotalNedetidTimer.ToString("F1")"
+                     SubText="timer"
+                     Accent="KpiAccent.Warning" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
-                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Estimert tap</MudText>
-                <MudText Typo="Typo.h3">@_response.TotalTapMwh.ToString("F1")</MudText>
-                <MudText Typo="Typo.caption">MWh (plan/spotbud i nedetidstimene)</MudText>
-            </MudPaper>
+            <KpiCard Label="Estimert tap"
+                     Value="@_response.TotalTapMwh.ToString("F1")"
+                     SubText="MWh (plan/spotbud i nedetidstimene)"
+                     Accent="KpiAccent.Neutral" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
-                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Tap i NOK</MudText>
-                <MudText Typo="Typo.h3">@FormatNok(_response.TotalTapNok)</MudText>
-                <MudText Typo="Typo.caption">brutto, basert på spotpris</MudText>
-            </MudPaper>
+            <KpiCard Label="Tap i NOK"
+                     Value="@FormatNok(_response.TotalTapNok)"
+                     SubText="brutto, basert på spotpris"
+                     Accent="KpiAccent.Positive" />
         </MudItem>
     </MudGrid>
 

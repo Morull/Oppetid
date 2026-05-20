@@ -79,54 +79,12 @@ html, body {
     border-color: rgba(30, 95, 142, 0.22);
 }
 
-/* --- Stat-kort (KPI) ------------------------------------------------------- */
-.dk-stat {
-    position: relative;
-    overflow: hidden;
-}
-.dk-stat::before {
-    content: "";
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, var(--dk-accent, #1E5F8E), var(--dk-accent-2, #00A99D));
-    opacity: 0.95;
-}
-.dk-stat-icon {
-    width: 44px; height: 44px;
-    border-radius: 12px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    margin-bottom: 14px;
-    background: linear-gradient(135deg, var(--dk-accent, #1E5F8E) 0%, var(--dk-accent-2, #00A99D) 100%);
-    box-shadow: 0 6px 16px rgba(30, 95, 142, 0.25);
-}
-.dk-stat-icon .mud-icon-root {
-    color: #fff !important;
-}
-.dk-stat-label {
-    font-size: 0.72rem !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.08em !important;
-    text-transform: uppercase;
-    color: var(--mud-palette-text-secondary) !important;
-    margin: 0 !important;
-}
-.dk-stat-value {
-    font-size: 2.25rem !important;
-    font-weight: 700 !important;
-    line-height: 1.1 !important;
-    margin: 4px 0 4px 0 !important;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.02em;
-}
-.dk-stat-sub {
-    font-size: 0.825rem !important;
-    color: var(--mud-palette-text-secondary) !important;
-    margin: 0 !important;
-}
+/* --- KPI-kort -------------------------------------------------------------
+   .dk-stat-blokken er slettet (UI-gjennomgang 2026-05-20 tiltak 1): den var
+   et ubrukt designforsøk parallelt med .dk-kpi-card. Alle KPI-er bruker nå
+   <KpiCard>-komponenten — den arvet .dk-kpi-card-klassen som lever videre.
+   Komponenten styrer farger via semantiske tokens (Theming/SemanticColors.cs),
+   ikke hardkodet hex. */
 
 /* --- Action-kort (hurtigvalg) --------------------------------------------- */
 .dk-action {
@@ -467,14 +425,12 @@ body.dk-dark .mud-typography-caption {
     color: #B8C4D2 !important;
 }
 
-/* Tabell-radiers fargekoding for tall (grønn/rød) — gjør grønn lysere
-   så den er lesbar på mørk bakgrunn */
-body.dk-dark .mud-table tr td span[style*="color: #2A9D8F"] {
-    color: #4ECDC4 !important;
-}
-body.dk-dark .mud-table tr td span[style*="color: #E76F51"] {
-    color: #FF8A6E !important;
-}
+/* Tabell-rader: fargekoding via attribute-string-matching ble fjernet
+   2026-05-20 (UI-gjennomgang tiltak 2). Den var skjør — krevde at hex-koden
+   matchet eksakt i inline-style — og er ikke lenger nødvendig fordi alle
+   KPI-kort bruker semantiske tokens (var(--mud-palette-*)) som adapter til
+   lys/mørk modus automatisk. Tabellcelle-tekst som fortsatt bruker rå hex
+   bør migreres til samme mønster når den treffes. */
 
 /* "Mangler beskrivelse"-italic-tekst i kategori-tabellen var litt for blass */
 body.dk-dark .mud-typography-caption[style*="font-style"] {

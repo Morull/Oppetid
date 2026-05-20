@@ -87,39 +87,29 @@ else if (_rows is not null)
         @* ---- KPI-strip øverst: total-bildet for porteføljen ---- *@
         <MudGrid Class="mb-4">
             <MudItem xs="12" sm="6" md="3">
-                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Produksjon</MudText>
-                    <MudText Typo="Typo.h4">@FormatMwh(_rows.Sum(r => r.TotalProductionMwh)) MWh</MudText>
-                    <MudText Typo="Typo.caption">@_rows.Count anlegg · @_rows.Sum(r => r.InstalledCapacityMw).ToString("F1") MW installert</MudText>
-                </MudPaper>
+                <KpiCard Label="Produksjon"
+                         Value="@($"{FormatMwh(_rows.Sum(r => r.TotalProductionMwh))} MWh")"
+                         SubText="@($"{_rows.Count} anlegg · {_rows.Sum(r => r.InstalledCapacityMw):F1} MW installert")"
+                         Accent="KpiAccent.Neutral" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Spotomsetning</MudText>
-                    <MudText Typo="Typo.h4">@FormatNok(_rows.Sum(r => r.SpotomsetningNok)) NOK</MudText>
-                    <MudText Typo="Typo.caption">
-                        Merverdi: <span style="color:@(MerverdiSum() >= 0 ? "#2A9D8F" : "#E76F51");">@FormatNokSigned(MerverdiSum())</span>
-                    </MudText>
-                </MudPaper>
+                <KpiCard Label="Spotomsetning"
+                         Value="@($"{FormatNok(_rows.Sum(r => r.SpotomsetningNok))} NOK")"
+                         SubText="@($"Merverdi: {FormatNokSigned(MerverdiSum())}")"
+                         Accent="@MerverdiAccent(MerverdiSum())" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #E76F51;">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Nedetidstap</MudText>
-                    <MudText Typo="Typo.h4">@FormatNok(_rows.Sum(r => r.TapNok)) NOK</MudText>
-                    <MudText Typo="Typo.caption">
-                        @_rows.Sum(r => r.NedetidTimer).ToString("F0") timer
-                        · @_rows.Sum(r => r.AntallEvents) hendelser
-                    </MudText>
-                </MudPaper>
+                <KpiCard Label="Nedetidstap"
+                         Value="@($"{FormatNok(_rows.Sum(r => r.TapNok))} NOK")"
+                         SubText="@($"{_rows.Sum(r => r.NedetidTimer):F0} timer · {_rows.Sum(r => r.AntallEvents)} hendelser")"
+                         Accent="KpiAccent.Negative" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #6E59A5;">
-                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Reddet av vakt</MudText>
-                    <MudText Typo="Typo.h4">@FormatNok(_totalReddetNok) NOK</MudText>
-                    <MudText Typo="Typo.caption">
-                        @_rows.Sum(r => r.AntallReddbare) av @_rows.Sum(r => r.AntallEvents) events reddbare
-                    </MudText>
-                </MudPaper>
+                <KpiCard Label="Reddet av vakt"
+                         Value="@($"{FormatNok(_totalReddetNok)} NOK")"
+                         SubText="@($"{_rows.Sum(r => r.AntallReddbare)} av {_rows.Sum(r => r.AntallEvents)} events reddbare")"
+                         Accent="KpiAccent.Accent"
+                         State="@(_totalReddetNok > 0 ? KpiState.Normal : KpiState.NoData)" />
             </MudItem>
         </MudGrid>
 
@@ -130,30 +120,12 @@ else if (_rows is not null)
         {
             <MudGrid Class="mb-4">
                 <MudItem xs="12" sm="6" md="4">
-                    <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #B23A48;">
-                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
-                            <MudTooltip Text="KAIAs egen inntekt fra forvaltningen: meglerprovisjon på handler + fast årsavgift pro-rata på periodens lengde. Nord Pool- og eSett-gebyrer er viderefakturert og holdes utenfor.">
-                                <span>KAIA-kostnad (totalt)</span>
-                            </MudTooltip>
-                        </MudText>
-                        @if (_kaiaLoading)
-                        {
-                            <MudText Typo="Typo.body2">Laster…</MudText>
-                        }
-                        else
-                        {
-                            <MudText Typo="Typo.h4">@FormatNok(_kaiaTotalNok ?? 0) NOK</MudText>
-                            <MudText Typo="Typo.caption">
-                                Megler @FormatNok(_kaiaMeglerNok) · Fast @FormatNok(_kaiaFastNok)
-                                @if (_kaiaUkjentCount > 0)
-                                {
-                                    <span style="color: var(--mud-palette-warning);">
-                                        · @_kaiaUkjentCount anlegg uten megler-data
-                                    </span>
-                                }
-                            </MudText>
-                        }
-                    </MudPaper>
+                    <KpiCard Label="KAIA-kostnad (totalt)"
+                             Value="@(_kaiaLoading ? "—" : $"{FormatNok(_kaiaTotalNok ?? 0)} NOK")"
+                             SubText="@(_kaiaLoading ? null : KaiaSubText())"
+                             Accent="KpiAccent.Warning"
+                             State="@(_kaiaLoading ? KpiState.Loading : KpiState.Normal)"
+                             InfoText="KAIAs egen inntekt fra forvaltningen: meglerprovisjon på handler + fast årsavgift pro-rata på periodens lengde. Nord Pool- og eSett-gebyrer er viderefakturert og holdes utenfor." />
                 </MudItem>
             </MudGrid>
         }
@@ -497,6 +469,22 @@ else if (_rows is not null)
     }
 
     private double MerverdiSum() => _rows?.Sum(r => r.MerverdiNok) ?? 0;
+
+    private static KpiAccent MerverdiAccent(double nok)
+    {
+        if (nok == 0) return KpiAccent.Muted;
+        return nok > 0 ? KpiAccent.Positive : KpiAccent.Negative;
+    }
+
+    private string KaiaSubText()
+    {
+        var s = $"Megler {FormatNok(_kaiaMeglerNok)} · Fast {FormatNok(_kaiaFastNok)}";
+        if (_kaiaUkjentCount > 0)
+        {
+            s += $" · {_kaiaUkjentCount} anlegg uten megler-data";
+        }
+        return s;
+    }
 
     private void OnRowClick(Row? row)
     {
