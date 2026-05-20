@@ -463,13 +463,11 @@ body.dk-dark .mud-expand-panel-header .mud-typography-h4 {
     color: var(--mud-palette-text-primary);
 }
 
-/* Lyse aksenter i KPI-trend-kort med custom border-left forblir tydelige */
-body.dk-dark [style*="border-left: 4px solid #2A9D8F"] {
-    border-left-color: #4ECDC4 !important;
-}
-body.dk-dark [style*="border-left: 4px solid #E76F51"] {
-    border-left-color: #FF8A6E !important;
-}
+/* Attribute-string-matching for KPI-aksenter (#2A9D8F/#E76F51) fjernet
+   2026-05-20: alle KpiCard-instanser bruker nå semantiske tokens
+   (var(--mud-palette-success/error)) som adapter til dark mode automatisk.
+   Hvis en framtidig inline-style returnerer rå hex, migrer den heller til
+   SemanticColors.Positive/Negative i stedet for å gjeninnføre denne hacken. */
 
 /* MudChip i scatter-legend (Beholdt/Filtrert) — synlig på mørk bakgrunn */
 body.dk-dark .apexcharts-legend-marker {
