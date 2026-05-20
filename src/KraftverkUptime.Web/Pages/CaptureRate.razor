@@ -7,16 +7,15 @@
 
 <PageTitle>Capture rate</PageTitle>
 
-<MudGrid Class="mb-4">
-    <MudItem xs="12" md="8">
-        <MudText Typo="Typo.h1">Capture rate</MudText>
-        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+<PageHeader Title="Capture rate">
+    <SubtitleContent>
+        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">
             Hva produsenten oppnådde i kr/MWh sammenlignet med tidsvektet
             spotpris-baseline. CR &gt; 1.00 = bedre enn å selge ren spot.
             Tallene viser endring vs. forrige periode med samme lengde.
         </MudText>
-    </MudItem>
-</MudGrid>
+    </SubtitleContent>
+</PageHeader>
 
 @* Anlegg + periode styres av global velger i AppBar (FilterState). *@
 
@@ -383,12 +382,8 @@ else if (_aggregate is not null)
         _       => "betydelig svakere enn ren spot",
     };
 
-    private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
-    {
-        NumberGroupSeparator = " ",
-        NumberDecimalSeparator = ",",
-        NumberGroupSizes = new[] { 3 },
-    };
+    // Flyttet til Services/NumberFormat.Norsk (UI-gjennomgang tiltak 9).
+    private static readonly System.Globalization.NumberFormatInfo NorskTall = NumberFormat.Norsk;
     private static string FormatNokSigned(double v)
     {
         if (v == 0) return "0";

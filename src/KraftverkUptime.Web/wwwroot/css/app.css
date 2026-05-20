@@ -42,22 +42,11 @@ html, body {
     font-family: system-ui, sans-serif;
 }
 
-/* --- Hero ------------------------------------------------------------------ */
-.dk-hero {
-    margin-bottom: 28px;
-}
-.dk-hero h1.mud-typography-h1 {
-    font-size: 2.5rem !important;
-    font-weight: 700 !important;
-    letter-spacing: -0.025em !important;
-    line-height: 1.1 !important;
-    margin: 0 0 6px 0 !important;
-}
-.dk-hero-sub {
-    font-size: 1.05rem;
-    color: var(--mud-palette-text-secondary);
-    line-height: 1.4;
-}
+/* --- Hero -----------------------------------------------------------------
+   Slettet 2026-05-20 (UI-gjennomgang tiltak 5 + 6): Rapporter-siden brukte
+   en større h1-størrelse (2.5rem) enn de andre sidene (2.2rem fra temaet),
+   noe som ga inkonsistent typografi. Nå bruker alle sider <PageHeader>-
+   komponenten som tar h1-størrelsen direkte fra temaet. */
 
 /* --- Card-grunnform -------------------------------------------------------- */
 .dk-card {
@@ -200,15 +189,47 @@ html, body {
     letter-spacing: 0.02em;
 }
 
-/* --- Sub-bar med global anlegg- + periode-velger -------------------------- */
+/* --- Sub-bar med global anlegg- + periode-velger --------------------------
+   top: 64px matcher temaets AppbarHeight (DalaneTheme.cs). Tidligere stod
+   den på 56px og laget 8px gap mot toppbaren (UI-gjennomgang tiltak 9).
+   Bruker CSS-variabel slik at sub-baren følger evt. framtidige tema-endringer. */
 .dk-subbar {
     background: var(--mud-palette-surface, #fff);
     position: sticky;
-    top: 56px;
+    top: 64px;
     z-index: 100;
 }
 body.dk-dark .dk-subbar {
     background: var(--mud-palette-surface, #1a1d22);
+}
+
+/* --- PageHeader-komponent (tiltak 5 + 6) ---------------------------------
+   Felles oppsett for tittel + undertittel + valgfri høyre-stilt
+   handlings-region. Erstatter ~14 håndlagde varianter på tvers av sidene.
+   Default-margin mb-4 settes via komponentens CssClass-parameter, så denne
+   blokken styrer kun intern flex-layout og typografi. */
+.dk-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.dk-page-header-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.dk-page-title {
+    margin: 0;
+}
+.dk-page-subtitle {
+    margin-top: 4px;
+}
+.dk-page-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
 }
 
 /* --- Bordkort på rapport-listen ------------------------------------------- */

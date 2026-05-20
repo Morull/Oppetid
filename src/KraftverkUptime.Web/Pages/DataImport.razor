@@ -16,15 +16,8 @@
 
 <PageTitle>Data-import</PageTitle>
 
-<MudGrid Class="mb-4">
-    <MudItem xs="12">
-        <MudText Typo="Typo.h1">Data-import</MudText>
-        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
-            Følg med på automatiske importer, last opp manuelt og se historikk —
-            alt på én side.
-        </MudText>
-    </MudItem>
-</MudGrid>
+<PageHeader Title="Data-import"
+            Subtitle="Følg med på automatiske importer, last opp manuelt og se historikk — alt på én side." />
 
 @* ---- Auto-import-banner (alltid synlig på toppen) ---- *@
 @if (_recent is not null && _summary is not null)

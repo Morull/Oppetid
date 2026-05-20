@@ -371,12 +371,9 @@
         return ("#9AA5B0", "Ingen drift");
     }
 
-    private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
-    {
-        NumberGroupSeparator = " ",
-        NumberDecimalSeparator = ",",
-        NumberGroupSizes = new[] { 3 },
-    };
+    // Flyttet til Services/NumberFormat.Norsk (UI-gjennomgang tiltak 9).
+    private static readonly System.Globalization.NumberFormatInfo NorskTall =
+        KraftverkUptime.Web.Services.NumberFormat.Norsk;
 
     private static string FormatNok(double nok) => nok.ToString("N0", NorskTall);
 

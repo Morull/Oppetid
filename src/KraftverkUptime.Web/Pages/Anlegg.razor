@@ -20,10 +20,9 @@
 else
 {
     @* ---- Header ---- *@
-    <MudGrid Class="mb-4">
-        <MudItem xs="12" md="6">
-            <MudText Typo="Typo.h1">@_plant.Name</MudText>
-            <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+    <PageHeader Title="@_plant.Name">
+        <SubtitleContent>
+            <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">
                 @_plant.Id · @_plant.Type ·
                 @if (_plant.InstalledCapacityMw <= 0)
                 {
@@ -35,14 +34,14 @@ else
                     <span>@_plant.InstalledCapacityMw.ToString("F1") MW installert</span>
                 }
             </MudText>
-        </MudItem>
-        <MudItem xs="12" md="6" Class="d-flex justify-end align-center" Style="gap:8px;">
+        </SubtitleContent>
+        <Actions>
             <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Settings"
                        Href="@($"plants/{PlantId}/admin")">Admin</MudButton>
             <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.CloudUpload"
                        Href="@($"data-import?tab=manuell&plant={PlantId}")">Last opp</MudButton>
-        </MudItem>
-    </MudGrid>
+        </Actions>
+    </PageHeader>
 
     @* Periode styres av global velger i AppBar (FilterState). *@
 
@@ -503,12 +502,8 @@ else
     private static string FormatMwh(double v) => v == 0 ? "–" : v.ToString("F0");
     private static string FormatCr(double v) => v == 0 ? "–" : v.ToString("F2");
 
-    private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
-    {
-        NumberGroupSeparator = " ",
-        NumberDecimalSeparator = ",",
-        NumberGroupSizes = new[] { 3 },
-    };
+    // Flyttet til Services/NumberFormat.Norsk (UI-gjennomgang tiltak 9).
+    private static readonly System.Globalization.NumberFormatInfo NorskTall = NumberFormat.Norsk;
     private static string FormatNok(double v) => v == 0 ? "–" : v.ToString("N0", NorskTall);
     private static string FormatNokSigned(double v)
     {

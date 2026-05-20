@@ -32,15 +32,9 @@ else if (_report is null)
 }
 else
 {
-    <MudGrid Class="mb-4">
-        <MudItem xs="12" md="6">
-            <MudText Typo="Typo.h1">Rapport – @_report.PlantId</MudText>
-            <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
-                @FormatPeriod(_report.PeriodStartUtc, _report.PeriodEndUtc)
-                · @_report.PeriodHours timer
-            </MudText>
-        </MudItem>
-        <MudItem xs="12" md="6" Class="d-flex justify-end align-center" Style="gap:8px;">
+    <PageHeader Title="@($"Rapport – {_report.PlantId}")"
+                Subtitle="@($"{FormatPeriod(_report.PeriodStartUtc, _report.PeriodEndUtc)} · {_report.PeriodHours} timer")">
+        <Actions>
             @* Forrige/neste-navigasjon mellom imports for samme anlegg, sortert
                kronologisk på periode-start. Knappene er disabled når man er på
                ytterpunktene. *@
@@ -72,8 +66,8 @@ else
                                OnClick="DeleteReportAsync"
                                Disabled="@_deleting" />
             </MudTooltip>
-        </MudItem>
-    </MudGrid>
+        </Actions>
+    </PageHeader>
 
     @* ---------- KPI-kort --------------------------------------------------- *@
     <MudGrid Class="mb-6">

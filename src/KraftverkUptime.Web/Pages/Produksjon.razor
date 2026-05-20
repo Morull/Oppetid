@@ -8,18 +8,17 @@
 
 <PageTitle>Produksjon</PageTitle>
 
-<MudGrid Class="mb-4">
-    <MudItem xs="12" md="9">
-        <MudText Typo="Typo.h1">Produksjon</MudText>
-        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+<PageHeader Title="Produksjon">
+    <SubtitleContent>
+        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">
             Hvor godt brukes vannet? Her vurderer vi om Hydrogrid traff på de
             beste prisperiodene, om vi fulgte planen, og om vi blir bedre over
             tid. Datakilde: <strong>ProduksjonplanMwh</strong> i KAIA-eksporten
             er Hydrogrids plan, sammenlignet mot <strong>MwhElhub</strong>
             (faktisk levert) og spotpris per time.
         </MudText>
-    </MudItem>
-</MudGrid>
+    </SubtitleContent>
+</PageHeader>
 
 @* Anlegg + periode styres av global velger i AppBar (FilterState). *@
 
@@ -639,12 +638,8 @@ else if (_data is not null)
         return $"Det er {planTreffStr}. {timingStr} {merverdiStr}{trailing}";
     }
 
-    private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
-    {
-        NumberGroupSeparator = " ",
-        NumberDecimalSeparator = ",",
-        NumberGroupSizes = new[] { 3 },
-    };
+    // Flyttet til Services/NumberFormat.Norsk (UI-gjennomgang tiltak 9).
+    private static readonly System.Globalization.NumberFormatInfo NorskTall = NumberFormat.Norsk;
     private static string FormatNokSigned(double v)
     {
         if (Math.Abs(v) < 0.5) return "–";

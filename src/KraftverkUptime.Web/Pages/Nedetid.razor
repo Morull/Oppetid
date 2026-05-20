@@ -12,14 +12,8 @@
 
 <PageTitle>Nedetids-analyse</PageTitle>
 
-<MudGrid Class="mb-4">
-    <MudItem xs="12" md="8">
-        <MudText Typo="Typo.h1">Nedetids-analyse</MudText>
-        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
-            Hendelser, varighet og produksjons-tap per kategori for valgt periode.
-        </MudText>
-    </MudItem>
-</MudGrid>
+<PageHeader Title="Nedetids-analyse"
+            Subtitle="Hendelser, varighet og produksjons-tap per kategori for valgt periode." />
 
 @* Anlegg + periode styres av global velger i AppBar (FilterState). *@
 
@@ -462,14 +456,8 @@ else if (_response is not null)
     private static string FormatLocal(DateTimeOffset dt)
         => dt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
 
-    // Norsk tallformat hardkodet — Blazor WASM kjører med InvariantGlobalization=true
-    // og GetCultureInfo("nb-NO") kaster CultureNotFoundException.
-    private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
-    {
-        NumberGroupSeparator = " ",
-        NumberDecimalSeparator = ",",
-        NumberGroupSizes = new[] { 3 },
-    };
+    // Flyttet til Services/NumberFormat.Norsk (UI-gjennomgang tiltak 9).
+    private static readonly System.Globalization.NumberFormatInfo NorskTall = NumberFormat.Norsk;
 
     private static string FormatNok(double nok)
         => nok.ToString("N0", NorskTall);

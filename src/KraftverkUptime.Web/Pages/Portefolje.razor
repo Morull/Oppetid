@@ -40,11 +40,8 @@
     }
 </style>
 
-<MudText Typo="Typo.h1" Class="mb-1">Portefølje-rapport</MudText>
-<MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary" Class="mb-4">
-    Samlet rapport på tvers av alle anlegg for valgt periode. Klikk anleggs-
-    rad for detaljer. Hold musepekeren over kolonneoverskriftene for forklaringer.
-</MudText>
+<PageHeader Title="Portefølje-rapport"
+            Subtitle="Samlet rapport på tvers av alle anlegg for valgt periode. Klikk anleggs-rad for detaljer. Hold musepekeren over kolonneoverskriftene for forklaringer." />
 
 @if (_error is not null)
 {
@@ -524,12 +521,9 @@ else if (_rows is not null)
     private static string FormatRatio(double v) => v == 0 ? "–" : (v * 100).ToString("F1") + " %";
     private static string FormatCr(double v) => v == 0 ? "–" : v.ToString("F2");
 
-    private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
-    {
-        NumberGroupSeparator = " ",
-        NumberDecimalSeparator = ",",
-        NumberGroupSizes = new[] { 3 },
-    };
+    // NorskTall flyttet til Services/NumberFormat.cs (UI-gjennomgang tiltak 9).
+    // Local alias beholdes for å unngå å touche alle call-sites i ToString("N0", NorskTall).
+    private static readonly System.Globalization.NumberFormatInfo NorskTall = NumberFormat.Norsk;
     private static string FormatNok(double v) => v == 0 ? "–" : v.ToString("N0", NorskTall);
     private static string FormatNokSigned(double v)
     {

@@ -4,16 +4,8 @@
 
 <PageTitle>Behandles</PageTitle>
 
-<MudGrid Class="mb-4">
-    <MudItem xs="12">
-        <MudText Typo="Typo.h1">Behandles</MudText>
-        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
-            Imports på tvers av alle anlegg som ikke har en ferdig-klassifisert rapport
-            ennå. Klassifisering kjøres i bakgrunnen — kommer det ikke en rapport innen
-            ett minutt, sjekk worker-loggen.
-        </MudText>
-    </MudItem>
-</MudGrid>
+<PageHeader Title="Behandles"
+            Subtitle="Imports på tvers av alle anlegg som ikke har en ferdig-klassifisert rapport ennå. Klassifisering kjøres i bakgrunnen — kommer det ikke en rapport innen ett minutt, sjekk worker-loggen." />
 
 @if (_error is not null)
 {

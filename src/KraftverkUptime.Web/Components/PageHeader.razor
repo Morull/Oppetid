@@ -1,0 +1,55 @@
+@*
+   Felles side-overskrift (UI-gjennomgang 2026-05-20 tiltak 5).
+
+   Erstatter 14 håndlagde varianter av tittel + undertittel + handlinger spredt
+   over alle sider — `dk-hero` på Rapporter, `Typo.h1` direkte, eller MudGrid-
+   konstruksjoner. Konsoliderer typografi (h1 = side, body2 = undertittel) i ett
+   sted (tiltak 6 — typografiskala).
+
+   Bruk:
+       <PageHeader Title="Vakt-ROI"
+                   Subtitle="Hvor mye produksjons-tap reddet vakt-ordningen?" />
+
+       <PageHeader Title="Rapport – @plant">
+           <Actions>
+               <MudButton ...>Last ned</MudButton>
+           </Actions>
+       </PageHeader>
+*@
+
+<div class="dk-page-header @CssClass">
+    <div class="dk-page-header-text">
+        <MudText Typo="Typo.h1" Class="dk-page-title">@Title</MudText>
+        @if (!string.IsNullOrWhiteSpace(Subtitle))
+        {
+            <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="dk-page-subtitle">
+                @Subtitle
+            </MudText>
+        }
+        else if (SubtitleContent is not null)
+        {
+            <div class="dk-page-subtitle">@SubtitleContent</div>
+        }
+    </div>
+    @if (Actions is not null)
+    {
+        <div class="dk-page-header-actions">@Actions</div>
+    }
+</div>
+
+@code {
+    /// <summary>Sidetittel som vises som h1.</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>Valgfri undertittel (ren tekst). Vises som body2 i sekundærfarge.</summary>
+    [Parameter] public string? Subtitle { get; set; }
+
+    /// <summary>Valgfri undertittel som RenderFragment (når du trenger lenker/markup).</summary>
+    [Parameter] public RenderFragment? SubtitleContent { get; set; }
+
+    /// <summary>Valgfri høyre-stilt handlings-region (knapper, chips, etc.).</summary>
+    [Parameter] public RenderFragment? Actions { get; set; }
+
+    /// <summary>Ekstra CSS-klasse på rot-elementet (typisk "mb-4").</summary>
+    [Parameter] public string? CssClass { get; set; } = "mb-4";
+}

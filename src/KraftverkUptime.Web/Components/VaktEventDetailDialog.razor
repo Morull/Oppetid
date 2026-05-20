@@ -257,12 +257,8 @@
     private static string FormatLocal(DateTimeOffset dt) =>
         dt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
 
-    private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
-    {
-        NumberGroupSeparator = " ",
-        NumberDecimalSeparator = ",",
-        NumberGroupSizes = new[] { 3 },
-    };
+    // Flyttet til Services/NumberFormat.Norsk (UI-gjennomgang tiltak 9).
+    private static readonly System.Globalization.NumberFormatInfo NorskTall = NumberFormat.Norsk;
 
     private static string FormatNok(double nok) => nok.ToString("N0", NorskTall);
 

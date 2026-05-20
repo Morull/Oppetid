@@ -8,20 +8,19 @@
 
 <PageTitle>@($"Admin: {_form?.Name ?? PlantId}")</PageTitle>
 
-<MudGrid Class="mb-4">
-    <MudItem xs="12">
-        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
-                   Href="/plants" Class="mb-2">
-            Tilbake til anlegg
-        </MudButton>
-        <MudText Typo="Typo.h1">Admin: @PlantId</MudText>
-        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+<MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
+           Href="/plants" Class="mb-2">
+    Tilbake til anlegg
+</MudButton>
+<PageHeader Title="@($"Admin: {PlantId}")">
+    <SubtitleContent>
+        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">
             Oppdater kanonisk navn, type, installert effekt og tidssone for anlegget.
             Brukes typisk for å fylle inn <strong>InstalledCapacityMw</strong> for nye
             auto-opprettede anlegg.
         </MudText>
-    </MudItem>
-</MudGrid>
+    </SubtitleContent>
+</PageHeader>
 
 @if (_loading)
 {

@@ -12,12 +12,13 @@
 
 <PageTitle>Anlegg</PageTitle>
 
-<div class="d-flex justify-space-between align-center mb-4">
-    <MudText Typo="Typo.h1">Anlegg</MudText>
-    <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Primary"
-               StartIcon="@Icons.Material.Filled.CloudUpload"
-               Href="data-import?tab=manuell">Last opp data</MudButton>
-</div>
+<PageHeader Title="Anlegg">
+    <Actions>
+        <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Primary"
+                   StartIcon="@Icons.Material.Filled.CloudUpload"
+                   Href="data-import?tab=manuell">Last opp data</MudButton>
+    </Actions>
+</PageHeader>
 
 @if (_error is not null)
 {

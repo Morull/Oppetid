@@ -7,17 +7,8 @@
 
 <PageTitle>Effektivitet</PageTitle>
 
-<MudGrid Class="mb-4">
-    <MudItem xs="12" md="8">
-        <MudText Typo="Typo.h1">Effektivitet</MudText>
-        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
-            η(P)-kurve, sweet-spot og spesifikt vannforbruk per anlegg.
-            Algoritmen finner sweet-spot fra dataen — fungerer for alle anlegg
-            som har SCADA-rollene generator-effekt, turbin-virkningsgrad og
-            turbin-vannføring.
-        </MudText>
-    </MudItem>
-</MudGrid>
+<PageHeader Title="Effektivitet"
+            Subtitle="η(P)-kurve, sweet-spot og spesifikt vannforbruk per anlegg. Algoritmen finner sweet-spot fra dataen — fungerer for alle anlegg som har SCADA-rollene generator-effekt, turbin-virkningsgrad og turbin-vannføring." />
 
 @* Anlegg + periode styres av global velger i AppBar (FilterState). *@
 
@@ -251,12 +242,8 @@ else if (_response is not null)
         return nok > 0 ? KpiAccent.Positive : KpiAccent.Negative;
     }
 
-    private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
-    {
-        NumberGroupSeparator = " ",
-        NumberDecimalSeparator = ",",
-        NumberGroupSizes = new[] { 3 },
-    };
+    // Flyttet til Services/NumberFormat.Norsk (UI-gjennomgang tiltak 9).
+    private static readonly System.Globalization.NumberFormatInfo NorskTall = NumberFormat.Norsk;
     private static string FormatNok(double v)
     {
         if (v == 0) return "0 NOK";

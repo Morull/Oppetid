@@ -5,24 +5,23 @@
 
 <PageTitle>Hendelses-kategorier</PageTitle>
 
-<MudGrid Class="mb-4">
-    <MudItem xs="12" md="9">
-        <MudText Typo="Typo.h1">Hendelses-kategorier</MudText>
-        <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary">
+<PageHeader Title="Hendelses-kategorier">
+    <SubtitleContent>
+        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">
             Brukes når du annoterer timer i drifts-tidslinjen på en rapport. Hver
             kategori mapper til en <strong>UnitState</strong> som styrer hvordan
             timer telles i KPI-er (Tilgjengelighet, FOR, EAF). System-kategorier
             kan deaktiveres (gjemmes fra UI) men ikke slettes.
         </MudText>
-    </MudItem>
-    <MudItem xs="12" md="3" Class="d-flex justify-end align-center">
+    </SubtitleContent>
+    <Actions>
         <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
                    StartIcon="@Icons.Material.Filled.Add"
                    OnClick="OpenCreateAsync">
             Ny kategori
         </MudButton>
-    </MudItem>
-</MudGrid>
+    </Actions>
+</PageHeader>
 
 @if (_error is not null)
 {
