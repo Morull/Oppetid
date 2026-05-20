@@ -511,7 +511,11 @@ else if (_rows is not null)
     private void OnRowClick(Row? row)
     {
         if (row is null) return;
-        Nav.NavigateTo($"/anlegg/{row.PlantId}");
+        // Klikk på en anleggsrad i porteføljerapporten → landingsside er
+        // rapport-listen for det anlegget. Reports-siden henter plant fra
+        // FilterState og redirecter automatisk til forrige måneds rapport.
+        Filter.PlantId = row.PlantId;
+        Nav.NavigateTo("reports");
     }
 
     // -- Sort-funksjoner --

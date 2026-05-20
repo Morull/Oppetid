@@ -430,6 +430,19 @@ else
         }
     </MudPaper>
 
+    @* ---- SCADA-signaler -----------------------------------------------------
+       Liste over alle signal-tags konfigurert for anlegget. Flyttet hit
+       fra den utgåtte /anlegg/{id}-siden (2026-05-20) siden signal-mapping
+       er ren konfig — ikke analyse. *@
+    <MudPaper Class="pa-4 mt-6" Elevation="1">
+        <MudText Typo="Typo.h3" Class="mb-2">SCADA-signaler</MudText>
+        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-3">
+            Alle SCADA-tags som er mappet inn for dette anlegget, med deres
+            rolle (OverflowFlow, GeneratorActivePower osv.) og tilknyttet dam.
+        </MudText>
+        <PlantSignalList PlantId="@PlantId" />
+    </MudPaper>
+
     @* ---- Farezone — slett data ---- *@
     <MudPaper Class="pa-4 mt-6" Elevation="1" Style="max-width:680px; border:1px solid #E76F51;">
         <MudExpansionPanel Text="Farezone — slett data" Style="background:transparent;">
