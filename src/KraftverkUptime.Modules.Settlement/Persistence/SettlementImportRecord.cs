@@ -22,4 +22,12 @@ public sealed record SettlementImportRecord
     public required int IssueCount { get; init; }
     public required DateTimeOffset ImportedAtUtc { get; init; }
     public string? CorrelationId { get; init; }
+
+    /// <summary>
+    /// KAIAs meglerprovisjon for denne import-perioden i NOK. Lagres som positiv
+    /// kostnad (KAIA-eksporten oppgir den negativ; <c>ParseSettlementJobHandler</c>
+    /// snur fortegnet). Null = parser fant ikke kolonnen (eldre import før
+    /// kolonnen ble lagt til). Brukes av <c>KaiaCostQueryService</c>.
+    /// </summary>
+    public double? MeglerprovisjonNok { get; init; }
 }

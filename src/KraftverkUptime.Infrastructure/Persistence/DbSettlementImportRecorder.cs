@@ -46,6 +46,7 @@ public sealed class DbSettlementImportRecorder : ISettlementImportRecorder
                 IssueCount = record.IssueCount,
                 ImportedAtUtc = record.ImportedAtUtc,
                 CorrelationId = record.CorrelationId,
+                MeglerprovisjonNok = record.MeglerprovisjonNok,
             });
         }
         else
@@ -59,6 +60,7 @@ public sealed class DbSettlementImportRecorder : ISettlementImportRecorder
             existing.IssueCount = record.IssueCount;
             existing.ImportedAtUtc = record.ImportedAtUtc;
             existing.CorrelationId = record.CorrelationId;
+            existing.MeglerprovisjonNok = record.MeglerprovisjonNok;
         }
 
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
@@ -178,5 +180,6 @@ public sealed class DbSettlementImportRecorder : ISettlementImportRecorder
         IssueCount = row.IssueCount,
         ImportedAtUtc = row.ImportedAtUtc,
         CorrelationId = row.CorrelationId,
+        MeglerprovisjonNok = row.MeglerprovisjonNok,
     };
 }

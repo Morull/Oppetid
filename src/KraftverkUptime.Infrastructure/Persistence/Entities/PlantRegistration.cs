@@ -31,6 +31,15 @@ public sealed class PlantRegistration : IOwnedEntity, ISoftDeletable
     /// </summary>
     public OverflowMode OverflowMode { get; set; } = OverflowMode.NativeTag;
 
+    /// <summary>
+    /// KAIAs faste årsavgift for forvaltning av dette anlegget, i NOK.
+    /// Default 4 000 (avtalt sats per 2026). Per anlegg slik at enkeltanlegg
+    /// kan ha avvikende sats uten kodeendring. Brukes av
+    /// <c>KaiaCostQueryService</c> til pro-rata-beregning av rapportperiodens
+    /// andel av årsavgiften (dagbasert: <c>avgift × dager_i_periode / dager_i_året</c>).
+    /// </summary>
+    public double KaiaAnnualFeeNok { get; set; } = 4000;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? DeletedAt { get; set; }
     public string? DeletedBy { get; set; }

@@ -36,6 +36,12 @@ public sealed class SettlementImport : IOwnedEntity, ISoftDeletable
     public DateTimeOffset ImportedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public string? CorrelationId { get; set; }
 
+    /// <summary>
+    /// KAIAs meglerprovisjon for import-perioden i NOK (positiv kostnad).
+    /// Spec KAIA-KOSTNAD. Null for eldre rader importert før kolonnen kom.
+    /// </summary>
+    public double? MeglerprovisjonNok { get; set; }
+
     // ISoftDeletable
     public DateTimeOffset? DeletedAt { get; set; }
     public string? DeletedBy { get; set; }

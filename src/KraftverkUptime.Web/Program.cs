@@ -21,6 +21,7 @@ builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(apiBase) 
 builder.Services.AddScoped<ReportsApi>();
 builder.Services.AddScoped<AnnotationsApi>();
 builder.Services.AddScoped<NedetidApi>();
+builder.Services.AddScoped<KaiaCostApi>();
 builder.Services.AddSingleton<FilterState>();
 builder.Services.AddSingleton<CauseFormatter>();
 

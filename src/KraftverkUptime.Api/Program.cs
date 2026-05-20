@@ -149,6 +149,7 @@ app.MapPortfolioV1(apiV1);
 app.MapMultiPlantOperlogV1(apiV1);
 app.MapMultiPlantScadaV1(apiV1);
 app.MapCaptureRateV1(apiV1);
+app.MapKaiaCostV1(apiV1);
 app.MapAdminV1(apiV1);
 app.MapDamsV1(apiV1);
 app.MapSignalMapsV1(apiV1);

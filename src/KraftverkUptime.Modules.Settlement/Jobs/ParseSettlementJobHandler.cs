@@ -66,6 +66,14 @@ public sealed class ParseSettlementJobHandler : IJobHandler<ParseSettlementJob>
 
         var (quality, _) = _qualityBuilder.Build(parsed);
 
+        // Meglerprovisjon for KAIA-kostnad (Spec KAIA-KOSTNAD). Foretrekker
+        // summary-raden (én kilde i fila) men faller tilbake til sum av hourly
+        // for multi-plant-arbeidsbøker som ikke har egen oppsummeringsfane.
+        // Lagres med fortegnet fra kilden (negativt = KAIAs inntekt = vår
+        // kostnad). KaiaCostQueryService snur fortegnet ved presentasjon.
+        var meglerprovisjon = parsed.Summary?.MeglerprovisjonNok
+            ?? SumHourlyMeglerprovisjon(parsed.Hourly);
+
         await _importRecorder.RecordAsync(new SettlementImportRecord
         {
             OwnerOrgId = job.OwnerOrgId,
@@ -80,6 +88,7 @@ public sealed class ParseSettlementJobHandler : IJobHandler<ParseSettlementJob>
             IssueCount = parsed.Issues.Count,
             ImportedAtUtc = DateTimeOffset.UtcNow,
             CorrelationId = job.CorrelationId,
+            MeglerprovisjonNok = meglerprovisjon,
         }, ct).ConfigureAwait(false);
 
         await _audit.LogAsync(
@@ -153,5 +162,24 @@ public sealed class ParseSettlementJobHandler : IJobHandler<ParseSettlementJob>
         var span = toUtc - fromUtc;
         var hours = (int)Math.Round(span.TotalHours);
         return hours > 0 ? hours : 0;
+    }
+
+    /// <summary>
+    /// Fallback når summary-raden mangler (multi-plant-arbeidsbøker): summer
+    /// timesvis meglerprovisjon. Returnerer null hvis ingen timer har verdi.
+    /// </summary>
+    private static double? SumHourlyMeglerprovisjon(IReadOnlyList<Dtos.SettlementHourlyRow> hourly)
+    {
+        double sum = 0;
+        var any = false;
+        foreach (var h in hourly)
+        {
+            if (h.MeglerprovisjonNok.HasValue)
+            {
+                sum += h.MeglerprovisjonNok.Value;
+                any = true;
+            }
+        }
+        return any ? sum : null;
     }
 }

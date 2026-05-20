@@ -69,6 +69,10 @@ public static class DatabaseBootstrapper
             // Idempotent; backfill seeder default-expectations for alle plants.
             await EnsureDataCompletenessSchemaAsync(db, logger, ct).ConfigureAwait(false);
 
+            // KAIA-kostnad (Spec KAIA-KOSTNAD): meglerprovisjon-kolonne på
+            // settlement_imports. Idempotent ALTER TABLE.
+            await EnsureKaiaCostSchemaAsync(db, logger, ct).ConfigureAwait(false);
+
             // Seed default-nedetidskategorier (idempotent — hopper over hvis allerede tilstede).
             await DowntimeCategorySeeder.SeedAsync(services, ct).ConfigureAwait(false);
 
@@ -129,6 +133,11 @@ public static class DatabaseBootstrapper
             // Backfill data_imports fra eksisterende settlement_imports-historikk
             // (SPEC-IMPORT-COMPLETENESS steg 3). Idempotent — NOT EXISTS-filter.
             await DataImportsBackfillSeeder.SeedAsync(services, ct).ConfigureAwait(false);
+
+            // Backfill meglerprovisjon_nok på eldre settlement_imports
+            // (Spec KAIA-KOSTNAD steg 8). Idempotent — kun rader med null verdi.
+            // Kjøres etter expectations-seedingen slik at DB er fullt klar.
+            await KaiaMeglerprovisjonBackfillSeeder.SeedAsync(services, ct).ConfigureAwait(false);
 
             // Cause-aliaser: visnings-tekst per cause-kode (SPEC-CAUSE-ALIASER).
             // Idempotent — backfiller kun manglende defaults.
@@ -422,6 +431,13 @@ public static class DatabaseBootstrapper
             -- Terskel for level-baserte overflow-proxy (cm over HRV), per terminal-dam.
             ALTER TABLE core.dams
                 ADD COLUMN IF NOT EXISTS overflow_proxy_threshold_cm integer NULL;
+
+            -- KAIAs faste årsavgift per anlegg (Spec KAIA-KOSTNAD). Default 4000 NOK
+            -- (avtalt sats per 2026). Lagres per anlegg slik at enkeltanlegg kan
+            -- avvike uten kodeendring. Brukes av KaiaCostQueryService til
+            -- pro-rata-beregning: avgift × dager_i_periode / dager_i_året.
+            ALTER TABLE core.plants
+                ADD COLUMN IF NOT EXISTS kaia_annual_fee_nok double precision NOT NULL DEFAULT 4000;
             """;
 
         try
@@ -595,6 +611,32 @@ public static class DatabaseBootstrapper
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Kunne ikke kjøre data-completeness backfill — manglende expectations.");
+        }
+    }
+
+    /// <summary>
+    /// Idempotent skjema-bro for KAIA-kostnad (Spec KAIA-KOSTNAD):
+    ///   - <c>core.settlement_imports.meglerprovisjon_nok</c> kolonne (nullable double)
+    ///
+    /// Verdien lagres med fortegnet fra kilden (negativ = KAIAs inntekt).
+    /// <c>KaiaCostQueryService</c> snur fortegnet før presentasjon.
+    /// </summary>
+    private static async Task EnsureKaiaCostSchemaAsync(
+        KraftverkDbContext db, ILogger logger, CancellationToken ct)
+    {
+        const string sql = """
+            ALTER TABLE core.settlement_imports
+                ADD COLUMN IF NOT EXISTS meglerprovisjon_nok double precision NULL;
+            """;
+
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(sql, ct).ConfigureAwait(false);
+            logger.LogDebug("KAIA-kostnad-skjema sikret (settlement_imports.meglerprovisjon_nok).");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Kunne ikke sikre KAIA-kostnad-skjemaet — fortsetter uten det.");
         }
     }
 

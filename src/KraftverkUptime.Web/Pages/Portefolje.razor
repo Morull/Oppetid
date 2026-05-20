@@ -1,6 +1,7 @@
 @page "/portefolje"
 @implements IDisposable
 @inject NedetidApi NedetidApi
+@inject KaiaCostApi KaiaCostApi
 @inject FilterState Filter
 @inject NavigationManager Nav
 
@@ -121,6 +122,41 @@ else if (_rows is not null)
                 </MudPaper>
             </MudItem>
         </MudGrid>
+
+        @* KAIA-kostnad (Spec KAIA-KOSTNAD): porteføljesum av meglerprovisjon
+           + fast årsavgift pro-rata. Egen rad slik at den ikke konkurrerer
+           visuelt med de viktigste KPI-ene over. *@
+        @if (_kaiaTotalNok.HasValue || _kaiaLoading)
+        {
+            <MudGrid Class="mb-4">
+                <MudItem xs="12" sm="6" md="4">
+                    <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #B23A48;">
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                            <MudTooltip Text="KAIAs egen inntekt fra forvaltningen: meglerprovisjon på handler + fast årsavgift pro-rata på periodens lengde. Nord Pool- og eSett-gebyrer er viderefakturert og holdes utenfor.">
+                                <span>KAIA-kostnad (totalt)</span>
+                            </MudTooltip>
+                        </MudText>
+                        @if (_kaiaLoading)
+                        {
+                            <MudText Typo="Typo.body2">Laster…</MudText>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.h4">@FormatNok(_kaiaTotalNok ?? 0) NOK</MudText>
+                            <MudText Typo="Typo.caption">
+                                Megler @FormatNok(_kaiaMeglerNok) · Fast @FormatNok(_kaiaFastNok)
+                                @if (_kaiaUkjentCount > 0)
+                                {
+                                    <span style="color: var(--mud-palette-warning);">
+                                        · @_kaiaUkjentCount anlegg uten megler-data
+                                    </span>
+                                }
+                            </MudText>
+                        }
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        }
 
         @* ---- Hovedtabell med sticky first column ---- *@
         <MudPaper Class="pa-4 mb-4" Elevation="1">
@@ -273,6 +309,15 @@ else if (_rows is not null)
     private List<Row>? _rows;
     private double _totalReddetNok;
 
+    // KAIA-kostnad (Spec KAIA-KOSTNAD). Lastes parallelt med portefølje-KPI-ene
+    // — én HTTP-call returnerer alle anlegg for perioden.
+    private bool _kaiaLoading;
+    private double? _kaiaTotalNok;
+    private double _kaiaMeglerNok;
+    private double _kaiaFastNok;
+    private int _kaiaUkjentCount;
+    private Dictionary<string, KaiaCostDto> _kaiaByPlant = new(StringComparer.OrdinalIgnoreCase);
+
 
     /// <summary>
     /// Aggregert rad per anlegg som kombinerer portefølje-KPI-er, vakt-ROI og
@@ -332,6 +377,12 @@ else if (_rows is not null)
         _error = null;
         _rows = null;
         _totalReddetNok = 0;
+        _kaiaTotalNok = null;
+        _kaiaMeglerNok = 0;
+        _kaiaFastNok = 0;
+        _kaiaUkjentCount = 0;
+        _kaiaByPlant = new(StringComparer.OrdinalIgnoreCase);
+        _kaiaLoading = true;
         await InvokeAsync(StateHasChanged);
 
         try
@@ -347,6 +398,10 @@ else if (_rows is not null)
             try { dqSummaries = await NedetidApi.GetPortfolioDataQualityAsync(fromUtc, toUtc); }
             catch { /* DQ er informasjons-kolonne; tom lykke om endepunktet feiler */ }
             var dqByPlant = dqSummaries.ToDictionary(d => d.PlantId, d => d, StringComparer.Ordinal);
+
+            // KAIA-kostnad (Spec KAIA-KOSTNAD) — én bulk-spørring per periode.
+            // Feiler stille; kortet skjules om endepunktet ikke svarer.
+            _ = LoadKaiaCostAsync(fromUtc, toUtc);
 
             // Fan-out: vakt-ROI + nedetid for hver plant parallelt.
             var enrichTasks = portfolio.Plants.Select(p =>
@@ -364,6 +419,39 @@ else if (_rows is not null)
         {
             _loading = false;
             StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Henter KAIA-kostnad for hele porteføljen (én HTTP-call). Aggregerer
+    /// sum av meglerprovisjon (positivt) og fast avgift, og teller anlegg
+    /// uten megler-data så UI kan flagge dem.
+    /// </summary>
+    private async Task LoadKaiaCostAsync(DateTimeOffset fromUtc, DateTimeOffset toUtc)
+    {
+        _kaiaLoading = true;
+        try
+        {
+            var rows = await KaiaCostApi.GetForPortfolioAsync(fromUtc, toUtc);
+            _kaiaByPlant = rows.ToDictionary(r => r.PlantId, r => r, StringComparer.OrdinalIgnoreCase);
+
+            _kaiaMeglerNok = rows.Sum(r => r.MeglerprovisjonNok ?? 0);
+            _kaiaFastNok = rows.Sum(r => r.FastAvgiftNok);
+            _kaiaUkjentCount = rows.Count(r => r.MeglerprovisjonNok is null);
+
+            // Total = sum av per-anlegg-total. Hvis noen anlegg mangler
+            // meglerprovisjon, undervurderes totalen — flagg via _kaiaUkjentCount.
+            _kaiaTotalNok = rows.Sum(r => r.TotalNok ?? r.FastAvgiftNok);
+        }
+        catch
+        {
+            _kaiaTotalNok = null;
+            _kaiaByPlant = new(StringComparer.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            _kaiaLoading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 

@@ -4,6 +4,7 @@
 @using KraftverkUptime.Web.Components
 @inject ReportsApi Api
 @inject AnnotationsApi AnnotationsApi
+@inject KaiaCostApi KaiaCostApi
 @inject IDialogService DialogService
 @inject FilterState Filter
 @inject NavigationManager Nav
@@ -83,6 +84,40 @@ else
                     <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">@card.Label</MudText>
                     <MudText Typo="Typo.h3">@card.Value</MudText>
                     <MudText Typo="Typo.caption">@card.Sub</MudText>
+                </MudPaper>
+            </MudItem>
+        }
+
+        @* KAIA-kostnad (Spec KAIA-KOSTNAD): meglerprovisjon + fast årsavgift
+           pro-rata på rapportperioden. Lastes som egen HTTP-call etter
+           rapporten — vises som "Laster…" inntil den er klar. *@
+        @if (_kaiaCost is not null)
+        {
+            <MudItem xs="12" sm="6" md="4" lg="3">
+                <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #B23A48;">
+                    <MudTooltip Text="@KaiaTooltip(_kaiaCost)">
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">KAIA-kostnad</MudText>
+                        <MudText Typo="Typo.h3">@FormatKaiaTotal(_kaiaCost)</MudText>
+                        <MudText Typo="Typo.caption">
+                            Megler @FormatNok(_kaiaCost.MeglerprovisjonNok)
+                            · Fast @FormatNok(_kaiaCost.FastAvgiftNok)
+                        </MudText>
+                    </MudTooltip>
+                    @if (!string.IsNullOrEmpty(_kaiaCost.Note))
+                    {
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Warning" Class="mt-1">
+                            @_kaiaCost.Note
+                        </MudText>
+                    }
+                </MudPaper>
+            </MudItem>
+        }
+        else if (_kaiaCostLoading)
+        {
+            <MudItem xs="12" sm="6" md="4" lg="3">
+                <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid #B23A48;">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">KAIA-kostnad</MudText>
+                    <MudText Typo="Typo.body2">Laster…</MudText>
                 </MudPaper>
             </MudItem>
         }
@@ -360,6 +395,11 @@ else
     private IReadOnlyList<AnnotationDto> _annotations = Array.Empty<AnnotationDto>();
     private IReadOnlyList<AnnotationCategoryDto> _categories = Array.Empty<AnnotationCategoryDto>();
 
+    // KAIA-kostnad lastes som egen HTTP-call etter rapporten —
+    // null = ikke lastet ennå eller manglende data, _kaiaCostLoading = pågår.
+    private KaiaCostDto? _kaiaCost;
+    private bool _kaiaCostLoading;
+
     // Naboer for forrige/neste-navigasjon
     private NeighborReport? _prevReport;
     private NeighborReport? _nextReport;
@@ -522,6 +562,8 @@ else
         _error = null;
         _notFound = false;
         _report = null;
+        _kaiaCost = null;
+        _kaiaCostLoading = false;
 
         // Last cause-aliaser i bakgrunnen — UI rendres med rå koder først,
         // erstattes ved neste re-render etter at CauseFormatter er klar.
@@ -542,11 +584,35 @@ else
                 SyncFilterState(_report);
                 await LoadAnnotationsAsync();
                 await LoadNeighborsAsync();
+                _ = LoadKaiaCostAsync();
             }
         }
         catch (Exception ex)
         {
             _error = $"Kunne ikke hente rapport: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Laster KAIA-kostnad asynkront. Feiler stille hvis endepunktet er
+    /// utilgjengelig — KPI-kortet vises ikke, og resten av rapporten
+    /// forblir brukbar.
+    /// </summary>
+    private async Task LoadKaiaCostAsync()
+    {
+        _kaiaCostLoading = true;
+        try
+        {
+            _kaiaCost = await KaiaCostApi.GetForImportAsync(PlantId, IdempotencyKey);
+        }
+        catch
+        {
+            _kaiaCost = null;
+        }
+        finally
+        {
+            _kaiaCostLoading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -916,6 +982,30 @@ async Task GoToReport(string idempotencyKey)
 
     private static string FormatNumber(double? v, string format)
         => v.HasValue ? v.Value.ToString(format, System.Globalization.CultureInfo.InvariantCulture) : "–";
+
+    /// <summary>
+    /// Formaterer NOK-beløp med tusenskille og to desimaler (norsk konvensjon).
+    /// Null vises som "–" — KAIA-kostnad skiller funksjonelt mellom "ukjent"
+    /// (megler-data manglet) og 0 (ingen handler).
+    /// </summary>
+    private static string FormatNok(double? v) =>
+        v.HasValue
+            ? v.Value.ToString("N2", new System.Globalization.CultureInfo("nb-NO")) + " kr"
+            : "–";
+
+    private static string FormatKaiaTotal(KaiaCostDto k) => FormatNok(k.TotalNok);
+
+    private static string KaiaTooltip(KaiaCostDto k)
+    {
+        var megler = k.MeglerprovisjonNok.HasValue
+            ? FormatNok(k.MeglerprovisjonNok)
+            : "ukjent";
+        var dager = (int)Math.Round((k.PeriodEndUtc - k.PeriodStartUtc).TotalDays);
+        return $"Meglerprovisjon ({megler}) + fast årsavgift pro-rata "
+            + $"({dager} dager → {FormatNok(k.FastAvgiftNok)}). "
+            + "Kun KAIAs egen inntekt regnes som KAIA-kostnad — "
+            + "Nord Pool/eSett-gebyrer er viderefakturert og holdes utenfor.";
+    }
 
     private static string FormatRatio(double? v)
         => v.HasValue ? (v.Value * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " %" : "–";

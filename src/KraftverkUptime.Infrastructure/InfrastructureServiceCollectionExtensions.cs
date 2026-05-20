@@ -129,6 +129,10 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<KraftverkUptime.Modules.Reporting.CaptureRate.ICaptureRateQueryService,
                           KraftverkUptime.Infrastructure.Reporting.CaptureRateQueryService>();
 
+        // --- KAIA-kostnad per rapportperiode (Spec KAIA-KOSTNAD) ---
+        services.AddScoped<KraftverkUptime.Modules.Reporting.KaiaCost.IKaiaCostQueryService,
+                          KraftverkUptime.Infrastructure.Reporting.KaiaCostQueryService>();
+
         // --- Produksjons-analyse (Hydrogrid plan vs. faktisk) ---
         services.AddScoped<KraftverkUptime.Modules.Reporting.Produksjon.IProduksjonAnalyseService,
                           KraftverkUptime.Infrastructure.Reporting.ProduksjonAnalyseQueryService>();

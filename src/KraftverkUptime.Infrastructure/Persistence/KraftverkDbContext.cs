@@ -71,6 +71,8 @@ public sealed class KraftverkDbContext : DbContext
             b.Property(x => x.Type).HasConversion<string>().HasMaxLength(32);
             b.Property(x => x.TimeZone).HasMaxLength(64);
             b.Property(x => x.OverflowMode).HasConversion<string>().HasMaxLength(32).IsRequired();
+            // KAIAs faste årsavgift per anlegg (Spec KAIA-KOSTNAD). Default 4000.
+            b.Property(x => x.KaiaAnnualFeeNok).HasDefaultValue(4000d);
             b.Ignore(x => x.PlantId); // Computed fra Id – ikke mappet til kolonne.
         });
 

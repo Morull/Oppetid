@@ -209,6 +209,10 @@ public static class MultiPlantSettlementsEndpoints
 
             var (quality, _) = qualityBuilder.Build(parsed);
 
+            // Multi-plant-format mangler oppsummeringsfanen — fall tilbake til
+            // sum av timesvis meglerprovisjon for KAIA-kostnad-rapporten.
+            var meglerprovisjon = SumHourlyMeglerprovisjon(parsed.Hourly);
+
             await importRecorder.RecordAsync(new SettlementImportRecord
             {
                 OwnerOrgId = ownerOrgId,
@@ -223,6 +227,7 @@ public static class MultiPlantSettlementsEndpoints
                 IssueCount = parsed.Issues.Count,
                 ImportedAtUtc = clock.GetUtcNow(),
                 CorrelationId = traceId,
+                MeglerprovisjonNok = meglerprovisjon,
             }, ct).ConfigureAwait(false);
 
             await audit.LogAsync(
@@ -313,6 +318,26 @@ public static class MultiPlantSettlementsEndpoints
         var combined = $"{fileHash}|{plantId}";
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(combined));
         return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Summer timesvis meglerprovisjon for multi-plant-arbeidsbøker som ikke
+    /// har egen oppsummeringsfane. Returnerer null hvis ingen timer har verdi.
+    /// </summary>
+    private static double? SumHourlyMeglerprovisjon(
+        IReadOnlyList<KraftverkUptime.Modules.Settlement.Dtos.SettlementHourlyRow> hourly)
+    {
+        double sum = 0;
+        var any = false;
+        foreach (var h in hourly)
+        {
+            if (h.MeglerprovisjonNok.HasValue)
+            {
+                sum += h.MeglerprovisjonNok.Value;
+                any = true;
+            }
+        }
+        return any ? sum : null;
     }
 
     private static string ResolveOwnerOrgId(ICurrentUser currentUser, SettlementUploadOptions opts)
