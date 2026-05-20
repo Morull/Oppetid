@@ -59,7 +59,8 @@ public static class VaktOverrideEndpoints
             .Where(o => o.PlantId == plantId)
             .OrderBy(o => o.EventStartUtc)
             .Select(o => new VaktOverrideDto(
-                o.PlantId, o.EventStartUtc, o.Classification, o.Comment, o.SetAt, o.SetBy))
+                o.PlantId, o.EventStartUtc, o.Classification, o.Comment, o.SetAt, o.SetBy,
+                o.ActualEndOverrideUtc))
             .ToListAsync(ct).ConfigureAwait(false);
         return Results.Ok(rows);
     }
@@ -78,20 +79,33 @@ public static class VaktOverrideEndpoints
                 detail: "Må være 'Auto', 'HaddeOverlop' eller 'IkkeOverlop'.",
                 statusCode: 400);
 
+        // Validering: varighetsoverstyring må være etter EventStartUtc.
+        if (body.ActualEndOverrideUtc is { } actualEnd && actualEnd <= body.EventStartUtc)
+        {
+            return Results.Problem(
+                title: "Ugyldig actualEndOverrideUtc",
+                detail: "Faktisk slutt må være etter hendelsens start-tidspunkt.",
+                statusCode: 400);
+        }
+
         var now = DateTimeOffset.UtcNow;
         var existing = await db.VaktEventOverrides
             .FirstOrDefaultAsync(o => o.PlantId == plantId && o.EventStartUtc == body.EventStartUtc, ct)
             .ConfigureAwait(false);
 
-        // Auto = ingen override → slett ev. eksisterende rad.
-        if (body.Classification == "Auto")
+        // En override-rad kan nå bære klassifisering OG/eller varighet — begge
+        // valgfrie. Slett raden kun hvis BÅDE classification = "Auto" OG
+        // ActualEndOverrideUtc er null (= helt tilbake til default).
+        var skalSlettes = body.Classification == "Auto" && body.ActualEndOverrideUtc is null;
+        if (skalSlettes)
         {
             if (existing is not null)
             {
                 db.VaktEventOverrides.Remove(existing);
                 await db.SaveChangesAsync(ct).ConfigureAwait(false);
             }
-            return Results.Ok(new VaktOverrideDto(plantId, body.EventStartUtc, "Auto", null, now, null));
+            return Results.Ok(new VaktOverrideDto(
+                plantId, body.EventStartUtc, "Auto", null, now, null, null));
         }
 
         if (existing is null)
@@ -104,6 +118,7 @@ public static class VaktOverrideEndpoints
                 Comment = body.Comment,
                 OwnerOrgId = "dev-org",
                 SetAt = now,
+                ActualEndOverrideUtc = body.ActualEndOverrideUtc,
             });
         }
         else
@@ -111,11 +126,13 @@ public static class VaktOverrideEndpoints
             existing.Classification = body.Classification;
             existing.Comment = body.Comment;
             existing.SetAt = now;
+            existing.ActualEndOverrideUtc = body.ActualEndOverrideUtc;
         }
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
 
         return Results.Ok(new VaktOverrideDto(
-            plantId, body.EventStartUtc, body.Classification, body.Comment, now, null));
+            plantId, body.EventStartUtc, body.Classification, body.Comment, now, null,
+            body.ActualEndOverrideUtc));
     }
 
     private static async Task<IResult> DeleteAsync(
@@ -137,9 +154,11 @@ public sealed record VaktOverrideDto(
     string Classification,
     string? Comment,
     DateTimeOffset SetAt,
-    string? SetBy);
+    string? SetBy,
+    DateTimeOffset? ActualEndOverrideUtc);
 
 public sealed record UpsertVaktOverrideRequest(
     DateTimeOffset EventStartUtc,
     string Classification,
-    string? Comment);
+    string? Comment,
+    DateTimeOffset? ActualEndOverrideUtc = null);

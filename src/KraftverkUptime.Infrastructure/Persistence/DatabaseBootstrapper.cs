@@ -221,7 +221,8 @@ public static class DatabaseBootstrapper
                 ON core.cause_aliases (owner_org_id);
 
             -- Vakt-event overrides: drifts-leder kan tvinge "hadde overløp" /
-            -- "ikke overløp" på en vakt-hendelse uavhengig av SCADA-data.
+            -- "ikke overløp" på en vakt-hendelse uavhengig av SCADA-data,
+            -- og/eller korrigere faktisk slutt-tidspunkt når SCADA-data er feil.
             CREATE TABLE IF NOT EXISTS core.vakt_event_overrides (
                 plant_id varchar(64) NOT NULL,
                 event_start_utc timestamptz NOT NULL,
@@ -234,6 +235,11 @@ public static class DatabaseBootstrapper
             );
             CREATE INDEX IF NOT EXISTS ix_vakt_event_overrides_plant
                 ON core.vakt_event_overrides (plant_id);
+
+            -- Varighetsoverstyring (B1, 2026-05-20): drifts-leder kan rette opp
+            -- feil i EndUtc fra SCADA/operlog. Idempotent ALTER.
+            ALTER TABLE core.vakt_event_overrides
+                ADD COLUMN IF NOT EXISTS actual_end_override_utc timestamptz NULL;
             """;
 
         try

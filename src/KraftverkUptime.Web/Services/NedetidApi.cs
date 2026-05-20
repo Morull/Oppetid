@@ -82,10 +82,12 @@ public sealed class NedetidApi
     /// </summary>
     public async Task<VaktOverrideDto> UpsertVaktOverrideAsync(
         string plantId, DateTimeOffset eventStartUtc, string classification,
-        string? comment, CancellationToken ct = default)
+        string? comment,
+        DateTimeOffset? actualEndOverrideUtc = null,
+        CancellationToken ct = default)
     {
         var url = $"api/v1/plants/{Uri.EscapeDataString(plantId)}/vakt-overrides";
-        var body = new { eventStartUtc, classification, comment };
+        var body = new { eventStartUtc, classification, comment, actualEndOverrideUtc };
         var resp = await _http.PutAsJsonAsync(url, body, JsonOptions, ct).ConfigureAwait(false);
         resp.EnsureSuccessStatusCode();
         return await resp.Content.ReadFromJsonAsync<VaktOverrideDto>(JsonOptions, ct).ConfigureAwait(false)
@@ -500,6 +502,8 @@ public sealed record PortfolioVaktRoiPlantSummary(
     string PlantName,
     double InstalledCapacityMw,
     double ReddetNok,
+    double ReddetProduksjon_NOK,
+    double ReddetUbalanse_NOK,
     int ReddbareEvents,
     int TotaleEvents);
 
@@ -512,6 +516,8 @@ public sealed record PortfolioVaktRoiTopEvent(
     string Kategori,
     string? CauseCode,
     double ReddetNok,
+    double ReddetProduksjon_NOK,
+    double ReddetUbalanse_NOK,
     double EkstraTimerSpart);
 
 public sealed record PortfolioVaktRoiMonthlyPoint(
@@ -526,7 +532,8 @@ public sealed record VaktOverrideDto(
     string Classification,
     string? Comment,
     DateTimeOffset SetAt,
-    string? SetBy);
+    string? SetBy,
+    DateTimeOffset? ActualEndOverrideUtc);
 
 public sealed record EffektivitetResponse(
     string PlantId,

@@ -35,16 +35,27 @@ public sealed record PortfolioVaktRoiResponse(
     IReadOnlyList<PortfolioVaktRoiTopEvent> TopEvents,
     IReadOnlyList<PortfolioVaktRoiMonthlyPoint> MonthlyTrend);
 
-/// <summary>Per-anleggs-rad: total reddet og antall events i perioden.</summary>
+/// <summary>
+/// Per-anleggs-rad: total reddet og antall events i perioden.
+/// <see cref="ReddetProduksjon_NOK"/> og <see cref="ReddetUbalanse_NOK"/>
+/// er komponentene som summerer til <see cref="ReddetNok"/> — vises som
+/// egne kolonner slik at drifts-leder ser hvor verdien kommer fra.
+/// </summary>
 public sealed record PortfolioVaktRoiPlantSummary(
     string PlantId,
     string PlantName,
     double InstalledCapacityMw,
     double ReddetNok,
+    double ReddetProduksjon_NOK,
+    double ReddetUbalanse_NOK,
     int ReddbareEvents,
     int TotaleEvents);
 
-/// <summary>Én topp-N event på tvers av porteføljen.</summary>
+/// <summary>
+/// Én topp-N event på tvers av porteføljen. <see cref="ReddetProduksjon_NOK"/>
+/// og <see cref="ReddetUbalanse_NOK"/> er komponentene som summerer til
+/// <see cref="ReddetNok"/>.
+/// </summary>
 public sealed record PortfolioVaktRoiTopEvent(
     string PlantId,
     string PlantName,
@@ -54,6 +65,8 @@ public sealed record PortfolioVaktRoiTopEvent(
     string Kategori,
     string? CauseCode,
     double ReddetNok,
+    double ReddetProduksjon_NOK,
+    double ReddetUbalanse_NOK,
     double EkstraTimerSpart);
 
 /// <summary>Måned-bucket for trend-graf.</summary>

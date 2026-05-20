@@ -724,4 +724,52 @@ public class VaktRoiCalculatorTests
             CauseCode = "operlog:fault",
             TapMwh = 1.0, TapNok = 850, TimerSettlement = 1,
         };
+
+    /// <summary>
+    /// B1 (2026-05-20): <c>ActualEndOverrideUtc</c> anvendes oppstrøms for
+    /// <see cref="VaktRoiCalculator"/> ved at endepunktet bygger om event-listen
+    /// med ny <c>EndUtc</c> før <c>Calculate</c> kalles. Denne testen simulerer
+    /// det ved å kjøre Calculate to ganger med samme event men ulik EndUtc og
+    /// verifisere at EkstraTimerSpart endres med tilsvarende differanse.
+    /// </summary>
+    [Fact]
+    public void ActualEndOverride_Reduserer_EkstraTimerSpart()
+    {
+        // Onsdag 4. feb 2026 16:00 — vakten ble varslet.
+        // Original (fra SCADA): vakten "løste" på 17:30 (1.5 t)
+        // Drifts-leder overstyrer: faktisk slutt var 16:30 (0.5 t)
+        var start = OsloLokal(2026, 2, 4, 16);
+        var counterfactualEnd = OsloLokal(2026, 2, 5, 8);
+        var overflow = OverflowAlleTimer(start, counterfactualEnd);
+        var plan = PlanFlat(start, counterfactualEnd, 2.2 * 0.5);
+
+        var calc = new VaktRoiCalculator();
+
+        // Original event: EndUtc = 17:30
+        var evOriginal = MakeEvent(start, OsloLokal(2026, 2, 4, 17, 30));
+        var roiOriginal = calc.Calculate(new[] { evOriginal },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true);
+
+        // Override simulert: samme event, men EndUtc forskjøvet en time tilbake.
+        // (Endepunktet bytter ut EndUtc i events-listen FØR Calculate kalles.)
+        var evOverridden = evOriginal with { EndUtc = OsloLokal(2026, 2, 4, 16, 30) };
+        var roiOverridden = calc.Calculate(new[] { evOverridden },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true);
+
+        // Ekstra timer øker med 1 time fordi vakten "i realiteten" fikset
+        // problemet 1 t tidligere — 15.5 t vs 14.5 t.
+        roiOriginal[0].EkstraTimerSpart.Should().BeApproximately(14.5, 0.01);
+        roiOverridden[0].EkstraTimerSpart.Should().BeApproximately(15.5, 0.01);
+
+        // Reddet NOK skal også øke proporsjonalt — en hel klokketime mer
+        // utenfor outage-vinduet, så plan-sum øker med 1 × 2.2 × 0.5 MWh.
+        var diff = roiOverridden[0].ReddetNok - roiOriginal[0].ReddetNok;
+        diff.Should().BeApproximately(2.2 * 0.5 * 850, 1.0);
+    }
 }

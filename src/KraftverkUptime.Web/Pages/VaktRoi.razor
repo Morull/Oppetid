@@ -7,6 +7,7 @@
 @inject NavigationManager Nav
 @inject CauseFormatter CauseFormatter
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <PageTitle>Vakt-ROI</PageTitle>
 
@@ -271,6 +272,16 @@ else if (IsPortfolioMode && _portfolio is not null)
                         </MudTooltip>
                     </MudTh>
                     <MudTh Style="text-align:right">Ekstra (t)</MudTh>
+                    <MudTh Style="text-align:right">
+                        <MudTooltip Text="Verdi av produksjons-tap vakten reddet. Gjelder kun timer med overløp i magasinet (ellers er vannet bare utsatt).">
+                            <span>Overløp (NOK)</span>
+                        </MudTooltip>
+                    </MudTh>
+                    <MudTh Style="text-align:right">
+                        <MudTooltip Text="Ubalanse-gebyr vakten reddet (gjelder alle counterfactual-timer fordi Spotbud-forpliktelsen står).">
+                            <span>Ubalanse (NOK)</span>
+                        </MudTooltip>
+                    </MudTh>
                     <MudTh Style="text-align:right">Reddet (NOK)</MudTh>
                 </HeaderContent>
                 <RowTemplate>
@@ -285,6 +296,8 @@ else if (IsPortfolioMode && _portfolio is not null)
                         </MudTooltip>
                     </MudTd>
                     <MudTd Style="text-align:right">@context.EkstraTimerSpart.ToString("F1")</MudTd>
+                    <MudTd Style="text-align:right">@(context.ReddetProduksjon_NOK > 0 ? FormatNok(context.ReddetProduksjon_NOK) : "–")</MudTd>
+                    <MudTd Style="text-align:right">@(context.ReddetUbalanse_NOK > 0 ? FormatNok(context.ReddetUbalanse_NOK) : "–")</MudTd>
                     <MudTd Style="text-align:right; font-weight: 500;">@FormatNok(context.ReddetNok)</MudTd>
                 </RowTemplate>
             </MudTable>
@@ -319,6 +332,16 @@ else if (IsPortfolioMode && _portfolio is not null)
                 <MudTh Style="text-align:right">Effekt (MW)</MudTh>
                 <MudTh Style="text-align:right">Reddbare events</MudTh>
                 <MudTh Style="text-align:right">Totale events</MudTh>
+                <MudTh Style="text-align:right">
+                    <MudTooltip Text="Verdi av produksjon vakten reddet i timer med overløp.">
+                        <span>Overløp (NOK)</span>
+                    </MudTooltip>
+                </MudTh>
+                <MudTh Style="text-align:right">
+                    <MudTooltip Text="Ubalanse-gebyr vakten reddet (alle counterfactual-timer).">
+                        <span>Ubalanse (NOK)</span>
+                    </MudTooltip>
+                </MudTh>
                 <MudTh Style="text-align:right">Reddet (NOK)</MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -326,6 +349,8 @@ else if (IsPortfolioMode && _portfolio is not null)
                 <MudTd Style="text-align:right">@context.InstalledCapacityMw.ToString("F1")</MudTd>
                 <MudTd Style="text-align:right">@context.ReddbareEvents</MudTd>
                 <MudTd Style="text-align:right">@context.TotaleEvents</MudTd>
+                <MudTd Style="text-align:right">@(context.ReddetProduksjon_NOK > 0 ? FormatNok(context.ReddetProduksjon_NOK) : "–")</MudTd>
+                <MudTd Style="text-align:right">@(context.ReddetUbalanse_NOK > 0 ? FormatNok(context.ReddetUbalanse_NOK) : "–")</MudTd>
                 <MudTd Style="text-align:right; font-weight: 500;">@FormatNok(context.ReddetNok)</MudTd>
             </RowTemplate>
         </MudTable>
@@ -515,10 +540,20 @@ else if (!IsPortfolioMode && _response is not null)
                 <MudTh><MudTableSortLabel SortBy="@SortByVaktReddbar">Reddbar</MudTableSortLabel></MudTh>
                 <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVaktExtra">Ekstra (t)</MudTableSortLabel></MudTh>
                 <MudTh Style="text-align:right">Overløp</MudTh>
+                <MudTh Style="text-align:right">
+                    <MudTooltip Text="Verdi av produksjon vakten reddet (kun timer med overløp).">
+                        <span>Overløp (NOK)</span>
+                    </MudTooltip>
+                </MudTh>
+                <MudTh Style="text-align:right">
+                    <MudTooltip Text="Ubalanse-gebyr vakten reddet (alle counterfactual-timer).">
+                        <span>Ubalanse (NOK)</span>
+                    </MudTooltip>
+                </MudTh>
                 <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVaktReddetNok">Reddet (NOK)</MudTableSortLabel></MudTh>
-                <MudTh Style="text-align:center; width:140px;">
-                    <MudTooltip Text="Override: tving 'hadde overløp' eller 'ikke overløp' uavhengig av SCADA-data.">
-                        <span>Override</span>
+                <MudTh Style="text-align:center; width:120px;">
+                    <MudTooltip Text="Detaljer: full økonomi-breakdown + overstyringer (klassifisering, faktisk slutt, kommentar).">
+                        <span>Detaljer</span>
                     </MudTooltip>
                 </MudTh>
             </HeaderContent>
@@ -531,22 +566,22 @@ else if (!IsPortfolioMode && _response is not null)
                 <MudTd DataLabel="Reddbar">@(context.ErReddbar ? "Ja" : "–")</MudTd>
                 <MudTd DataLabel="Ekstra" Style="text-align:right">@(context.ErInnenforVakt && context.ErReddbar ? context.EkstraTimerSpart.ToString("F1") : "–")</MudTd>
                 <MudTd DataLabel="Overløp" Style="text-align:right">@DisplayOverflow(context)</MudTd>
-                <MudTd DataLabel="Reddet" Style="text-align:right">@(context.ReddetNok > 0 ? FormatNok(context.ReddetNok) : "–")</MudTd>
-                <MudTd DataLabel="Override" Style="text-align:center;">
-                    @if (context.ErInnenforVakt && context.ErReddbar)
+                <MudTd DataLabel="Overløp NOK" Style="text-align:right">@(context.ReddetProduksjon_NOK > 0 ? FormatNok(context.ReddetProduksjon_NOK) : "–")</MudTd>
+                <MudTd DataLabel="Ubalanse NOK" Style="text-align:right">@(context.ReddetUbalanse_NOK > 0 ? FormatNok(context.ReddetUbalanse_NOK) : "–")</MudTd>
+                <MudTd DataLabel="Reddet" Style="text-align:right; font-weight: 500;">@(context.ReddetNok > 0 ? FormatNok(context.ReddetNok) : "–")</MudTd>
+                <MudTd DataLabel="Detaljer" Style="text-align:center;">
+                    <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
+                                   Size="MudBlazor.Size.Small"
+                                   Color="MudBlazor.Color.Primary"
+                                   OnClick="@(() => OpenDetailDialogAsync(context))"
+                                   aria-label="Vis hendelses-detaljer">
+                    </MudIconButton>
+                    @if (_overrides.ContainsKey(context.Event.StartUtc))
                     {
-                        <MudSelect T="string" Value="@OverrideValueFor(context)"
-                                   ValueChanged="@(v => SetOverrideAsync(context, v))"
-                                   Margin="Margin.Dense" Dense="true" Variant="Variant.Outlined"
-                                   Style="min-width: 130px;">
-                            <MudSelectItem Value="@("Auto")">Auto</MudSelectItem>
-                            <MudSelectItem Value="@("HaddeOverlop")">Hadde overløp</MudSelectItem>
-                            <MudSelectItem Value="@("IkkeOverlop")">Ikke overløp</MudSelectItem>
-                        </MudSelect>
-                    }
-                    else
-                    {
-                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Default">–</MudText>
+                        <MudTooltip Text="Manuell overstyring aktiv på denne hendelsen.">
+                            <MudIcon Icon="@Icons.Material.Filled.EditNote"
+                                     Color="MudBlazor.Color.Warning" Size="MudBlazor.Size.Small" />
+                        </MudTooltip>
                     }
                 </MudTd>
             </RowTemplate>
@@ -672,7 +707,11 @@ else if (!IsPortfolioMode && _response is not null)
     private int _chartVersion;
     private string _vaktSearch = string.Empty;
     private string _lastLoadedPlantId = string.Empty;
-    private Dictionary<DateTimeOffset, string> _overrides = new();
+
+    // Eksisterende overrides per event-start. Holder hele DTO-en så popup-dialogen
+    // kan vise både classification, comment og ActualEndOverrideUtc uten ekstra
+    // HTTP-kall. Oppdateres etter hver lagring i dialogen.
+    private Dictionary<DateTimeOffset, VaktOverrideDto> _overrides = new();
 
     private ApexChartOptions<MonthlyPoint> _trendOptions = new();
 
@@ -869,15 +908,17 @@ else if (!IsPortfolioMode && _response is not null)
             Filter.StoreVaktRoi(_response);
             BuildCharts(_response);
 
-            // Last overrides for å vise riktig dropdown-valg per rad.
+            // Last overrides slik at detaljer-dialogen kan pre-fylle eksisterende
+            // verdier (classification, ActualEndOverrideUtc, comment) uten ekstra
+            // HTTP-spørring. Lagres som dict for O(1)-oppslag per event-start.
             try
             {
                 var overrides = await NedetidApi.ListVaktOverridesAsync(Filter.PlantId);
-                _overrides = overrides.ToDictionary(o => o.EventStartUtc, o => o.Classification);
+                _overrides = overrides.ToDictionary(o => o.EventStartUtc, o => o);
             }
             catch
             {
-                _overrides = new Dictionary<DateTimeOffset, string>();
+                _overrides = new Dictionary<DateTimeOffset, VaktOverrideDto>();
             }
         }
         catch (Exception ex)
@@ -970,33 +1011,35 @@ else if (!IsPortfolioMode && _response is not null)
         return $"{name} {p.Year}";
     }
 
-    private string OverrideValueFor(VaktRoiEventDto e)
-        => _overrides.TryGetValue(e.Event.StartUtc, out var v) ? v : "Auto";
-
-    private async Task SetOverrideAsync(VaktRoiEventDto e, string classification)
+    /// <summary>
+    /// Åpner per-hendelse detalj-popup (B3, 2026-05-20). Erstatter den gamle
+    /// inline Override-nedtrekken. Dialogen samler full økonomi-breakdown +
+    /// overstyringer (klassifisering, faktisk slutt, kommentar) på ett sted.
+    /// Ved suksess reloades Vakt-ROI så ROI gjenspeiler nye verdier.
+    /// </summary>
+    private async Task OpenDetailDialogAsync(VaktRoiEventDto e)
     {
-        try
+        var existing = _overrides.GetValueOrDefault(e.Event.StartUtc);
+        var parameters = new MudBlazor.DialogParameters<VaktEventDetailDialog>
         {
-            await NedetidApi.UpsertVaktOverrideAsync(
-                Filter.PlantId, e.Event.StartUtc, classification, comment: null);
-
-            if (classification == "Auto") _overrides.Remove(e.Event.StartUtc);
-            else _overrides[e.Event.StartUtc] = classification;
-
-            Snackbar.Add(
-                classification == "Auto"
-                    ? "Override fjernet — bruker SCADA-data."
-                    : $"Override satt: {classification}.",
-                Severity.Success);
-
-            // Re-load Vakt-ROI med ny override anvendt på serveren.
-            Filter.InvalidateCaches();
-            await LoadAsync();
-        }
-        catch (Exception ex)
+            { x => x.PlantId, Filter.PlantId },
+            { x => x.RoiEvent, e },
+            { x => x.ExistingOverride, existing },
+        };
+        var options = new DialogOptions
         {
-            Snackbar.Add($"Kunne ikke lagre override: {ex.Message}", Severity.Error);
-        }
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true,
+        };
+        var dlg = await DialogService.ShowAsync<VaktEventDetailDialog>(
+            "Hendelses-detaljer", parameters, options);
+        var result = await dlg.Result;
+        if (result is null || result.Canceled) return;
+
+        // Re-load Vakt-ROI med nye overrides anvendt på serveren.
+        Filter.InvalidateCaches();
+        await LoadAsync();
     }
 
     private string PeriodLabel

@@ -92,14 +92,33 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
             var planResult = await _nedetid.GetProduksjonplanByHourAsync(plant.Id, fromUtc, toUtc, ct)
                 .ConfigureAwait(false);
 
-            // Per-anlegg overrides for vakt-events i perioden.
-            var overrides = await _db.VaktEventOverrides
+            // Per-anlegg overrides — henter hele raden siden vi trenger
+            // både Classification og ActualEndOverrideUtc (varighetsoverstyring,
+            // B1 2026-05-20). Varighet anvendes oppstrøms; klassifisering
+            // sendes inn i Calculator som vanlig.
+            var overrideRows = await _db.VaktEventOverrides
                 .Where(o => o.PlantId == plant.Id
                     && o.EventStartUtc >= fromUtc
-                    && o.EventStartUtc < toUtc
-                    && o.Classification != "Auto")
-                .ToDictionaryAsync(o => o.EventStartUtc, o => o.Classification, ct)
+                    && o.EventStartUtc < toUtc)
+                .ToListAsync(ct)
                 .ConfigureAwait(false);
+
+            if (overrideRows.Any(o => o.ActualEndOverrideUtc.HasValue))
+            {
+                var endOverrides = overrideRows
+                    .Where(o => o.ActualEndOverrideUtc.HasValue)
+                    .ToDictionary(o => o.EventStartUtc, o => o.ActualEndOverrideUtc!.Value);
+
+                events = events
+                    .Select(e => endOverrides.TryGetValue(e.StartUtc, out var endOv)
+                        ? e with { EndUtc = endOv }
+                        : e)
+                    .ToList();
+            }
+
+            var overrides = overrideRows
+                .Where(o => o.Classification != "Auto")
+                .ToDictionary(o => o.EventStartUtc, o => o.Classification);
 
             var roi = _calculator.Calculate(
                 events, snittSpot, planResult.PlanByHour,
@@ -110,6 +129,8 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
                 vaktOptions: vaktOptions);
 
             var plantReddetNok = roi.Sum(r => r.ReddetNok);
+            var plantReddetProduksjon = roi.Sum(r => r.ReddetProduksjon_NOK);
+            var plantReddetUbalanse = roi.Sum(r => r.ReddetUbalanse_NOK);
             var plantReddbare = roi.Count(r => r.ErInnenforVakt && r.ErReddbar);
 
             perPlant.Add(new PortfolioVaktRoiPlantSummary(
@@ -117,6 +138,8 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
                 PlantName: plant.Name,
                 InstalledCapacityMw: plant.InstalledCapacityMw,
                 ReddetNok: plantReddetNok,
+                ReddetProduksjon_NOK: plantReddetProduksjon,
+                ReddetUbalanse_NOK: plantReddetUbalanse,
                 ReddbareEvents: plantReddbare,
                 TotaleEvents: events.Count));
 
@@ -136,6 +159,8 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
                     Kategori: r.Event.Category.ToString(),
                     CauseCode: r.Event.CauseCode,
                     ReddetNok: r.ReddetNok,
+                    ReddetProduksjon_NOK: r.ReddetProduksjon_NOK,
+                    ReddetUbalanse_NOK: r.ReddetUbalanse_NOK,
                     EkstraTimerSpart: r.EkstraTimerSpart));
 
                 var localMonth = r.Event.StartUtc.ToLocalTime();

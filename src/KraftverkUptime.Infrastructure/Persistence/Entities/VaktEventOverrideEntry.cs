@@ -29,4 +29,16 @@ public sealed class VaktEventOverrideEntry
     public string OwnerOrgId { get; set; } = string.Empty;
     public string? SetBy { get; set; }
     public DateTimeOffset SetAt { get; set; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Manuell overstyring av når hendelsen FAKTISK var over. Brukes når SCADA-/
+    /// operlog-EndUtc er feil (sensor-glitch eller forsinket alarm-clear) og
+    /// drifts-leder vet det riktige slutttidspunktet. Anvendes oppstrøms for
+    /// <c>VaktRoiCalculator</c>: <c>DowntimeEvent.EndUtc</c> byttes ut før ROI-
+    /// beregningen, så <c>VaktRoiCalculator</c> selv forblir en ren funksjon av
+    /// events. Null = ingen varighetsoverstyring (default).
+    ///
+    /// Valideres til å være etter <see cref="EventStartUtc"/>.
+    /// </summary>
+    public DateTimeOffset? ActualEndOverrideUtc { get; set; }
 }

@@ -161,14 +161,37 @@ public static class NedetidEndpoints
             .ConfigureAwait(false);
 
         // Manuelle overrides for vakt-events i perioden — drifts-leder kan
-        // tvinge "HaddeOverlop" eller "IkkeOverlop" på en spesifikk hendelse.
-        var overrides = await db.VaktEventOverrides
+        // tvinge "HaddeOverlop"/"IkkeOverlop"-klassifisering OG/eller korrigere
+        // faktisk slutt-tidspunkt når SCADA/operlog er feil. Henter hele raden
+        // siden vi trenger begge feltene.
+        var overrideRows = await db.VaktEventOverrides
             .Where(o => o.PlantId == plantId
                 && o.EventStartUtc >= fromUtc
-                && o.EventStartUtc < toUtc
-                && o.Classification != "Auto")
-            .ToDictionaryAsync(o => o.EventStartUtc, o => o.Classification, ct)
+                && o.EventStartUtc < toUtc)
+            .ToListAsync(ct)
             .ConfigureAwait(false);
+
+        // Anvend ActualEndOverrideUtc OPPSTRØMS for VaktRoiCalculator: bytt ut
+        // EndUtc på matchende events før ROI-beregning. Calculator forblir en
+        // ren funksjon av events — ingen ny parameter trengs. Records er
+        // immutable, så vi bygger en ny liste med 'with'-syntaks.
+        if (overrideRows.Any(o => o.ActualEndOverrideUtc.HasValue))
+        {
+            var endOverrides = overrideRows
+                .Where(o => o.ActualEndOverrideUtc.HasValue)
+                .ToDictionary(o => o.EventStartUtc, o => o.ActualEndOverrideUtc!.Value);
+
+            events = events
+                .Select(e => endOverrides.TryGetValue(e.StartUtc, out var endOv)
+                    ? e with { EndUtc = endOv }
+                    : e)
+                .ToList();
+        }
+
+        // Klassifiserings-dict (kun ikke-Auto) til Calculator.
+        var overrides = overrideRows
+            .Where(o => o.Classification != "Auto")
+            .ToDictionary(o => o.EventStartUtc, o => o.Classification);
 
         var roi = calculator.Calculate(
             events, snittSpot, planResult.PlanByHour,

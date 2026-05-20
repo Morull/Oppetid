@@ -1,0 +1,289 @@
+@using KraftverkUptime.Web.Services
+@inject NedetidApi NedetidApi
+@inject CauseFormatter CauseFormatter
+@inject ISnackbar Snackbar
+
+@*
+    Detaljer-popup for én Vakt-ROI-hendelse. Erstatter den inline Override-
+    nedtrekken i hendelses-tabellen (B3, 2026-05-20). Samler:
+      - Hendelsesinfo (start/slutt/varighet/kategori/årsak/vakt-vindu/reddbar)
+      - Økonomi-breakdown (tap, ekstra timer, overløp, reddet komponenter, total, forklaring)
+      - Overstyringer: klassifisering + ActualEndOverrideUtc + kommentar
+      - Lagre → PUT vakt-overrides → callback for reload
+
+    Bruk:
+        var parameters = new DialogParameters<VaktEventDetailDialog>
+        {
+            { x => x.PlantId, plantId },
+            { x => x.RoiEvent, roiEvent },
+            { x => x.ExistingOverride, existingOverride }, // null hvis ingen
+        };
+        var dlg = await DialogService.ShowAsync<VaktEventDetailDialog>("Hendelses-detaljer", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dlg.Result;
+        if (!result.Canceled) { await ReloadAsync(); }
+*@
+
+<MudDialog>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            @* ====== Hendelsesinfo ====== *@
+            <MudItem xs="12">
+                <MudText Typo="Typo.h6" Class="mb-2">Hendelse</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Start (lokal)</MudText>
+                <MudText>@FormatLocal(RoiEvent.Event.StartUtc)</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Slutt (lokal)</MudText>
+                <MudText>@FormatLocal(RoiEvent.Event.EndUtc)</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Faktisk varighet</MudText>
+                <MudText>@RoiEvent.Event.VarighetTimer.ToString("F1") t</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Kategori</MudText>
+                <MudText>@DisplayKategori(RoiEvent.Event.Kategori)</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Årsak</MudText>
+                <MudTooltip Text="@(RoiEvent.Event.CauseCode ?? "")">
+                    <MudText>@CauseFormatter.Display(RoiEvent.Event.CauseCode)</MudText>
+                </MudTooltip>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Vakt-vindu</MudText>
+                <MudText>@(RoiEvent.ErInnenforVakt ? "Ja" : "Nei")</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Reddbar</MudText>
+                <MudText>@(RoiEvent.ErReddbar ? "Ja" : "Nei")</MudText>
+            </MudItem>
+
+            @* ====== Økonomi-breakdown ====== *@
+            <MudItem xs="12" Class="mt-3">
+                <MudDivider />
+                <MudText Typo="Typo.h6" Class="mt-2 mb-2">Økonomi</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Tap (MWh)</MudText>
+                <MudText>@RoiEvent.Event.TapMwh.ToString("F2")</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Tap (NOK)</MudText>
+                <MudText>@FormatNok(RoiEvent.Event.TapNok)</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Ekstra timer spart</MudText>
+                <MudText>@(RoiEvent.ErInnenforVakt && RoiEvent.ErReddbar ? RoiEvent.EkstraTimerSpart.ToString("F1") + " t" : "–")</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Overløps-timer (counterfactual)</MudText>
+                <MudText>@DisplayOverflow(RoiEvent)</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Plan-data</MudText>
+                <MudText>@(RoiEvent.PlanDataPartial ? "Delvis (proxy)" : "Full")</MudText>
+            </MudItem>
+
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-2" Outlined="true">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Reddet produksjon</MudText>
+                    <MudText Typo="Typo.h6">@FormatNok(RoiEvent.ReddetProduksjon_NOK)</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-2" Outlined="true">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Reddet ubalanse</MudText>
+                    <MudText Typo="Typo.h6">@FormatNok(RoiEvent.ReddetUbalanse_NOK)</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-2" Style="background: rgba(46,157,143,0.08);" Outlined="true">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Reddet totalt</MudText>
+                    <MudText Typo="Typo.h6">@FormatNok(RoiEvent.ReddetNok)</MudText>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">
+                    <MudText Typo="Typo.body2">@RoiEvent.Forklaring</MudText>
+                </MudAlert>
+            </MudItem>
+
+            @* ====== Overstyringer ====== *@
+            <MudItem xs="12" Class="mt-3">
+                <MudDivider />
+                <MudText Typo="Typo.h6" Class="mt-2 mb-2">Overstyringer</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Rett opp feil i SCADA-/operlog-data. Endringer omberegnes ved
+                    neste Vakt-ROI-spørring. Tom = ingen overstyring.
+                </MudText>
+            </MudItem>
+
+            <MudItem xs="12" sm="6">
+                <MudSelect T="string" @bind-Value="_classification"
+                           Label="Overløps-klassifisering"
+                           HelperText="Auto = bruk SCADA-data. HaddeOverlop / IkkeOverlop tvinger redningen til/fra.">
+                    <MudSelectItem Value="@("Auto")">Auto (SCADA)</MudSelectItem>
+                    <MudSelectItem Value="@("HaddeOverlop")">Hadde overløp</MudSelectItem>
+                    <MudSelectItem Value="@("IkkeOverlop")">Ikke overløp</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" sm="6">
+                <MudTextField T="DateTime?" @bind-Value="_actualEndLocal"
+                              Label="Faktisk slutt (lokal tid, valgfri)"
+                              InputType="InputType.DateTimeLocal"
+                              Format="yyyy-MM-ddTHH:mm"
+                              HelperText="@ActualEndHelperText" />
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_comment" Label="Kommentar (valgfri)"
+                              Lines="2" MaxLength="500" />
+            </MudItem>
+
+            @if (_error is not null)
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+                </MudItem>
+            }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_busy">Avbryt</MudButton>
+        <MudButton OnClick="SaveAsync" Color="Color.Primary" Variant="Variant.Filled"
+                   Disabled="_busy">
+            Lagre
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired] public string PlantId { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public VaktRoiEventDto RoiEvent { get; set; } = default!;
+    [Parameter] public VaktOverrideDto? ExistingOverride { get; set; }
+
+    private string _classification = "Auto";
+    private string? _comment;
+    private DateTime? _actualEndLocal;
+    private bool _busy;
+    private string? _error;
+
+    /// <summary>
+    /// Avledet varighet hvis brukeren har skrevet inn faktisk slutt — hjelper
+    /// drifts-leder å verifisere at tidspunktet er riktig før lagring.
+    /// </summary>
+    private string ActualEndHelperText
+    {
+        get
+        {
+            if (_actualEndLocal is null)
+            {
+                return "Tom = bruk EndUtc fra SCADA/operlog.";
+            }
+            var localKind = DateTime.SpecifyKind(_actualEndLocal.Value, DateTimeKind.Local);
+            var dto = new DateTimeOffset(localKind);
+            var duration = (dto - RoiEvent.Event.StartUtc).TotalHours;
+            if (duration <= 0)
+            {
+                return "⚠ Må være etter hendelsens start.";
+            }
+            return $"Avledet varighet: {duration:F1} t (opprinnelig {RoiEvent.Event.VarighetTimer:F1} t).";
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        if (ExistingOverride is not null)
+        {
+            _classification = ExistingOverride.Classification;
+            _comment = ExistingOverride.Comment;
+            if (ExistingOverride.ActualEndOverrideUtc is { } endOv)
+            {
+                _actualEndLocal = endOv.ToLocalTime().DateTime;
+            }
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        // Konverter lokal tid til DateTimeOffset i UTC. Hvis brukeren ikke har
+        // satt feltet, send null = ingen varighetsoverstyring.
+        DateTimeOffset? actualEndUtc = null;
+        if (_actualEndLocal is { } local)
+        {
+            var asLocal = DateTime.SpecifyKind(local, DateTimeKind.Local);
+            actualEndUtc = new DateTimeOffset(asLocal).ToUniversalTime();
+            if (actualEndUtc <= RoiEvent.Event.StartUtc)
+            {
+                _error = "Faktisk slutt må være etter hendelsens start-tidspunkt.";
+                return;
+            }
+        }
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            await NedetidApi.UpsertVaktOverrideAsync(
+                PlantId, RoiEvent.Event.StartUtc, _classification, _comment, actualEndUtc);
+
+            Snackbar.Add(
+                _classification == "Auto" && actualEndUtc is null
+                    ? "Override fjernet — bruker SCADA-data."
+                    : "Override lagret.",
+                Severity.Success);
+            Dialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke lagre: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void Cancel() => Dialog.Cancel();
+
+    private static string FormatLocal(DateTimeOffset dt) =>
+        dt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    private static readonly System.Globalization.NumberFormatInfo NorskTall = new()
+    {
+        NumberGroupSeparator = " ",
+        NumberDecimalSeparator = ",",
+        NumberGroupSizes = new[] { 3 },
+    };
+
+    private static string FormatNok(double nok) => nok.ToString("N0", NorskTall);
+
+    private static string DisplayKategori(string kategori) => kategori switch
+    {
+        "TripFeil" => "Trip / feil",
+        "TettInntaksrist" => "Tett inntaksrist",
+        "EksternForstyrrelse" => "Ekstern forstyrrelse",
+        "PlanlagtVedlikehold" => "Planlagt vedlikehold",
+        "Markedstopp" => "Markedstopp",
+        "Ressursmangel" => "Ressursmangel",
+        "DataMangel" => "Datamangel",
+        "UkjentNedetid" => "Ukjent nedetid",
+        _ => kategori,
+    };
+
+    private static string DisplayOverflow(VaktRoiEventDto e)
+    {
+        if (!e.ErInnenforVakt || !e.ErReddbar) return "–";
+        if (e.OverflowDataMissing) return "Mangler data";
+        if (e.OverflowTimerInCounterfactual <= 0) return "0 t";
+        return $"{e.OverflowTimerInCounterfactual} t";
+    }
+}
