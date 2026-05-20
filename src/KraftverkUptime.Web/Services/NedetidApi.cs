@@ -601,7 +601,9 @@ public sealed record ProduksjonAnalyseDto(
     double SnittSpotprisNokMwh,
     bool OverlopDataTilgjengelig,
     IReadOnlyList<ProduksjonHourlyDto> Hourly,
-    IReadOnlyList<ProduksjonMonthlyDto> Monthly);
+    IReadOnlyList<ProduksjonMonthlyDto> Monthly,
+    double SpotbudTreffProsent = 0,
+    int AntallTimerMedSpotbud = 0);
 
 public sealed record ProduksjonHourlyDto(
     DateTimeOffset TimeUtc,

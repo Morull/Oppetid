@@ -75,7 +75,15 @@ else if (_data is not null)
                               Value="@(_data.PlanTreffProsent * 100)"
                               PreviousValue="@(_previous?.PlanTreffProsent * 100)"
                               Format="F1" Unit="%"
-                              SubText="@($"1 − MAE/Σplan over {_data.AntallTimerMedPlan} timer med plan > 0")"
+                              SubText="@($"1 − MAE/Σplan over {_data.AntallTimerMedPlan} timer med Hydrogrid-plan > 0")"
+                              HigherIsBetter="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiTrendCard Label="Spotbud-treff"
+                              Value="@(_data.SpotbudTreffProsent * 100)"
+                              PreviousValue="@(_previous?.SpotbudTreffProsent * 100)"
+                              Format="F1" Unit="%"
+                              SubText="@($"1 − MAE/Σspotbud over {_data.AntallTimerMedSpotbud} timer. Mål: 100 % (avvik = ubalanse-gebyr).")"
                               HigherIsBetter="true" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
@@ -93,15 +101,6 @@ else if (_data is not null)
                               Format="N0" Unit="NOK"
                               SignedValue="true"
                               SubText="vs. flat baseline"
-                              HigherIsBetter="true" />
-            </MudItem>
-            <MudItem xs="12" sm="6" md="3">
-                <KpiTrendCard Label="Faktisk timing-merverdi"
-                              Value="_data.FaktiskMerverdiNok"
-                              PreviousValue="_previous?.FaktiskMerverdiNok"
-                              Format="N0" Unit="NOK"
-                              SignedValue="true"
-                              SubText="@FaktiskVsHydrogrid()"
                               HigherIsBetter="true" />
             </MudItem>
         </MudGrid>

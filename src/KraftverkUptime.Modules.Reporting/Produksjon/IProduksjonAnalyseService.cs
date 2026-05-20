@@ -61,7 +61,14 @@ public sealed record ProduksjonAnalyseResult(
     double SnittSpotprisNokMwh,
     bool OverlopDataTilgjengelig,
     IReadOnlyList<ProduksjonHourlyPoint> Hourly,
-    IReadOnlyList<ProduksjonMonthly> Monthly);
+    IReadOnlyList<ProduksjonMonthly> Monthly,
+    // Spotbud-treff (2026-05-19): samme formel som PlanTreff, men mot
+    // Spotbud istedenfor Hydrogrid-plan. Spotbud = faktisk meldt bud til
+    // NordPool (= forpliktelse), så vi ønsker 100% treff her — avvik
+    // koster i ubalanse-gebyr. Default 0 hvis ingen timer har Spotbud > 0
+    // (= eldre import før Spotbud-parsing).
+    double SpotbudTreffProsent = 0,
+    int AntallTimerMedSpotbud = 0);
 
 /// <summary>
 /// Én time — rå data for graf-visning og driftslinje. Inkluderer:

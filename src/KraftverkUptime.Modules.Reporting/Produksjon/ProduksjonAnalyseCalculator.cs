@@ -35,7 +35,8 @@ public static class ProduksjonAnalyseCalculator
         var (planTreff, andelTopp, andelBunn,
              andelTimerTopp, andelTimerBunn,
              hgMerverdi, faktiskMerverdi, snittSpot,
-             totalElhub, totalPlan, antTimerMedPlan, antTimerProduksjon)
+             totalElhub, totalPlan, antTimerMedPlan, antTimerProduksjon,
+             spotbudTreff, antTimerMedSpotbud)
             = ComputeAggregate(hours);
 
         // Tell timer i perioden som hadde overløp på terminal-dam
@@ -53,7 +54,8 @@ public static class ProduksjonAnalyseCalculator
             {
                 var rows = g.ToList();
                 var (mt, mTopp, mBunn, mTimerTopp, mTimerBunn,
-                     mHg, mFaktisk, mSnittSpot, mElhub, mPlan, _, mProd)
+                     mHg, mFaktisk, mSnittSpot, mElhub, mPlan, _, mProd,
+                     _, _)
                     = ComputeAggregate(rows);
                 var mOverlop = rows.Count(h => overflow.Contains(TruncateToHour(h.TimeUtc)));
                 var mKap = rows.Count > 0 ? (double)mProd / rows.Count : 0;
@@ -137,7 +139,9 @@ public static class ProduksjonAnalyseCalculator
             SnittSpotprisNokMwh: snittSpot,
             OverlopDataTilgjengelig: overlopDataTilgjengelig,
             Hourly: hourlyOutput,
-            Monthly: monthly);
+            Monthly: monthly,
+            SpotbudTreffProsent: spotbudTreff,
+            AntallTimerMedSpotbud: antTimerMedSpotbud);
     }
 
     /// <summary>Trunkerer time-stempel til hel time slik at overflow-set-lookup matcher.</summary>
@@ -153,20 +157,25 @@ public static class ProduksjonAnalyseCalculator
         double andelTimerTopp, double andelTimerBunn,
         double hgMerverdi, double faktiskMerverdi, double snittSpot,
         double totalElhub, double totalPlan, int antTimerMedPlan,
-        int antTimerProduksjon)
+        int antTimerProduksjon,
+        double spotbudTreff, int antTimerMedSpotbud)
         ComputeAggregate(IReadOnlyList<HourlyInput> rows)
     {
         if (rows.Count == 0)
         {
-            return (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            return (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
 
         // 1. Plan-treff: 1 - Σ|Elhub - Plan| / Σ|Plan| for timer med Plan > 0
         // Tell også produksjonstimer (Elhub > 0) — høy verdi i kombinasjon med
         // lav snittpris er en sterk overløp-risiko-indikator (vi måtte produsere
         // for å unngå at magasinet flommet over).
+        // I tillegg beregner vi Spotbud-treff på samme måte mot SpotbudMwh —
+        // 100% her er målet siden Spotbud er den faktiske NordPool-forpliktelsen.
         double sumAbsAvvik = 0, sumPlan = 0, sumElhub = 0;
+        double sumAbsAvvikSpotbud = 0, sumSpotbud = 0;
         var antTimerMedPlan = 0;
+        var antTimerMedSpotbud = 0;
         var antTimerProduksjon = 0;
         foreach (var r in rows)
         {
@@ -176,6 +185,12 @@ public static class ProduksjonAnalyseCalculator
                 sumPlan += r.PlanMwh.Value;
                 antTimerMedPlan++;
             }
+            if (r.SpotbudMwh.HasValue && r.ElhubMwh.HasValue && r.SpotbudMwh.Value > 0)
+            {
+                sumAbsAvvikSpotbud += Math.Abs(r.ElhubMwh.Value - r.SpotbudMwh.Value);
+                sumSpotbud += r.SpotbudMwh.Value;
+                antTimerMedSpotbud++;
+            }
             if (r.ElhubMwh.HasValue)
             {
                 sumElhub += r.ElhubMwh.Value;
@@ -184,6 +199,9 @@ public static class ProduksjonAnalyseCalculator
         }
         var planTreff = sumPlan > 0
             ? Math.Clamp(1.0 - sumAbsAvvik / sumPlan, 0.0, 1.0)
+            : 0;
+        var spotbudTreff = sumSpotbud > 0
+            ? Math.Clamp(1.0 - sumAbsAvvikSpotbud / sumSpotbud, 0.0, 1.0)
             : 0;
 
         // 2. Andel produksjon i topp-/bunn-kvartil av spot
@@ -256,6 +274,7 @@ public static class ProduksjonAnalyseCalculator
         return (planTreff, andelTopp, andelBunn,
                 andelTimerTopp, andelTimerBunn,
                 hgMerverdi, faktiskMerverdi,
-                snittSpot, sumElhub, sumPlan, antTimerMedPlan, antTimerProduksjon);
+                snittSpot, sumElhub, sumPlan, antTimerMedPlan, antTimerProduksjon,
+                spotbudTreff, antTimerMedSpotbud);
     }
 }
