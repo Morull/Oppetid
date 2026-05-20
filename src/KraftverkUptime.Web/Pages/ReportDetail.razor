@@ -32,6 +32,10 @@ else if (_report is null)
 }
 else
 {
+    @* Side-tilpasset velger (UI-gjennomgang tiltak 4). Erstatter global
+       periodevelger med direkte anlegg+rapportmåned-valg. *@
+    <ReportPageSelector SelectedKey="@IdempotencyKey" />
+
     <PageHeader Title="@($"Rapport – {_report.PlantId}")"
                 Subtitle="@($"{FormatPeriod(_report.PeriodStartUtc, _report.PeriodEndUtc)} · {_report.PeriodHours} timer")">
         <Actions>

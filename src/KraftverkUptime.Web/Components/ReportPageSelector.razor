@@ -1,0 +1,176 @@
+@*
+   Side-tilpasset velger for Rapporter og rapport-detalj (UI-gjennomgang
+   2026-05-20 tiltak 4). Erstatter den globale periodevelgeren på rapport-
+   sidene fordi den var ubrukelig der:
+     - Egendefinert-modus (som rapport-detaljen tvang frem) deaktiverte
+       ←/→-pilene.
+     - Granularitetsknapper (Måned/Kvartal/År) endret topp-baren men ikke
+       innholdet — velger og rapport ble desynkronisert.
+
+   Denne velgeren er målrettet:
+     - Anleggs-dropdown
+     - "Rapportmåned"-dropdown som lister alle tilgjengelige måneds-rapporter
+     - Valg → navigerer rett til rapporten. Ingen granularitet, ingen
+       stegning, ett klikk til hvilken som helst måned.
+
+   Brukes på Rapporter (uten valgt nøkkel) og rapport-detalj (med).
+*@
+@using KraftverkUptime.Web.Services
+@inject ReportsApi Api
+@inject FilterState Filter
+@inject NavigationManager Nav
+
+<MudPaper Class="pa-3 mb-4" Elevation="1">
+    <MudGrid Spacing="2" Class="align-center">
+        <MudItem xs="12" sm="6" md="4">
+            <MudSelect T="string" Value="@_selectedPlantId"
+                       ValueChanged="OnPlantChangedAsync"
+                       Label="Anlegg" Variant="Variant.Outlined"
+                       Margin="Margin.Dense"
+                       Dense="true">
+                @foreach (var p in _plants)
+                {
+                    <MudSelectItem Value="@p.Id">@p.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudSelect T="string" Value="@(_selectedKey ?? string.Empty)"
+                       ValueChanged="OnReportChanged"
+                       Label="@MonthSelectLabel"
+                       Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Dense="true"
+                       Disabled="@(_reports.Count == 0)">
+                @foreach (var r in _reports)
+                {
+                    <MudSelectItem T="string" Value="@r.IdempotencyKey">
+                        @FormatReportLabel(r)
+                        @if (!r.ReportAvailable)
+                        {
+                            <span style="opacity: 0.6;"> (behandles)</span>
+                        }
+                    </MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" md="4" Class="d-flex align-center" Style="gap:8px;">
+            @if (_reports.Count == 0 && !_loadingReports && !string.IsNullOrEmpty(_selectedPlantId))
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Ingen rapporter for valgt anlegg.
+                </MudText>
+            }
+            else if (_loadingReports)
+            {
+                <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Small" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Henter rapporter…</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    @_reports.Count rapport@(_reports.Count == 1 ? "" : "er") · klikk for å åpne
+                </MudText>
+            }
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@code {
+    /// <summary>Valgt rapport-nøkkel (idempotencyKey), eller null på liste-visning.</summary>
+    [Parameter] public string? SelectedKey { get; set; }
+
+    private string _selectedPlantId = string.Empty;
+    private string? _selectedKey;
+    private List<KraftverkUptime.Web.Services.PlantDto> _plants = new();
+    private List<SettlementImportSummary> _reports = new();
+    private bool _loadingReports;
+
+    private string MonthSelectLabel => string.IsNullOrEmpty(_selectedPlantId)
+        ? "Velg anlegg først"
+        : "Rapportmåned";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _plants = (await Api.ListPlantsAsync()).ToList();
+        _selectedPlantId = Filter.PlantId ?? _plants.FirstOrDefault()?.Id ?? string.Empty;
+        _selectedKey = SelectedKey;
+        if (!string.IsNullOrEmpty(_selectedPlantId))
+        {
+            await LoadReportsAsync();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Hvis foreldreelementet bytter SelectedKey (eks. ved Forrige/Neste
+        // i ReportDetail), reflekter det her uten ny HTTP.
+        if (SelectedKey != _selectedKey)
+        {
+            _selectedKey = SelectedKey;
+        }
+    }
+
+    private async Task OnPlantChangedAsync(string newPlantId)
+    {
+        _selectedPlantId = newPlantId;
+        Filter.PlantId = newPlantId;
+        _selectedKey = null;
+        await LoadReportsAsync();
+        // Hvis vi har noen rapporter, naviger til siste tilgjengelige.
+        var latest = _reports.FirstOrDefault(r => r.ReportAvailable);
+        if (latest is not null)
+        {
+            Nav.NavigateTo($"reports/{latest.PlantId}/{latest.IdempotencyKey}");
+        }
+        else
+        {
+            Nav.NavigateTo("reports");
+        }
+    }
+
+    private void OnReportChanged(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return;
+        var r = _reports.FirstOrDefault(x => x.IdempotencyKey == key);
+        if (r is null || !r.ReportAvailable) return;
+        _selectedKey = key;
+        Nav.NavigateTo($"reports/{r.PlantId}/{r.IdempotencyKey}");
+    }
+
+    private async Task LoadReportsAsync()
+    {
+        _loadingReports = true;
+        _reports = new();
+        try
+        {
+            // Ingen periode-filter — vi vil ha hele historikken så brukeren
+            // kan velge hvilken som helst måned.
+            var rows = await Api.ListSettlementsAsync(_selectedPlantId, null, null);
+            _reports = rows
+                .OrderByDescending(r => r.PeriodStartUtc)
+                .ToList();
+        }
+        catch
+        {
+            _reports = new();
+        }
+        finally
+        {
+            _loadingReports = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string FormatReportLabel(SettlementImportSummary r)
+    {
+        var startLocal = r.PeriodStartUtc.ToLocalTime();
+        var endLocal = r.PeriodEndUtc.ToLocalTime();
+        var span = (endLocal - startLocal).TotalDays;
+        if (span is >= 27 and <= 32 && startLocal.Day == 1)
+        {
+            return startLocal.ToString("MMMM yyyy",
+                System.Globalization.CultureInfo.InvariantCulture);
+        }
+        return $"{startLocal:yyyy-MM-dd} – {endLocal:yyyy-MM-dd}";
+    }
+}

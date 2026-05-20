@@ -10,7 +10,10 @@
 <PageHeader Title="Rapporter"
             Subtitle="Importerte avregninger og klassifiserte KPI-rapporter per anlegg." />
 
-@* Anlegg + periode styres av global velger i AppBar (FilterState). *@
+@* Side-tilpasset velger (UI-gjennomgang tiltak 4). Erstatter den globale
+   periodevelgeren på denne siden — egen anleggs- + rapportmåned-dropdown
+   som navigerer direkte til valgt rapport uten å gå via periode-stegning. *@
+<ReportPageSelector />
 
 @if (_error is not null)
 {

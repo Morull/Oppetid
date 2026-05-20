@@ -82,6 +82,10 @@
 
     // Sider hvor velgeren ikke gir mening (admin-sider, opplasting, etc.)
     // Resten viser velgeren — de fleste rapport-sider trenger plant + periode.
+    // /reports er undertrykt fordi rapport-sidene bruker en egen
+    // ReportPageSelector istedenfor den globale periodevelgeren (UI-gjennomgang
+    // 2026-05-20 tiltak 4: granularitetsknapper og pil-stegning ga ingen
+    // mening på en rapport-side hvor "perioden" er en spesifikk import).
     private static readonly HashSet<string> SuppressedPaths = new(StringComparer.OrdinalIgnoreCase)
     {
         "/data-import",
@@ -89,6 +93,13 @@
         "/admin/kategorier",
         "/upload",
         "/behandles",
+    };
+
+    // Prefix-match for suppressed paths — gjelder også sub-paths som
+    // /reports/{plantId}/{key}.
+    private static readonly string[] SuppressedPathPrefixes =
+    {
+        "/reports",
     };
 
     // Sider med brede tabeller som tjener på full bredde framfor 1280px-cap.
@@ -127,8 +138,19 @@
         {
             var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
             if (string.IsNullOrEmpty(path)) path = "/";
-            // Eksakt-match for definerte unntak; alle andre sider får velger.
-            return !SuppressedPaths.Contains(path);
+            // / redirecter til /reports → den globale velgeren skjules der.
+            if (path == "/") return false;
+            // Eksakt-match for definerte unntak.
+            if (SuppressedPaths.Contains(path)) return false;
+            // Prefix-match for sub-paths som /reports/{plant}/{key}.
+            foreach (var prefix in SuppressedPathPrefixes)
+            {
+                if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
     }
 
