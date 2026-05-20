@@ -195,19 +195,27 @@ public sealed class DalanePortfolioSignalMapSeederTests
         // damId-switch'en i DalanePortfolioSignalMapSeeder.MapTag holdes
         // synkronisert med PlantTopologySeeder.Topologies.
         //
-        // Listen MÅ holdes synkronisert med PlantTopologySeeder.Topologies —
-        // hvis en MultiDam-plant legges til/endres der må også denne dict-en
-        // oppdateres. (Topologies er internal, så vi kan ikke importere direkte.)
-        var expectedTerminalByPlant = new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["ogreyfoss"] = "ogreyfoss_ogreyvatn",
-        };
+        // Forventet terminal-dam utledes fra PlantTopologySeeder.Topologies
+        // (single source of truth, public siden 2026-05-20). Dermed fanger
+        // testen automatisk opp framtidige MultiDam-anlegg som legges til der
+        // uten at både Dalane-seederen og denne testen oppdateres.
+        var multiDamTerminals = PlantTopologySeeder.Topologies
+            .Where(t => t.Strategy == PlantTopologySeeder.TopologyStrategy.MultiDam)
+            .ToDictionary(
+                t => t.PlantId,
+                t => t.Dams.Single(d => d.IsTurbineIntake).DamId,
+                StringComparer.Ordinal);
+
+        // Sanity: Øgreyfoss er forventet å være i MultiDam-listen — hvis ikke
+        // er topologien endret og denne testen må revurderes.
+        multiDamTerminals.Should().ContainKey("ogreyfoss",
+            "Øgreyfoss skal være MultiDam i PlantTopologySeeder (7-dam-kaskade).");
 
         foreach (var tag in DalanePortfolio72TagCatalog.Tags)
         {
             var (plantId, _, damId, _) = DalanePortfolioSignalMapSeeder.MapTag(tag);
             if (damId is null) continue;
-            if (!expectedTerminalByPlant.TryGetValue(plantId, out var expectedTerminal)) continue;
+            if (!multiDamTerminals.TryGetValue(plantId, out var expectedTerminal)) continue;
 
             damId.Should().Be(expectedTerminal,
                 $"tag '{tag}' i MultiDam-anlegg '{plantId}' må peke på terminal-dam");

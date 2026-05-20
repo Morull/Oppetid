@@ -64,8 +64,13 @@ public static class PlantTopologySeeder
     /// <summary>
     /// Topologi for de 9 anleggene som mangler dedikert SignalMap-seeder.
     /// Verifisert mot SCADA-skjemaer 2026-05-05.
+    ///
+    /// Eksponert public slik at regresjons-tester kan krysse mot
+    /// signal-map-seedere (sikrer at MultiDam-anlegg har konsistent
+    /// terminal-dam-ID mellom topologi og INNTAK-tags — jf. Øgreyfoss-buggen
+    /// 2026-05-19).
     /// </summary>
-    internal static readonly PlantTopology[] Topologies =
+    public static readonly PlantTopology[] Topologies =
     [
         // ---- Single-dam-anlegg ------------------------------------------------
         new("drivdal", TopologyStrategy.SingleDam,
