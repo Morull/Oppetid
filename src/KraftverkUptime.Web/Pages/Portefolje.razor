@@ -2,15 +2,47 @@
 @implements IDisposable
 @inject NedetidApi NedetidApi
 @inject FilterState Filter
+@inject NavigationManager Nav
 
 <PageTitle>Portefølje-rapport</PageTitle>
 
+<style>
+    /* Sticky first column så anleggsnavnet alltid er synlig under
+       horisontalt scroll, og bedre layout-kontroll på vide tabeller. */
+    .dk-portfolio-table-wrap {
+        overflow-x: auto;
+        max-width: 100%;
+        position: relative;
+    }
+    .dk-portfolio-table table {
+        white-space: nowrap;
+        min-width: 100%;
+    }
+    .dk-portfolio-table thead th:first-child,
+    .dk-portfolio-table tbody td:first-child,
+    .dk-portfolio-table tfoot td:first-child {
+        position: sticky;
+        left: 0;
+        background-color: var(--mud-palette-surface, #1A1F2C);
+        z-index: 2;
+        box-shadow: 2px 0 4px rgba(0,0,0,0.2);
+    }
+    .dk-portfolio-table thead th:first-child {
+        z-index: 3;
+    }
+    /* Mer luftig padding på celler */
+    .dk-portfolio-table tbody td {
+        padding: 8px 12px !important;
+    }
+    .dk-portfolio-table thead th {
+        padding: 10px 12px !important;
+    }
+</style>
+
 <MudText Typo="Typo.h1" Class="mb-1">Portefølje-rapport</MudText>
 <MudText Typo="Typo.subtitle1" Color="MudBlazor.Color.Secondary" Class="mb-4">
-    Samlet rapport på tvers av alle anlegg: drift-KPI-er, økonomi,
-    capture rate, vakt-ROI og nedetid for valgt periode (styres av
-    anlegg- og periode-velgeren øverst). Klikk anleggs-navn for detaljer.
-    Hold musepekeren over kolonneoverskriftene for forklaringer.
+    Samlet rapport på tvers av alle anlegg for valgt periode. Klikk anleggs-
+    rad for detaljer. Hold musepekeren over kolonneoverskriftene for forklaringer.
 </MudText>
 
 @if (_error is not null)
@@ -51,14 +83,55 @@ else if (_rows is not null)
            (2026-05-19). Brukeren kommer dit ved å trykke Vakt-ROI-fanen uten et
            anlegg valgt. *@
 
-        @* ---- Hovedtabell ---- *@
+        @* ---- KPI-strip øverst: total-bildet for porteføljen ---- *@
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #1E5F8E;">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Produksjon</MudText>
+                    <MudText Typo="Typo.h4">@FormatMwh(_rows.Sum(r => r.TotalProductionMwh)) MWh</MudText>
+                    <MudText Typo="Typo.caption">@_rows.Count anlegg · @_rows.Sum(r => r.InstalledCapacityMw).ToString("F1") MW installert</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #2A9D8F;">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Spotomsetning</MudText>
+                    <MudText Typo="Typo.h4">@FormatNok(_rows.Sum(r => r.SpotomsetningNok)) NOK</MudText>
+                    <MudText Typo="Typo.caption">
+                        Merverdi: <span style="color:@(MerverdiSum() >= 0 ? "#2A9D8F" : "#E76F51");">@FormatNokSigned(MerverdiSum())</span>
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #E76F51;">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Nedetidstap</MudText>
+                    <MudText Typo="Typo.h4">@FormatNok(_rows.Sum(r => r.TapNok)) NOK</MudText>
+                    <MudText Typo="Typo.caption">
+                        @_rows.Sum(r => r.NedetidTimer).ToString("F0") timer
+                        · @_rows.Sum(r => r.AntallEvents) hendelser
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-3" Elevation="2" Style="border-left: 4px solid #6E59A5;">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Reddet av vakt</MudText>
+                    <MudText Typo="Typo.h4">@FormatNok(_totalReddetNok) NOK</MudText>
+                    <MudText Typo="Typo.caption">
+                        @_rows.Sum(r => r.AntallReddbare) av @_rows.Sum(r => r.AntallEvents) events reddbare
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        @* ---- Hovedtabell med sticky first column ---- *@
         <MudPaper Class="pa-4 mb-4" Elevation="1">
             <MudText Typo="Typo.h4" Class="mb-2">
-                @_rows.Count anlegg med data for perioden
+                Per-anleggs detaljer (@_rows.Count anlegg)
             </MudText>
-            <div style="overflow-x: auto;">
+            <div class="dk-portfolio-table-wrap">
                 <MudTable Items="_rows" Hover="true" Dense="true" Elevation="0" SortLabel="Sortér"
-                          Style="white-space: nowrap;">
+                          OnRowClick="@((TableRowClickEventArgs<Row> args) => OnRowClick(args.Item))"
+                          RowStyle="cursor: pointer;"
+                          Class="dk-portfolio-table">
                     <HeaderContent>
                         <MudTh Style="min-width: 110px;"><MudTableSortLabel SortBy="@SortByName">Anlegg</MudTableSortLabel></MudTh>
                         <MudTh Style="text-align:right">
@@ -124,9 +197,9 @@ else if (_rows is not null)
                         </MudTh>
                     </HeaderContent>
                     <RowTemplate>
-                        <MudTd>
+                        <MudTd Style="font-weight: 500;">
                             <div class="d-flex align-center" style="gap:6px;">
-                                <MudLink Href="@($"/anlegg/{context.PlantId}")">@context.PlantName</MudLink>
+                                <span style="color: var(--mud-palette-primary);">@context.PlantName</span>
                                 @if (context.MissingData.Count > 0)
                                 {
                                     <MudTooltip Text="@($"Mangler: {string.Join(", ", context.MissingData)}")">
@@ -333,6 +406,14 @@ else if (_rows is not null)
             AntallReddbare: vakt?.AntallReddbareInnenforVakt ?? 0,
             DataQuality: dq,
             MissingData: missing);
+    }
+
+    private double MerverdiSum() => _rows?.Sum(r => r.MerverdiNok) ?? 0;
+
+    private void OnRowClick(Row? row)
+    {
+        if (row is null) return;
+        Nav.NavigateTo($"/anlegg/{row.PlantId}");
     }
 
     // -- Sort-funksjoner --

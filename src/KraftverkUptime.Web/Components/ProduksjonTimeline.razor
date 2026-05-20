@@ -296,9 +296,11 @@
                     label,
                 };
                 if (hour.PlanMwh.HasValue)
-                    lines.Add($"Plan: {hour.PlanMwh:F2} MWh");
+                    lines.Add($"Plan (Hydrogrid): {hour.PlanMwh:F2} MWh");
+                if (hour.SpotbudMwh.HasValue)
+                    lines.Add($"Spotbud (NordPool): {hour.SpotbudMwh:F2} MWh");
                 if (hour.ElhubMwh.HasValue)
-                    lines.Add($"Elhub: {hour.ElhubMwh:F2} MWh");
+                    lines.Add($"Elhub (faktisk): {hour.ElhubMwh:F2} MWh");
                 if (hour.SpotprisNokMwh.HasValue)
                     lines.Add($"Spot: {hour.SpotprisNokMwh:F0} NOK/MWh");
                 if (hour.RkPrisNokMwh.HasValue)
@@ -306,7 +308,22 @@
                 if (hasUbalanse)
                     lines.Add($"Ubalanse-kost: {FormatNok(hour.UbalanseKostNok)} NOK");
                 if (isRkSpike)
-                    lines.Add($"⚠ RK-spike: premium {rkPremium:F0} NOK/MWh — hvis solgt spotbud + ikke produsert, tapte du opp mot {FormatNok(rkPremium * 4.9)} NOK (4.9 MW basis)");
+                {
+                    // Bruk faktisk Spotbud hvis tilgjengelig — ellers fall tilbake til
+                    // worst-case "full kapasitet" på 4.9 MW (Haukland-størrelse).
+                    var forpliktelse = hour.SpotbudMwh ?? hour.PlanMwh ?? 4.9;
+                    var levert = hour.ElhubMwh ?? 0;
+                    var underLevering = Math.Max(0, forpliktelse - levert);
+                    var tap = rkPremium * underLevering;
+                    if (tap > 0)
+                    {
+                        lines.Add($"⚠ RK-spike: premium {rkPremium:F0} NOK/MWh × under-levering {underLevering:F2} MWh = {FormatNok(tap)} NOK tap");
+                    }
+                    else
+                    {
+                        lines.Add($"⚠ RK-spike: premium {rkPremium:F0} NOK/MWh (men ingen under-levering registrert)");
+                    }
+                }
                 if (hour.HarOverlop)
                     lines.Add("⚠ Overløp på terminal-dam");
 

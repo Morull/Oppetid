@@ -610,7 +610,8 @@ public sealed record ProduksjonHourlyDto(
     double? SpotprisNokMwh,
     double? RkPrisNokMwh = null,
     bool HarOverlop = false,
-    double UbalanseKostNok = 0);
+    double UbalanseKostNok = 0,
+    double? SpotbudMwh = null);
 
 public sealed record ProduksjonMonthlyDto(
     int Year,

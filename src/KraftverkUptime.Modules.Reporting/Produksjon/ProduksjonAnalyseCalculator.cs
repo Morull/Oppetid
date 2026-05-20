@@ -14,7 +14,12 @@ public static class ProduksjonAnalyseCalculator
         double? PlanMwh,
         double? ElhubMwh,
         double? SpotprisNokMwh,
-        double? RkPrisNokMwh = null);
+        double? RkPrisNokMwh = null,
+        // Spotbud = faktisk meldt bud til NordPool (= producentens
+        // forpliktelse). Kan avvike fra Hydrogrid-plan ved manuell
+        // korrigering. Brukes som primær basis i ubalanse-kost-formelen
+        // når tilgjengelig.
+        double? SpotbudMwh = null);
 
     public static ProduksjonAnalyseResult Compute(
         string plantId,
@@ -75,9 +80,14 @@ public static class ProduksjonAnalyseCalculator
 
         // Berik hourly med overlop-flag + ubalanse-kost. Ubalanse-kost per time:
         //   premium = max(0, RK - Spot)        (NOK/MWh oppregulering)
-        //   under_levering = max(0, Plan - Elhub)  (MWh under-levering)
+        //   forpliktelse = max(Spotbud, Plan)  (Spotbud er faktisk forpliktelse;
+        //                                       fall tilbake til Plan hvis Spotbud
+        //                                       mangler i settlement-eksport)
+        //   under_levering = max(0, forpliktelse - Elhub)
         //   ubalanse_kost = premium × under_levering
-        // Brukt av driftslinjen på Produksjon-siden for å markere store kost-hendelser.
+        // Endring 2026-05-19: bruker Spotbud istedenfor kun Plan, fordi Plan=0
+        // ikke fanget tilfeller der produsent solgte bud manuelt utenom Hydrogrid
+        // (eks. Haukland 09.03 16:00 hadde 198k NOK tap men kosten ble 0).
         var hourlyOutput = hours
             .Select(h =>
             {
@@ -85,10 +95,12 @@ public static class ProduksjonAnalyseCalculator
                 var harOverlop = overflow.Contains(hour);
                 var ubalanseKost = 0.0;
                 if (h.RkPrisNokMwh.HasValue && h.SpotprisNokMwh.HasValue
-                    && h.PlanMwh.HasValue && h.ElhubMwh.HasValue)
+                    && h.ElhubMwh.HasValue
+                    && (h.SpotbudMwh.HasValue || h.PlanMwh.HasValue))
                 {
                     var premium = Math.Max(0, h.RkPrisNokMwh.Value - h.SpotprisNokMwh.Value);
-                    var underLevering = Math.Max(0, h.PlanMwh.Value - h.ElhubMwh.Value);
+                    var forpliktelse = Math.Max(h.SpotbudMwh ?? 0, h.PlanMwh ?? 0);
+                    var underLevering = Math.Max(0, forpliktelse - h.ElhubMwh.Value);
                     ubalanseKost = premium * underLevering;
                 }
                 return new ProduksjonHourlyPoint(
@@ -98,7 +110,8 @@ public static class ProduksjonAnalyseCalculator
                     SpotprisNokMwh: h.SpotprisNokMwh,
                     RkPrisNokMwh: h.RkPrisNokMwh,
                     HarOverlop: harOverlop,
-                    UbalanseKostNok: ubalanseKost);
+                    UbalanseKostNok: ubalanseKost,
+                    SpotbudMwh: h.SpotbudMwh);
             })
             .ToList();
 

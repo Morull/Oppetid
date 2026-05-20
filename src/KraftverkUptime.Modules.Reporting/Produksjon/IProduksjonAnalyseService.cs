@@ -66,9 +66,14 @@ public sealed record ProduksjonAnalyseResult(
 /// <summary>
 /// Én time — rå data for graf-visning og driftslinje. Inkluderer:
 ///   - PlanMwh / ElhubMwh / SpotprisNokMwh: standard plan-vs-faktisk
+///   - SpotbudMwh: faktisk meldt spotbud til NordPool (= produsentens
+///     forpliktelse). Kan avvike fra Hydrogrid-plan hvis bud er korrigert
+///     manuelt. Brukes som primær basis for ubalanse-kost-formelen.
 ///   - RkPrisNokMwh: regulerkraft-pris (for ubalanse-kost-beregning)
 ///   - HarOverlop: terminal-dam hadde overløp i denne timen
-///   - UbalanseKostNok: estimert ubalanse-kost = max(0, RK - Spot) × |Plan - Elhub|
+///   - UbalanseKostNok: estimert ubalanse-kost =
+///     max(0, RK - Spot) × max(0, max(Spotbud, Plan) - Elhub)
+///     Bruker Spotbud som forpliktelse hvis tilgjengelig, ellers Plan.
 /// </summary>
 public sealed record ProduksjonHourlyPoint(
     DateTimeOffset TimeUtc,
@@ -77,7 +82,8 @@ public sealed record ProduksjonHourlyPoint(
     double? SpotprisNokMwh,
     double? RkPrisNokMwh = null,
     bool HarOverlop = false,
-    double UbalanseKostNok = 0);
+    double UbalanseKostNok = 0,
+    double? SpotbudMwh = null);
 
 public sealed record ProduksjonMonthly(
     int Year,
