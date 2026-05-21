@@ -84,6 +84,12 @@ else
                              Variant="Variant.Outlined"
                              HelperText="Hvor mye energi en m³ vann gir gjennom anlegget. Funksjon av fallhøyde × virkningsgrad. Brukes til å konvertere vannføring til potensiell energi." />
 
+            <MudNumericField T="int?" @bind-Value="_form.CommissioningYear"
+                             Label="Operasjonsstart (årstall)"
+                             Min="1850" Max="2100" Step="1"
+                             Variant="Variant.Outlined"
+                             HelperText="Året anlegget ble satt i drift. Kontekstuell info — eldste i porteføljen er fra 1905, nyeste fra 2024." />
+
             <MudTextField @bind-Value="_form.TimeZone" Label="Tidssone (IANA)"
                           Required="true" Variant="Variant.Outlined"
                           HelperText="F.eks. Europe/Oslo. Påvirker DST-tolkning av settlement-data." />
@@ -626,6 +632,7 @@ else
                     TurbineType = plant.TurbineType,
                     HeadM = plant.HeadM,
                     EnergyEquivalentKwhPerM3 = plant.EnergyEquivalentKwhPerM3,
+                    CommissioningYear = plant.CommissioningYear,
                 };
             }
             await ReloadDamsAsync();
@@ -1039,7 +1046,8 @@ else
                 NormalAarsproduksjonGwh: _form.NormalAarsproduksjonGwh,
                 TurbineType: _form.TurbineType,
                 HeadM: _form.HeadM,
-                EnergyEquivalentKwhPerM3: _form.EnergyEquivalentKwhPerM3);
+                EnergyEquivalentKwhPerM3: _form.EnergyEquivalentKwhPerM3,
+                CommissioningYear: _form.CommissioningYear);
             await Api.UpdatePlantAsync(PlantId, body);
             Snackbar.Add($"{_form.Name} oppdatert.", Severity.Success);
             Nav.NavigateTo("/plants");
@@ -1099,5 +1107,6 @@ else
         public string? TurbineType { get; set; }
         public double? HeadM { get; set; }
         public double? EnergyEquivalentKwhPerM3 { get; set; }
+        public int? CommissioningYear { get; set; }
     }
 }

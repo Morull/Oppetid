@@ -136,6 +136,7 @@ public static class PlantsEndpoints
             plant.TurbineType,
             plant.HeadM,
             plant.EnergyEquivalentKwhPerM3,
+            plant.CommissioningYear,
         });
     }
 
@@ -211,6 +212,7 @@ public static class PlantsEndpoints
             ? null : body.TurbineType.Trim();
         plant.HeadM = body.HeadM;
         plant.EnergyEquivalentKwhPerM3 = body.EnergyEquivalentKwhPerM3;
+        plant.CommissioningYear = body.CommissioningYear;
 
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
 
@@ -250,6 +252,7 @@ public static class PlantsEndpoints
             plant.TurbineType,
             plant.HeadM,
             plant.EnergyEquivalentKwhPerM3,
+            plant.CommissioningYear,
         });
     }
 
@@ -335,7 +338,8 @@ public sealed record UpdatePlantRequest(
     double? NormalAarsproduksjonGwh = null,
     string? TurbineType = null,
     double? HeadM = null,
-    double? EnergyEquivalentKwhPerM3 = null);
+    double? EnergyEquivalentKwhPerM3 = null,
+    int? CommissioningYear = null);
 
 /// <summary>Bekreftelses-body for <c>DELETE /api/v1/plants/{plantId}/data</c>.</summary>
 public sealed record ResetPlantDataRequest(string ConfirmText);

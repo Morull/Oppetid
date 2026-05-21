@@ -23,21 +23,22 @@ public static class PlantMetadataSeeder
         string PlantId,
         string TurbineType,
         double HeadM,
-        double EnergyEquivalentKwhPerM3);
+        double EnergyEquivalentKwhPerM3,
+        int CommissioningYear);
 
     private static readonly Defaults[] Items =
     [
-        new("ogreyfoss",  "Francis",  66,   0.15053445),
-        new("honnefoss",  "Francis",  39.5, 0.09009258749999999),
-        new("liavatn",    "Kaplan",   14,   0.031931549999999996),
-        new("grodemfoss", "Francis",  59,   0.134568675),
-        new("lindland",   "Francis",  98,   0.22352084999999997),
-        new("haukland",   "Francis", 253,   0.577048725),
-        new("drivdal",    "Francis", 100,   0.2280825),
-        new("logjen",     "Francis",  34.7, 0.0791446275),
-        new("orsdalen",   "Pelton",  336,   0.7663572),
-        new("vikesa",     "Francis", 100,   0.2280825),
-        new("stolskraft", "Francis", 107,   0.244048275),
+        new("ogreyfoss",  "Francis",  66,   0.15053445,           1905),
+        new("honnefoss",  "Francis",  39.5, 0.09009258749999999,  1956),
+        new("liavatn",    "Kaplan",   14,   0.031931549999999996, 2024),
+        new("grodemfoss", "Francis",  59,   0.134568675,          1939),
+        new("lindland",   "Francis",  98,   0.22352084999999997,  2002),
+        new("haukland",   "Francis", 253,   0.577048725,          2013),
+        new("drivdal",    "Francis", 100,   0.2280825,            2008),
+        new("logjen",     "Francis",  34.7, 0.0791446275,         2007),
+        new("orsdalen",   "Pelton",  336,   0.7663572,            2023),
+        new("vikesa",     "Francis", 100,   0.2280825,            2003),
+        new("stolskraft", "Francis", 107,   0.244048275,          2003),
     ];
 
     public static async Task SeedAsync(IServiceProvider services, CancellationToken ct = default)
@@ -75,6 +76,13 @@ public static class PlantMetadataSeeder
                     """;
                 oppdatert += await db.Database.ExecuteSqlRawAsync(
                     sqlEnergy, new object[] { d.EnergyEquivalentKwhPerM3, d.PlantId }, ct).ConfigureAwait(false);
+
+                const string sqlYear = """
+                    UPDATE core.plants SET commissioning_year = @p0
+                    WHERE id = @p1 AND commissioning_year IS NULL;
+                    """;
+                oppdatert += await db.Database.ExecuteSqlRawAsync(
+                    sqlYear, new object[] { d.CommissioningYear, d.PlantId }, ct).ConfigureAwait(false);
             }
 
             if (oppdatert > 0)

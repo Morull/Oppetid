@@ -368,7 +368,8 @@ public sealed record PlantDto(
     double? NormalAarsproduksjonGwh = null,
     string? TurbineType = null,
     double? HeadM = null,
-    double? EnergyEquivalentKwhPerM3 = null);
+    double? EnergyEquivalentKwhPerM3 = null,
+    int? CommissioningYear = null);
 
 /// <summary>
 /// Body for <c>PUT /api/v1/plants/{plantId}</c>. <see cref="Type"/> er enum-string —
@@ -377,6 +378,7 @@ public sealed record PlantDto(
 /// <see cref="NormalAarsproduksjonGwh"/> i GWh; null = ikke satt.
 /// <see cref="TurbineType"/>: typisk "Francis", "Kaplan", "Pelton".
 /// <see cref="HeadM"/>: fallhøyde i meter. <see cref="EnergyEquivalentKwhPerM3"/>: kWh/m³.
+/// <see cref="CommissioningYear"/>: året anlegget ble satt i drift.
 /// </summary>
 public sealed record UpdatePlantRequest(
     string Name,
@@ -387,7 +389,8 @@ public sealed record UpdatePlantRequest(
     double? NormalAarsproduksjonGwh = null,
     string? TurbineType = null,
     double? HeadM = null,
-    double? EnergyEquivalentKwhPerM3 = null);
+    double? EnergyEquivalentKwhPerM3 = null,
+    int? CommissioningYear = null);
 
 /// <summary>Bekreftelses-body for <c>DELETE /api/v1/plants/{plantId}/data</c>.</summary>
 public sealed record ResetPlantDataRequestDto(string ConfirmText);

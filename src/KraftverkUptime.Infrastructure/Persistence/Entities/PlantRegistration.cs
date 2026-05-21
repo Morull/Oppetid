@@ -74,6 +74,13 @@ public sealed class PlantRegistration : IOwnedEntity, ISoftDeletable
     /// </summary>
     public double? EnergyEquivalentKwhPerM3 { get; set; }
 
+    /// <summary>
+    /// Året anlegget ble satt i drift. Eldste i porteføljen er Øgreyfoss
+    /// (1905); nyeste er Liavatn (2024). Kontekstuell info — eldre anlegg
+    /// har typisk flere drifts-utfordringer. Null = ikke satt.
+    /// </summary>
+    public int? CommissioningYear { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? DeletedAt { get; set; }
     public string? DeletedBy { get; set; }
