@@ -24,15 +24,46 @@ html, body {
     min-height: 100vh;
 }
 
+/* Blazor-WASM standard feilbanner. Default-styling (width: 100 %,
+   bottom: 0) ble dekket av MudDrawer på venstre side så "Last inn på
+   nytt"-lenken var skjult (2026-05-21). Endret til toast-styling i
+   nedre høyre hjørne så den ikke overlapper noe. */
 #blazor-error-ui {
     background: var(--mud-palette-error, #991b1b);
     color: #fff;
     display: none;
-    padding: 0.75rem 1.25rem;
+    padding: 0.875rem 1.25rem;
     position: fixed;
-    bottom: 0;
-    width: 100%;
-    z-index: 1000;
+    bottom: 24px;
+    right: 24px;
+    max-width: 480px;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    /* MudDrawer er typisk z-index 1100; legge oss over slik at lenken
+       alltid kan klikkes. */
+    z-index: 2000;
+    display: none;
+    align-items: center;
+    gap: 12px;
+}
+#blazor-error-ui a.reload {
+    color: #fff;
+    text-decoration: underline;
+    font-weight: 600;
+    white-space: nowrap;
+}
+#blazor-error-ui a.dismiss {
+    color: rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+    text-decoration: none;
+    margin-left: auto;
+    font-size: 1.1rem;
+    line-height: 1;
+}
+/* Blazor toggler display: block når en uventet feil oppstår — overstyr
+   til flex så vår nye layout faktisk virker. */
+#blazor-error-ui[style*="block"] {
+    display: flex !important;
 }
 
 .boot {
