@@ -170,11 +170,10 @@
         _ => kategori,
     };
 
-    private static readonly System.Globalization.NumberFormatInfo NorskTall = NumberFormat.Norsk;
-
+    // Tall-formatering: Services/NumberFormat (kultur-uavhengig).
     private static string FormatNok(double v)
     {
         if (v == 0) return "–";
-        return v.ToString("N0", NorskTall) + " NOK";
+        return v.ToString("N0", NumberFormat.Norsk) + " NOK";
     }
 }

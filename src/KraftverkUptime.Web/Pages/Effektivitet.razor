@@ -91,31 +91,49 @@ else if (_response is not null)
             }
         </MudGrid>
 
-        @* ---- η(P)-scatter — Genuine + Transition splittet i to serier ---- *@
+        @* ---- η(P)-scatter — Genuine + Transition splittet i to serier ----
+           Testrapport 2026-05-21 funn #2: ApexPointSeries<EffektivitetBin>
+           kastet NullReferenceException i OnInitialized/Dispose når bin-serien
+           ble bundet til en tom samling. Defensiv strategi:
+           — Hver serie er pre-cachet til et felt (ikke metode-kall som returnerer
+             ny List per render → ApexCharts ville se ny referanse hver gang).
+           — Hver serie rendres bak en @if-guard med .Count > 0 sjekk slik at
+             ApexPointSeries aldri får en tom Items-kilde.
+           — Ytre @if-guard krever at MINST én serie har data før vi rendrer
+             selve ApexChart-en (ellers er chartet meningsløst). *@
         <MudPaper Class="pa-4 mb-4" Elevation="1">
             <MudText Typo="Typo.h3" Class="mb-3">η(P)-kurve</MudText>
-            @if (_response.Punkter.Count > 0)
+            @if (_genuinePunkter.Count > 0 || _transitionPunkter.Count > 0)
             {
                 <ApexChart @key="_chartVersion" TItem="EffektivitetPunkt"
                            Options="_scatterOptions" Height="380">
-                    <ApexPointSeries TItem="EffektivitetPunkt"
-                                     Items="GenuinePunkter()"
-                                     Name="Genuine drift"
-                                     SeriesType="SeriesType.Scatter"
-                                     XValue="p => (decimal)p.EffektKw"
-                                     YValue="p => (decimal)p.EtaPct" />
-                    <ApexPointSeries TItem="EffektivitetPunkt"
-                                     Items="TransitionPunkter()"
-                                     Name="Start/stopp-ramp"
-                                     SeriesType="SeriesType.Scatter"
-                                     XValue="p => (decimal)p.EffektKw"
-                                     YValue="p => (decimal)p.EtaPct" />
-                    <ApexPointSeries TItem="EffektivitetBin"
-                                     Items="_response.Bins"
-                                     Name="Bin-snitt"
-                                     SeriesType="SeriesType.Line"
-                                     XValue="b => (decimal)b.EffektKwMid"
-                                     YValue="b => (decimal)b.SnittEtaPct" />
+                    @if (_genuinePunkter.Count > 0)
+                    {
+                        <ApexPointSeries TItem="EffektivitetPunkt"
+                                         Items="_genuinePunkter"
+                                         Name="Genuine drift"
+                                         SeriesType="SeriesType.Scatter"
+                                         XValue="p => (decimal)p.EffektKw"
+                                         YValue="p => (decimal)p.EtaPct" />
+                    }
+                    @if (_transitionPunkter.Count > 0)
+                    {
+                        <ApexPointSeries TItem="EffektivitetPunkt"
+                                         Items="_transitionPunkter"
+                                         Name="Start/stopp-ramp"
+                                         SeriesType="SeriesType.Scatter"
+                                         XValue="p => (decimal)p.EffektKw"
+                                         YValue="p => (decimal)p.EtaPct" />
+                    }
+                    @if (_response.Bins.Count > 0)
+                    {
+                        <ApexPointSeries TItem="EffektivitetBin"
+                                         Items="@_response.Bins"
+                                         Name="Bin-snitt"
+                                         SeriesType="SeriesType.Line"
+                                         XValue="b => (decimal)b.EffektKwMid"
+                                         YValue="b => (decimal)b.SnittEtaPct" />
+                    }
                 </ApexChart>
                 <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mt-2">
                     Genuine = produksjons-intervall der η ≥ @GenuineEtaFloorPctDisplay %.
@@ -203,9 +221,9 @@ else if (_response is not null)
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd DataLabel="Tidspunkt">@FormatLocal(context.TimeUtc)</MudTd>
-                    <MudTd DataLabel="Effekt" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.EffektKw.ToString("F0")</MudTd>
-                    <MudTd DataLabel="Virkningsgrad" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.EtaPct.ToString("F1")</MudTd>
-                    <MudTd DataLabel="Vannføring" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.VannforingM3PerS.ToString("F2")</MudTd>
+                    <MudTd DataLabel="Effekt" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.EffektKw.ToString("F0", NumberFormat.Norsk)</MudTd>
+                    <MudTd DataLabel="Virkningsgrad" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.EtaPct.ToString("F1", NumberFormat.Norsk)</MudTd>
+                    <MudTd DataLabel="Vannføring" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.VannforingM3PerS.ToString("F2", NumberFormat.Norsk)</MudTd>
                     <MudTd DataLabel="Klassifisering">
                         @if (context.Klassifisering == PunktKlassifisering.Genuine)
                         {
@@ -236,6 +254,13 @@ else if (_response is not null)
     private CaptureRateResultDto? _captureRate;
     private int _chartVersion;
     private ApexChartOptions<EffektivitetPunkt> _scatterOptions = new();
+
+    // Pre-cachet scatter-serier (Testrapport 2026-05-21 funn #2): ApexCharts
+    // ApexPointSeries kastet NullReferenceException når Items var en metode
+    // som returnerte ny List per render. Vi splitter én gang etter at
+    // _response er hentet og holder referansene stabile mellom rerenders.
+    private List<EffektivitetPunkt> _genuinePunkter = new();
+    private List<EffektivitetPunkt> _transitionPunkter = new();
 
     // Drilldown-state: når brukeren klikker en bin filtreres
     // Produksjons-timer-tabellen til den effekt-bin'en.
@@ -294,12 +319,25 @@ else if (_response is not null)
         _error = null;
         _response = null;
         _captureRate = null;
+        _genuinePunkter = new();
+        _transitionPunkter = new();
         await InvokeAsync(StateHasChanged);
         try
         {
             var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
             var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
             _response = await NedetidApi.GetEffektivitetAsync(Filter.PlantId, fromUtc, toUtc);
+
+            // Splitt punktene EN GANG til stabile felt-referanser før ApexChart
+            // får dem. Tidligere bruk av GenuinePunkter()/TransitionPunkter()-
+            // metode-kall returnerte ny List per render → ApexCharts re-init på
+            // hver StateHasChanged → NullReferenceException i OnInitialized.
+            _genuinePunkter = _response.Punkter
+                .Where(p => p.Klassifisering == PunktKlassifisering.Genuine)
+                .ToList();
+            _transitionPunkter = _response.Punkter
+                .Where(p => p.Klassifisering == PunktKlassifisering.Transition)
+                .ToList();
 
             // Capture rate er sekundær — feiler den, viser vi bare effektivitets-data.
             try
@@ -392,13 +430,14 @@ else if (_response is not null)
         return nok > 0 ? KpiAccent.Positive : KpiAccent.Negative;
     }
 
-    // Flyttet til Services/NumberFormat.Norsk (UI-gjennomgang tiltak 9).
-    private static readonly System.Globalization.NumberFormatInfo NorskTall = NumberFormat.Norsk;
+    // Tall-formatering: Services/NumberFormat (kultur-uavhengig). Effektivitet
+    // viser "0 NOK" for null merverdi (ikke "–") siden CR-konteksten har samme
+    // semantikk som CaptureRate-siden — 0 betyr "tjente som spot".
     private static string FormatNok(double v)
     {
         if (v == 0) return "0 NOK";
         var sign = v > 0 ? "+" : "";
-        return sign + v.ToString("N0", NorskTall) + " NOK";
+        return sign + v.ToString("N0", NumberFormat.Norsk) + " NOK";
     }
 
     // ----- Time-detalj-tabell --------------------------------------------------
@@ -416,17 +455,10 @@ else if (_response is not null)
         return _response.Punkter.Where(p => p.EffektKw >= start && p.EffektKw < end);
     }
 
-    /// <summary>Bare Genuine-intervaller — drift over η-gulv. Brukes til scatter-serien.</summary>
-    private List<EffektivitetPunkt> GenuinePunkter() =>
-        _response is null
-            ? new()
-            : _response.Punkter.Where(p => p.Klassifisering == PunktKlassifisering.Genuine).ToList();
-
-    /// <summary>Bare Transition-intervaller — start/stopp-ramper. Brukes til scatter-serien.</summary>
-    private List<EffektivitetPunkt> TransitionPunkter() =>
-        _response is null
-            ? new()
-            : _response.Punkter.Where(p => p.Klassifisering == PunktKlassifisering.Transition).ToList();
+    // Genuine/Transition-listene er forhåndsutregnet til feltene
+    // _genuinePunkter/_transitionPunkter i LoadAsync — se kommentar over
+    // ApexChart-blokken. Tidligere metode-versjoner returnerte ny List per
+    // render og forårsaket ApexCharts NRE (Testrapport 2026-05-21 funn #2).
 
     /// <summary>Søk på tidspunkt (yyyy-MM-dd HH:mm i lokal tid) eller klassifisering.</summary>
     private bool MatchesTimerSearch(EffektivitetPunkt p)
@@ -466,9 +498,9 @@ else if (_response is not null)
         {
             // Semikolon-separert for norsk Excel; komma som desimal.
             sb.Append(FormatLocal(p.TimeUtc)).Append(';');
-            sb.Append(p.EffektKw.ToString("F0", NorskTall)).Append(';');
-            sb.Append(p.EtaPct.ToString("F1", NorskTall)).Append(';');
-            sb.Append(p.VannforingM3PerS.ToString("F2", NorskTall)).Append(';');
+            sb.Append(p.EffektKw.ToString("F0", NumberFormat.Norsk)).Append(';');
+            sb.Append(p.EtaPct.ToString("F1", NumberFormat.Norsk)).Append(';');
+            sb.Append(p.VannforingM3PerS.ToString("F2", NumberFormat.Norsk)).Append(';');
             sb.AppendLine(p.Klassifisering.ToString());
         }
         var bin = _selectedBinStart.HasValue

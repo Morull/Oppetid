@@ -702,12 +702,14 @@ else if (_data is not null)
         return $"Det er {planTreffStr}. {timingStr} {merverdiStr}{trailing}";
     }
 
-    // Flyttet til Services/NumberFormat.Norsk (UI-gjennomgang tiltak 9).
-    private static readonly System.Globalization.NumberFormatInfo NorskTall = NumberFormat.Norsk;
+    // Tall-formatering: Services/NumberFormat. Produksjon har egen
+    // tau-terskel (|v| < 0,5 → "–") fordi merverdi-tall ofte havner i
+    // ±0,2 NOK område når seasonality nuller seg ut. NumberFormat.NokSigned
+    // bruker streng == 0 — vi ønsker å rounde til "–" tidligere.
     private static string FormatNokSigned(double v)
     {
         if (Math.Abs(v) < 0.5) return "–";
         var sign = v > 0 ? "+" : "";
-        return sign + v.ToString("N0", NorskTall);
+        return sign + v.ToString("N0", NumberFormat.Norsk);
     }
 }

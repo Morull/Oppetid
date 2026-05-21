@@ -96,7 +96,7 @@
                             @if (plantAndel.HasValue)
                             {
                                 <span style="font-weight: 400; font-size: 0.85em; color: var(--mud-palette-text-secondary);">
-                                    @($" · {plantAndel.Value * 100:F1} % av total")
+                                    @(" · " + NumberFormat.Pct(plantAndel.Value, 1) + " av total")
                                 </span>
                             }
                         </MudText>
@@ -232,7 +232,7 @@ else if (IsPortfolioMode && _portfolio is not null)
                 <MudItem xs="12" md="4">
                     <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Differanse</MudText>
                     <MudText Typo="Typo.body2" Class="mb-1">
-                        @(bedreEnnDognvakt ? "+" : "")@FormatNok(diffNok) (@pct.ToString("F0") %)
+                        @(bedreEnnDognvakt ? "+" : "")@FormatNok(diffNok) (@pct.ToString("F0", NumberFormat.Norsk) %)
                     </MudText>
                     <MudText Typo="Typo.h4" Style="@(bedreEnnDognvakt ? "color:#2A9D8F;" : "color:#E74C3C;")">
                         @(bedreEnnDognvakt ? "+" : "")@FormatNok(annualisertDiff)
@@ -298,14 +298,14 @@ else if (IsPortfolioMode && _portfolio is not null)
                     <MudTd>@context.PlantName</MudTd>
                     <MudTd>@FormatLocal(context.StartUtc)</MudTd>
                     <MudTd>@FormatLocal(context.EndUtc)</MudTd>
-                    <MudTd Style="text-align:right">@context.VarighetTimer.ToString("F1")</MudTd>
+                    <MudTd Style="text-align:right">@context.VarighetTimer.ToString("F1", NumberFormat.Norsk)</MudTd>
                     <MudTd>@DisplayKategori(context.Kategori)</MudTd>
                     <MudTd>
                         <MudTooltip Text="@(context.CauseCode ?? "")">
                             <span>@CauseFormatter.Display(context.CauseCode)</span>
                         </MudTooltip>
                     </MudTd>
-                    <MudTd Style="text-align:right">@context.EkstraTimerSpart.ToString("F1")</MudTd>
+                    <MudTd Style="text-align:right">@context.EkstraTimerSpart.ToString("F1", NumberFormat.Norsk)</MudTd>
                     <MudTd Style="text-align:right">@(context.ReddetProduksjon_NOK > 0 ? FormatNok(context.ReddetProduksjon_NOK) : "–")</MudTd>
                     <MudTd Style="text-align:right">@(context.ReddetUbalanse_NOK > 0 ? FormatNok(context.ReddetUbalanse_NOK) : "–")</MudTd>
                     <MudTd Style="text-align:right; font-weight: 500;">@FormatNok(context.ReddetNok)</MudTd>
@@ -356,7 +356,7 @@ else if (IsPortfolioMode && _portfolio is not null)
             </HeaderContent>
             <RowTemplate>
                 <MudTd>@context.PlantName</MudTd>
-                <MudTd Style="text-align:right">@context.InstalledCapacityMw.ToString("F1")</MudTd>
+                <MudTd Style="text-align:right">@context.InstalledCapacityMw.ToString("F1", NumberFormat.Norsk)</MudTd>
                 <MudTd Style="text-align:right">@context.ReddbareEvents</MudTd>
                 <MudTd Style="text-align:right">@context.TotaleEvents</MudTd>
                 <MudTd Style="text-align:right">@(context.ReddetProduksjon_NOK > 0 ? FormatNok(context.ReddetProduksjon_NOK) : "–")</MudTd>
@@ -386,7 +386,7 @@ else if (!IsPortfolioMode && _response is not null)
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
             <KpiCard Label="Snitt ekstra-timer spart"
-                     Value="@_response.SnittEkstraTimerPerEvent.ToString("F1")"
+                     Value="@_response.SnittEkstraTimerPerEvent.ToString("F1", NumberFormat.Norsk)"
                      SubText="timer per reddbar event"
                      Accent="KpiAccent.Warning" />
         </MudItem>
@@ -430,7 +430,7 @@ else if (!IsPortfolioMode && _response is not null)
                 <MudItem xs="12" md="4">
                     <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Differanse</MudText>
                     <MudText Typo="Typo.body2" Class="mb-1">
-                        @(bedreEnnDognvakt ? "+" : "")@FormatNok(diffNok) (@pct.ToString("F0") %)
+                        @(bedreEnnDognvakt ? "+" : "")@FormatNok(diffNok) (@pct.ToString("F0", NumberFormat.Norsk) %)
                     </MudText>
                     <MudText Typo="Typo.h4" Style="@(bedreEnnDognvakt ? "color:#2A9D8F;" : "color:#E74C3C;")">
                         @(bedreEnnDognvakt ? "+" : "")@FormatNok(annualisertDiff)
@@ -463,15 +463,15 @@ else if (!IsPortfolioMode && _response is not null)
         <MudGrid>
             <MudItem xs="12" sm="6" md="3">
                 <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Installert effekt</MudText>
-                <MudText Typo="Typo.body1">@_response.InstallertEffektMw.ToString("F2") MW</MudText>
+                <MudText Typo="Typo.body1">@_response.InstallertEffektMw.ToString("F2", NumberFormat.Norsk) MW</MudText>
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
                 <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Snitt spotpris</MudText>
-                <MudText Typo="Typo.body1">@_response.SnittSpotprisNokMwh.ToString("F0") NOK/MWh</MudText>
+                <MudText Typo="Typo.body1">@_response.SnittSpotprisNokMwh.ToString("F0", NumberFormat.Norsk) NOK/MWh</MudText>
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
                 <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Snitt RK-tillegg</MudText>
-                <MudText Typo="Typo.body1">@_response.SnittUbalansetilleggNokMwh.ToString("F0") NOK/MWh</MudText>
+                <MudText Typo="Typo.body1">@_response.SnittUbalansetilleggNokMwh.ToString("F0", NumberFormat.Norsk) NOK/MWh</MudText>
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
                 <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Vakt-modell</MudText>
@@ -566,11 +566,11 @@ else if (!IsPortfolioMode && _response is not null)
             <RowTemplate>
                 <MudTd DataLabel="Start">@FormatLocal(context.Event.StartUtc)</MudTd>
                 <MudTd DataLabel="Slutt">@FormatLocal(context.Event.EndUtc)</MudTd>
-                <MudTd DataLabel="Faktisk" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.Event.VarighetTimer.ToString("F1")</MudTd>
+                <MudTd DataLabel="Faktisk" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.Event.VarighetTimer.ToString("F1", NumberFormat.Norsk)</MudTd>
                 <MudTd DataLabel="Kategori">@DisplayKategori(context.Event.Kategori)</MudTd>
                 <MudTd DataLabel="Vakt-vindu">@(context.ErInnenforVakt ? "Ja" : "–")</MudTd>
                 <MudTd DataLabel="Reddbar">@(context.ErReddbar ? "Ja" : "–")</MudTd>
-                <MudTd DataLabel="Ekstra" Style="text-align:right">@(context.ErInnenforVakt && context.ErReddbar ? context.EkstraTimerSpart.ToString("F1") : "–")</MudTd>
+                <MudTd DataLabel="Ekstra" Style="text-align:right">@(context.ErInnenforVakt && context.ErReddbar ? context.EkstraTimerSpart.ToString("F1", NumberFormat.Norsk) : "–")</MudTd>
                 <MudTd DataLabel="Overløp" Style="text-align:right">@DisplayOverflow(context)</MudTd>
                 <MudTd DataLabel="Overløp NOK" Style="text-align:right">@(context.ReddetProduksjon_NOK > 0 ? FormatNok(context.ReddetProduksjon_NOK) : "–")</MudTd>
                 <MudTd DataLabel="Ubalanse NOK" Style="text-align:right">@(context.ReddetUbalanse_NOK > 0 ? FormatNok(context.ReddetUbalanse_NOK) : "–")</MudTd>
@@ -725,9 +725,9 @@ else if (!IsPortfolioMode && _response is not null)
     private string VaktVurderingText()
     {
         var r = VaktRoiRatio();
-        if (r >= 1.0) return $"Lønnsom ({r:F2}×)";
-        if (r >= 0.5) return $"Marginal ({r:F2}×)";
-        if (r > 0) return $"Ikke lønnsom ({r:F2}×)";
+        if (r >= 1.0) return $"Lønnsom ({r.ToString("F2", NumberFormat.Norsk)}×)";
+        if (r >= 0.5) return $"Marginal ({r.ToString("F2", NumberFormat.Norsk)}×)";
+        if (r > 0) return $"Ikke lønnsom ({r.ToString("F2", NumberFormat.Norsk)}×)";
         return "–";
     }
 
@@ -1134,9 +1134,9 @@ else if (!IsPortfolioMode && _response is not null)
         var ratio = aarlig / kost;
         if (diff >= 0)
         {
-            return $"Reddet ≈ {ratio:F1}× anleggets vakt-andel";
+            return $"Reddet ≈ {ratio.ToString("F1", NumberFormat.Norsk)}× anleggets vakt-andel";
         }
-        return $"Reddet < anleggets vakt-andel (~{ratio:F1}×)";
+        return $"Reddet < anleggets vakt-andel (~{ratio.ToString("F1", NumberFormat.Norsk)}×)";
     }
 
     private KpiAccent RoiAccent()
@@ -1154,11 +1154,9 @@ else if (!IsPortfolioMode && _response is not null)
     private static string FormatLocal(DateTimeOffset dt)
         => dt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
 
-    // Flyttet til Services/NumberFormat.Norsk (UI-gjennomgang tiltak 9).
-    private static readonly System.Globalization.NumberFormatInfo NorskTall = NumberFormat.Norsk;
-
-    private static string FormatNok(double nok)
-        => nok.ToString("N0", NorskTall);
+    // Tall-formatering: Services/NumberFormat. Vakt-ROI viser 0 som "0"
+    // (ikke "–") siden 0 NOK reddet er en MENINGSFULL verdi.
+    private static string FormatNok(double nok) => nok.ToString("N0", NumberFormat.Norsk);
 
     private static string DisplayOverflow(VaktRoiEventDto e)
     {

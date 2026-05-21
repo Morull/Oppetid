@@ -371,11 +371,9 @@
         return ("#9AA5B0", "Ingen drift");
     }
 
-    // Flyttet til Services/NumberFormat.Norsk (UI-gjennomgang tiltak 9).
-    private static readonly System.Globalization.NumberFormatInfo NorskTall =
-        KraftverkUptime.Web.Services.NumberFormat.Norsk;
-
-    private static string FormatNok(double nok) => nok.ToString("N0", NorskTall);
+    // Tall-formatering: Services/NumberFormat (kultur-uavhengig).
+    private static string FormatNok(double nok) =>
+        nok.ToString("N0", KraftverkUptime.Web.Services.NumberFormat.Norsk);
 
     private sealed record HourCell(
         string Color,

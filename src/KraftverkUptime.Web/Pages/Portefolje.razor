@@ -87,7 +87,7 @@ else if (_rows is not null)
             <MudItem xs="12" sm="6" md="3">
                 <KpiCard Label="Produksjon"
                          Value="@($"{FormatMwh(_rows.Sum(r => r.TotalProductionMwh))} MWh")"
-                         SubText="@($"{_rows.Count} anlegg · {_rows.Sum(r => r.InstalledCapacityMw):F1} MW installert")"
+                         SubText="@($"{_rows.Count} anlegg · {FormatMwh(_rows.Sum(r => r.InstalledCapacityMw))} MW installert")"
                          Accent="KpiAccent.Neutral" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
@@ -99,7 +99,7 @@ else if (_rows is not null)
             <MudItem xs="12" sm="6" md="3">
                 <KpiCard Label="Nedetidstap"
                          Value="@($"{FormatNok(_rows.Sum(r => r.TapNok))} NOK")"
-                         SubText="@($"{_rows.Sum(r => r.NedetidTimer):F0} timer · {_rows.Sum(r => r.AntallEvents)} hendelser")"
+                         SubText="@($"{FormatHours(_rows.Sum(r => r.NedetidTimer))} timer · {_rows.Sum(r => r.AntallEvents)} hendelser")"
                          Accent="KpiAccent.Negative" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
@@ -241,7 +241,7 @@ else if (_rows is not null)
                                 <MudIcon Icon="@Icons.Material.Filled.PriorityHigh"
                                          Color="MudBlazor.Color.Error" Size="MudBlazor.Size.Small" />
                             }
-                            else { @context.InstalledCapacityMw.ToString("F1") }
+                            else { @context.InstalledCapacityMw.ToString("F1", NumberFormat.Norsk) }
                         </MudTd>
                         <MudTd Style="text-align:right">@FormatRatio(context.AvailabilityFactor)</MudTd>
                         <MudTd Style="text-align:right">@FormatRatio(context.ForcedOutageRate)</MudTd>
@@ -274,7 +274,7 @@ else if (_rows is not null)
                     <FooterContent>
                         <MudTFootRow Style="background: rgba(46,157,143,0.08); font-weight: 600;">
                             <MudTd><strong>SUM</strong></MudTd>
-                            <MudTd Style="text-align:right; white-space: nowrap;">@_rows.Sum(r => r.InstalledCapacityMw).ToString("F1")</MudTd>
+                            <MudTd Style="text-align:right; white-space: nowrap;">@_rows.Sum(r => r.InstalledCapacityMw).ToString("F1", NumberFormat.Norsk)</MudTd>
                             <MudTd Style="text-align:right; color: var(--mud-palette-text-secondary);">—</MudTd>
                             <MudTd Style="text-align:right; color: var(--mud-palette-text-secondary);">—</MudTd>
                             <MudTd Style="text-align:right; white-space: nowrap;">@FormatMwh(_rows.Sum(r => r.TotalProductionMwh))</MudTd>
@@ -586,23 +586,22 @@ else if (_rows is not null)
         var totalHours = withDq.Sum(d => d.TotalHours);
         if (totalHours == 0) return "—";
         var goodHours = withDq.Sum(d => d.GoodHours);
-        return $"{100.0 * goodHours / totalHours:F1} %";
+        return (100.0 * goodHours / totalHours).ToString("F1", NumberFormat.Norsk) + " %";
     }
 
-    // -- Format-helpers --
-    private static string FormatHours(double v) => v == 0 ? "–" : v.ToString("F0");
-    private static string FormatMwh(double v) => v == 0 ? "–" : v.ToString("F1");
-    private static string FormatRatio(double v) => v == 0 ? "–" : (v * 100).ToString("F1") + " %";
-    private static string FormatCr(double v) => v == 0 ? "–" : v.ToString("F2");
-
-    // NorskTall flyttet til Services/NumberFormat.cs (UI-gjennomgang tiltak 9).
-    // Local alias beholdes for å unngå å touche alle call-sites i ToString("N0", NorskTall).
-    private static readonly System.Globalization.NumberFormatInfo NorskTall = NumberFormat.Norsk;
-    private static string FormatNok(double v) => v == 0 ? "–" : v.ToString("N0", NorskTall);
+    // -- Format-helpers (alle bruker Services/NumberFormat for konsistens) --
+    private static string FormatHours(double v) => v == 0 ? "–" : v.ToString("F0", NumberFormat.Norsk);
+    private static string FormatMwh(double v) => v == 0 ? "–" : v.ToString("F1", NumberFormat.Norsk);
+    // Tall-formatering delegerer til Services/NumberFormat (kultur-uavhengig).
+    // Testrapport 2026-05-21 funn #3: FormatRatio/FormatCr brukte default-kultur
+    // (= invariant under InvariantGlobalization), så viste "12.3" og "1.05" i
+    // stedet for norsk "12,3" og "1,05".
+    private static string FormatRatio(double v) => NumberFormat.Ratio(v);
+    private static string FormatCr(double v) => v == 0 ? "–" : v.ToString("F2", NumberFormat.Norsk);
+    private static string FormatNok(double v) => NumberFormat.Nok(v);
 
     /// <summary>Formatterer normalår-andel som "X %" eller "–" hvis ikke tilgjengelig.</summary>
-    private static string FormatNormalAarsAndel(double? andel) =>
-        andel.HasValue ? (andel.Value * 100).ToString("F0", NorskTall) + " %" : "–";
+    private static string FormatNormalAarsAndel(double? andel) => NumberFormat.Pct(andel, 0);
 
     /// <summary>
     /// Portefølje-andel: total faktisk MWh / sum forventet MWh for alle anlegg
@@ -625,11 +624,6 @@ else if (_rows is not null)
         }
         return forventetMwh > 0 ? faktiskMwh / forventetMwh : null;
     }
-    private static string FormatNokSigned(double v)
-    {
-        if (v == 0) return "–";
-        var sign = v > 0 ? "+" : "";
-        return sign + v.ToString("N0", NorskTall);
-    }
+    private static string FormatNokSigned(double v) => NumberFormat.NokSigned(v);
     private static string FormatMerverdi(double v) => FormatNokSigned(v);
 }

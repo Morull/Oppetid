@@ -2,6 +2,7 @@
 @implements IDisposable
 @using ApexCharts
 @using KraftverkUptime.Web.Components
+@using KraftverkUptime.Web.Services
 @inject ReportsApi Api
 @inject AnnotationsApi AnnotationsApi
 @inject KaiaCostApi KaiaCostApi
@@ -966,18 +967,21 @@ async Task GoToReport(string idempotencyKey)
         yield return new("Oppgjør", FormatNumber(Get("Oppgjor_NOK"), "N0") + " NOK", "Sum oppgjør i perioden", KpiAccent.Warning);
     }
 
-    private static string FormatNumber(double? v, string format)
-        => v.HasValue ? v.Value.ToString(format, System.Globalization.CultureInfo.InvariantCulture) : "–";
+    // Tall-helpere delegerer til Services/NumberFormat (kultur-uavhengig, bygd
+    // på eksplisitt NumberFormatInfo). Testrapport 2026-05-21 funn #1 og #3:
+    // den gamle FormatNok lagde new CultureInfo("nb-NO") som kaster under
+    // InvariantGlobalization (Blazor WASM-csproj), og FormatNumber brukte
+    // InvariantCulture som ga "2,266,525" — feil format på rapport-detalj
+    // mens resten av appen viste "2 266 525".
+    private static string FormatNumber(double? v, string format) =>
+        NumberFormat.Number(v, format);
 
     /// <summary>
     /// Formaterer NOK-beløp med tusenskille og to desimaler (norsk konvensjon).
     /// Null vises som "–" — KAIA-kostnad skiller funksjonelt mellom "ukjent"
     /// (megler-data manglet) og 0 (ingen handler).
     /// </summary>
-    private static string FormatNok(double? v) =>
-        v.HasValue
-            ? v.Value.ToString("N2", new System.Globalization.CultureInfo("nb-NO")) + " kr"
-            : "–";
+    private static string FormatNok(double? v) => NumberFormat.NokKr2(v);
 
     private static string FormatKaiaTotal(KaiaCostDto k) => FormatNok(k.TotalNok);
 
@@ -993,25 +997,24 @@ async Task GoToReport(string idempotencyKey)
             + "Nord Pool/eSett-gebyrer er viderefakturert og holdes utenfor.";
     }
 
-    private static string FormatRatio(double? v)
-        => v.HasValue ? (v.Value * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " %" : "–";
+    private static string FormatRatio(double? v) => NumberFormat.Ratio(v);
 
     private static string FormatKpi(KpiDto k)
     {
         if (!k.Value.HasValue) return "–";
         return k.Unit switch
         {
-            "ratio" => (k.Value.Value * 100).ToString("F2") + " %",
-            "MWh" => k.Value.Value.ToString("F2"),
-            "NOK" => k.Value.Value.ToString("N0"),
-            "hours" => k.Value.Value.ToString("F1"),
-            "events" => k.Value.Value.ToString("F0"),
-            _ => k.Value.Value.ToString("F4"),
+            "ratio" => NumberFormat.Pct(k.Value, 2),
+            "MWh" => NumberFormat.Number(k.Value, "F2"),
+            "NOK" => NumberFormat.Number(k.Value, "N0"),
+            "hours" => NumberFormat.Number(k.Value, "F1"),
+            "events" => NumberFormat.Number(k.Value, "F0"),
+            _ => NumberFormat.Number(k.Value, "F4"),
         };
     }
 
     private static string FormatNullable(double? v, string format) =>
-        v.HasValue ? v.Value.ToString(format, System.Globalization.CultureInfo.InvariantCulture) : "–";
+        NumberFormat.Number(v, format);
 
     private static string FormatPeriod(DateTimeOffset start, DateTimeOffset end)
     {

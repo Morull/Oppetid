@@ -41,7 +41,7 @@ else if (_response is not null)
                 <MudIcon Icon="@Icons.Material.Filled.Info" Color="MudBlazor.Color.Warning" Size="MudBlazor.Size.Small" />
                 <MudText Typo="Typo.body2">
                     <strong>Datakvalitet:</strong>
-                    @($"{_dataQuality.GoodPct * 100:F1} %") god av @_dataQuality.TotalHours timer.
+                    @NumberFormat.Pct(_dataQuality.GoodPct, 1) god av @_dataQuality.TotalHours timer.
                     @if (_dataQuality.WarningHours + _dataQuality.BadHours + _dataQuality.MissingHours > 0)
                     {
                         <span>(@(_dataQuality.WarningHours) advarsel, @(_dataQuality.BadHours) dårlig, @(_dataQuality.MissingHours) mangler.)</span>
@@ -65,13 +65,13 @@ else if (_response is not null)
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
             <KpiCard Label="Total nedetid"
-                     Value="@_response.TotalNedetidTimer.ToString("F1")"
+                     Value="@_response.TotalNedetidTimer.ToString("F1", NumberFormat.Norsk)"
                      SubText="timer"
                      Accent="KpiAccent.Warning" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
             <KpiCard Label="Estimert tap"
-                     Value="@_response.TotalTapMwh.ToString("F1")"
+                     Value="@_response.TotalTapMwh.ToString("F1", NumberFormat.Norsk)"
                      SubText="MWh (plan/spotbud i nedetidstimene)"
                      Accent="KpiAccent.Neutral" />
         </MudItem>
@@ -168,7 +168,7 @@ else if (_response is not null)
             <RowTemplate>
                 <MudTd DataLabel="Start">@FormatLocal(context.StartUtc)</MudTd>
                 <MudTd DataLabel="Slutt">@FormatLocal(context.EndUtc)</MudTd>
-                <MudTd DataLabel="Varighet" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.VarighetTimer.ToString("F1")</MudTd>
+                <MudTd DataLabel="Varighet" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.VarighetTimer.ToString("F1", NumberFormat.Norsk)</MudTd>
                 <MudTd DataLabel="Kategori">
                     <MudChip T="string" Size="MudBlazor.Size.Small" Color="@KategoriColor(context.Kategori)">@DisplayKategori(context.Kategori)</MudChip>
                 </MudTd>
@@ -177,7 +177,7 @@ else if (_response is not null)
                         <span>@CauseFormatter.Display(context.CauseCode)</span>
                     </MudTooltip>
                 </MudTd>
-                <MudTd DataLabel="Tap (MWh)" Style="text-align:right">@context.TapMwh.ToString("F2")</MudTd>
+                <MudTd DataLabel="Tap (MWh)" Style="text-align:right">@context.TapMwh.ToString("F2", NumberFormat.Norsk)</MudTd>
                 <MudTd DataLabel="Tap (NOK)" Style="text-align:right">@FormatNok(context.TapNok)</MudTd>
                 <MudTd DataLabel="Operlog">@(context.HarOperlogMatch ? "✓" : "")</MudTd>
                 <MudTd DataLabel="Detaljer" Style="text-align:center;">
@@ -215,7 +215,7 @@ else if (_response is not null)
             <RowTemplate>
                 <MudTd>@DisplayKategori(context.Kategori)</MudTd>
                 <MudTd Style="text-align:right">@context.Antall</MudTd>
-                <MudTd Style="text-align:right">@context.TotalTimer.ToString("F1")</MudTd>
+                <MudTd Style="text-align:right">@context.TotalTimer.ToString("F1", NumberFormat.Norsk)</MudTd>
                 <MudTd Style="text-align:right">@FormatNok(context.TotalTapNok)</MudTd>
             </RowTemplate>
         </MudTable>
@@ -329,7 +329,7 @@ else if (_response is not null)
             // i dialogen vil fortsatt advare ved lagring.
         }
 
-        var classification = $"{DisplayKategori(evt.Kategori)} ({evt.VarighetTimer:F1} t)";
+        var classification = $"{DisplayKategori(evt.Kategori)} ({evt.VarighetTimer.ToString("F1", NumberFormat.Norsk)} t)";
         var parameters = new DialogParameters<AnnotationDialog>
         {
             { x => x.PlantId, Filter.PlantId },
@@ -499,11 +499,10 @@ else if (_response is not null)
     private static string FormatLocal(DateTimeOffset dt)
         => dt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
 
-    // Flyttet til Services/NumberFormat.Norsk (UI-gjennomgang tiltak 9).
-    private static readonly System.Globalization.NumberFormatInfo NorskTall = NumberFormat.Norsk;
-
-    private static string FormatNok(double nok)
-        => nok.ToString("N0", NorskTall);
+    // Tall-formatering: Services/NumberFormat (kultur-uavhengig).
+    // Nedetid viser 0 som "0" (ikke "–") siden 0 her er en MENINGSFULL verdi
+    // — "ingen kostnad i kategorien" — ikke "ukjent". Derfor egen variant.
+    private static string FormatNok(double nok) => nok.ToString("N0", NumberFormat.Norsk);
 
     private static string DisplayKategori(string kategori) => kategori switch
     {

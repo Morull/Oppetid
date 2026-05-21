@@ -31,6 +31,7 @@
                 State="@(harData ? KpiState.Normal : KpiState.NoData)" />
 *@
 
+@using KraftverkUptime.Web.Services
 @using KraftverkUptime.Web.Theming
 
 <MudPaper Class="pa-3 h-100 dk-kpi-card" Elevation="2"
@@ -84,7 +85,7 @@
                 <MudIcon Icon="@_trendIcon" Color="@_trendIconColor" Size="MudBlazor.Size.Small" />
                 <MudText Typo="Typo.caption" Color="@_trendIconColor">
                     @if (_trendIsNew) { @("ny") }
-                    else { @($"{(_trendPct >= 0 ? "+" : "")}{_trendPct:F1} %") }
+                    else { @NumberFormat.SignedPctValue(_trendPct) }
                 </MudText>
                 <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">vs forrige</MudText>
             </div>

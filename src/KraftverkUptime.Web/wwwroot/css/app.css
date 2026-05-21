@@ -253,6 +253,22 @@ body.dk-dark .dk-subbar {
 .dk-page-title {
     margin: 0;
 }
+/*  Testrapport 2026-05-21 funn #4: <FocusOnNavigate Selector="h1"/> i
+    App.razor setter programmatisk fokus på sidetittelen etter hver
+    ruteendring (for skjermlesere → "ny side"). Browseren tegner sin default
+    outline rundt hele sidehodet til brukeren klikker noe annet — visuelt
+    forstyrrende.
+    Fix: fjern outline ved alle fokus-stier (også programmatic), men sett
+    den TILBAKE for :focus-visible — som bare trigges av tastatur-navigasjon.
+    Skjermleser-fokus + mus-klikk får ingen ramme; Tab-trykk får ramme. */
+.dk-page-title:focus {
+    outline: none;
+}
+.dk-page-title:focus-visible {
+    outline: 2px solid var(--mud-palette-primary);
+    outline-offset: 4px;
+    border-radius: 2px;
+}
 .dk-page-subtitle {
     margin-top: 4px;
 }

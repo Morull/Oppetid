@@ -43,22 +43,22 @@ else if (_aggregate is not null)
         <MudGrid Class="mb-4">
             <MudItem xs="12" sm="6" md="3">
                 <KpiCard Label="Capture-pris"
-                         Value="@($"{_aggregate.CapturePriceNokMwh.ToString("F0", NorskTall)} NOK/MWh")"
+                         Value="@($"{_aggregate.CapturePriceNokMwh.ToString("F0", NumberFormat.Norsk)} NOK/MWh")"
                          TrendCurrent="_aggregate.CapturePriceNokMwh"
                          TrendPrevious="_previous?.CapturePriceNokMwh"
                          HigherIsBetter="true" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
                 <KpiCard Label="CR (times)"
-                         Value="@_aggregate.TimesCr.ToString("F2", NorskTall)"
-                         SubText="@($"baseline {_aggregate.TimesBaselineNokMwh.ToString("F0", NorskTall)} NOK/MWh")"
+                         Value="@_aggregate.TimesCr.ToString("F2", NumberFormat.Norsk)"
+                         SubText="@($"baseline {_aggregate.TimesBaselineNokMwh.ToString("F0", NumberFormat.Norsk)} NOK/MWh")"
                          TrendCurrent="_aggregate.TimesCr"
                          TrendPrevious="_previous?.TimesCr"
                          HigherIsBetter="true" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
                 <KpiCard Label="CR (dag, P5/P95-filtrert)"
-                         Value="@_aggregate.DagCr.ToString("F2", NorskTall)"
+                         Value="@_aggregate.DagCr.ToString("F2", NumberFormat.Norsk)"
                          SubText="@($"{_aggregate.AntallDagerEtterFilter} av {_aggregate.AntallDager} dager")"
                          TrendCurrent="_aggregate.DagCr"
                          TrendPrevious="_previous?.DagCr"
@@ -82,13 +82,13 @@ else if (_aggregate is not null)
                 <MudItem xs="12" md="6">
                     <KpiCard Label="Beste måned"
                              Value="@beste.Label"
-                             SubText="@($"CR {beste.TimesCr:F2} · {InterpretCr(beste.TimesCr)}")"
+                             SubText="@($"CR {beste.TimesCr.ToString("F2", NumberFormat.Norsk)} · {InterpretCr(beste.TimesCr)}")"
                              Accent="KpiAccent.Positive" />
                 </MudItem>
                 <MudItem xs="12" md="6">
                     <KpiCard Label="Svakeste måned"
                              Value="@verste.Label"
-                             SubText="@($"CR {verste.TimesCr:F2} · {InterpretCr(verste.TimesCr)}")"
+                             SubText="@($"CR {verste.TimesCr.ToString("F2", NumberFormat.Norsk)} · {InterpretCr(verste.TimesCr)}")"
                              Accent="KpiAccent.Negative" />
                 </MudItem>
             </MudGrid>
@@ -131,11 +131,11 @@ else if (_aggregate is not null)
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd>@($"{context.Year}-{context.Month:D2}")</MudTd>
-                        <MudTd Style="text-align:right">@context.Result.CapturePriceNokMwh.ToString("F0") NOK</MudTd>
-                        <MudTd Style="text-align:right">@context.Result.TimesBaselineNokMwh.ToString("F0") NOK</MudTd>
+                        <MudTd Style="text-align:right">@context.Result.CapturePriceNokMwh.ToString("F0", NumberFormat.Norsk) NOK</MudTd>
+                        <MudTd Style="text-align:right">@context.Result.TimesBaselineNokMwh.ToString("F0", NumberFormat.Norsk) NOK</MudTd>
                         <MudTd Style="text-align:right">
                             <span style="@($"color: {(context.Result.TimesCr >= 1.0 ? "#2A9D8F" : "#E76F51")}; font-weight: 600;")">
-                                @context.Result.TimesCr.ToString("F2")
+                                @context.Result.TimesCr.ToString("F2", NumberFormat.Norsk)
                             </span>
                         </MudTd>
                         <MudTd Style="text-align:right">@FormatNokSigned(context.Result.MerverdiNok)</MudTd>
@@ -328,7 +328,9 @@ else if (_aggregate is not null)
             var lo = edges[i];
             var hi = edges[i + 1];
             var count = daily.Count(d => d.RaCr >= lo && d.RaCr < hi);
-            var label = double.IsPositiveInfinity(hi) ? $">{lo:F2}" : $"{lo:F2}–{hi:F2}";
+            var label = double.IsPositiveInfinity(hi)
+                ? ">" + lo.ToString("F2", NumberFormat.Norsk)
+                : lo.ToString("F2", NumberFormat.Norsk) + "–" + hi.ToString("F2", NumberFormat.Norsk);
             bins.Add(new HistogramBin(label, count));
         }
         return bins;
@@ -385,13 +387,15 @@ else if (_aggregate is not null)
         _       => "betydelig svakere enn ren spot",
     };
 
-    // Flyttet til Services/NumberFormat.Norsk (UI-gjennomgang tiltak 9).
-    private static readonly System.Globalization.NumberFormatInfo NorskTall = NumberFormat.Norsk;
+    // Tall-formatering: Services/NumberFormat (kultur-uavhengig). Capture rate
+    // beholder "0" for null-merverdi (ikke "–"), siden 0 her er en MENINGSFULL
+    // verdi — "ren spot-eksponering tjente nøyaktig som spot". NumberFormat
+    // .NokSigned returnerer "–" for 0, så vi har egen variant her.
     private static string FormatNokSigned(double v)
     {
         if (v == 0) return "0";
         var sign = v > 0 ? "+" : "";
-        return sign + v.ToString("N0", NorskTall);
+        return sign + v.ToString("N0", NumberFormat.Norsk);
     }
 
     private sealed record MonthlyPoint(string Label, double TimesCr, double DagCr);
