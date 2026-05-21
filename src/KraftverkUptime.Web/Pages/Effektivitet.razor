@@ -125,14 +125,17 @@ else if (_response is not null)
                                          XValue="p => (decimal)p.EffektKw"
                                          YValue="p => (decimal)p.EtaPct" />
                     }
-                    @if (_response.Bins.Count > 0)
+                    @if (_binLine.Count > 0)
                     {
-                        <ApexPointSeries TItem="EffektivitetBin"
-                                         Items="@_response.Bins"
+                        @* Bin-serien MÅ ha TItem="EffektivitetPunkt" for å matche
+                           parent ApexChart-en. Hadde tidligere TItem="EffektivitetBin"
+                           som ga generic-type-mismatch og NRE i OnInitialized. *@
+                        <ApexPointSeries TItem="EffektivitetPunkt"
+                                         Items="_binLine"
                                          Name="Bin-snitt"
                                          SeriesType="SeriesType.Line"
-                                         XValue="b => (decimal)b.EffektKwMid"
-                                         YValue="b => (decimal)b.SnittEtaPct" />
+                                         XValue="p => (decimal)p.EffektKw"
+                                         YValue="p => (decimal)p.EtaPct" />
                     }
                 </ApexChart>
                 <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mt-2">
@@ -256,11 +259,19 @@ else if (_response is not null)
     private ApexChartOptions<EffektivitetPunkt> _scatterOptions = new();
 
     // Pre-cachet scatter-serier (Testrapport 2026-05-21 funn #2): ApexCharts
-    // ApexPointSeries kastet NullReferenceException når Items var en metode
-    // som returnerte ny List per render. Vi splitter én gang etter at
-    // _response er hentet og holder referansene stabile mellom rerenders.
+    // ApexPointSeries krever at TItem matcher PARENT ApexChart<TItem>. Hadde
+    // tidligere TItem="EffektivitetBin" inne i ApexChart<EffektivitetPunkt>
+    // → cascade-typen ApexChart<EffektivitetBin> kunne ikke kastes (generic
+    // typer er invariant i C#) → Chart-cascaden ble null → AddSeries(this)
+    // i OnInitialized kastet NullReferenceException. Verifisert mot Blazor-
+    // ApexCharts v6.0.0 ApexBaseSeries.cs.
+    // Løsning: bin-data konverteres til EffektivitetPunkt-instanser for
+    // linje-serien så alle tre serier deler TItem med foreldre-charten.
+    // Punkt.TimeUtc/VannforingM3PerS er irrelevant for linje-rendreren —
+    // bare EffektKw (X) og EtaPct (Y) brukes.
     private List<EffektivitetPunkt> _genuinePunkter = new();
     private List<EffektivitetPunkt> _transitionPunkter = new();
+    private List<EffektivitetPunkt> _binLine = new();
 
     // Drilldown-state: når brukeren klikker en bin filtreres
     // Produksjons-timer-tabellen til den effekt-bin'en.
@@ -321,6 +332,7 @@ else if (_response is not null)
         _captureRate = null;
         _genuinePunkter = new();
         _transitionPunkter = new();
+        _binLine = new();
         await InvokeAsync(StateHasChanged);
         try
         {
@@ -337,6 +349,18 @@ else if (_response is not null)
                 .ToList();
             _transitionPunkter = _response.Punkter
                 .Where(p => p.Klassifisering == PunktKlassifisering.Transition)
+                .ToList();
+            // Konverter bins til EffektivitetPunkt så alle tre scatter-serier
+            // deler TItem med ApexChart<EffektivitetPunkt> (se kommentar over
+            // felt-deklarasjonene). Linje-rendreren bruker bare X (EffektKw)
+            // og Y (EtaPct) — de andre feltene er dummy.
+            _binLine = _response.Bins
+                .Select(b => new EffektivitetPunkt(
+                    TimeUtc: DateTimeOffset.MinValue,
+                    EffektKw: b.EffektKwMid,
+                    EtaPct: b.SnittEtaPct,
+                    VannforingM3PerS: 0,
+                    Klassifisering: PunktKlassifisering.Genuine))
                 .ToList();
 
             // Capture rate er sekundær — feiler den, viser vi bare effektivitets-data.
