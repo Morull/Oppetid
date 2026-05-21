@@ -4,6 +4,7 @@
 @implements IDisposable
 @inject NedetidApi NedetidApi
 @inject FilterState Filter
+@inject IJSRuntime JS
 
 <PageTitle>Effektivitet</PageTitle>
 
@@ -109,20 +110,86 @@ else if (_response is not null)
             }
         </MudPaper>
 
-        @* ---- Bin-tabell ---- *@
-        <MudPaper Class="pa-4" Elevation="1">
-            <MudText Typo="Typo.h3" Class="mb-3">Effekt-bins (bredde 200 kW)</MudText>
-            <MudTable Items="_response.Bins" Hover="true" Dense="true" Elevation="0">
+        @* ---- Bin-tabell (klikkbar drilldown til Produksjons-timer) ---- *@
+        <MudPaper Class="pa-4 mb-4" Elevation="1">
+            <div class="d-flex align-center justify-space-between mb-3">
+                <MudText Typo="Typo.h3">Effekt-bins (bredde 200 kW)</MudText>
+                @if (_selectedBinStart.HasValue)
+                {
+                    <MudChip T="string" Color="MudBlazor.Color.Primary"
+                             OnClose="@(() => SelectBin(null))" CloseIcon="@Icons.Material.Filled.Close">
+                        Filter: @_selectedBinStart.Value.ToString("F0") – @((_selectedBinStart.Value + 200).ToString("F0")) kW
+                    </MudChip>
+                }
+            </div>
+            <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-2">
+                Klikk en rad for å filtrere produksjons-timene under til den effekt-bin'en.
+            </MudText>
+            <MudTable Items="_response.Bins" Hover="true" Dense="true" Elevation="0"
+                      OnRowClick="@((TableRowClickEventArgs<EffektivitetBin> args) => { if (args.Item is not null) _ = SelectBin(args.Item.EffektKwStart); })"
+                      RowStyle="cursor: pointer;">
                 <HeaderContent>
                     <MudTh>Bin (kW)</MudTh>
                     <MudTh Style="text-align:right">Antall timer</MudTh>
                     <MudTh Style="text-align:right">Snitt η (%)</MudTh>
                 </HeaderContent>
                 <RowTemplate>
-                    <MudTd>@context.EffektKwStart.ToString("F0") – @((context.EffektKwStart + 200).ToString("F0"))</MudTd>
+                    <MudTd>
+                        @if (_selectedBinStart == context.EffektKwStart)
+                        {
+                            <strong>@context.EffektKwStart.ToString("F0") – @((context.EffektKwStart + 200).ToString("F0"))</strong>
+                        }
+                        else
+                        {
+                            @context.EffektKwStart.ToString("F0") @:– @((context.EffektKwStart + 200).ToString("F0"))
+                        }
+                    </MudTd>
                     <MudTd Style="text-align:right">@context.Antall</MudTd>
                     <MudTd Style="text-align:right">@context.SnittEtaPct.ToString("F1")</MudTd>
                 </RowTemplate>
+            </MudTable>
+        </MudPaper>
+
+        @* ---- Produksjons-timer — alle timene som ligger bak KPI-ene + scatter ----
+           Drilldown fra bin-tabellen filtrerer denne. Drifts-leder kan slå opp
+           tidspunktene i SCADA for videre analyse. *@
+        <MudPaper Class="pa-4" Elevation="1" id="produksjons-timer-tabell">
+            <div class="d-flex justify-space-between align-center mb-3">
+                <MudText Typo="Typo.h3">
+                    Produksjons-timer (@FilteredPunkter().Count())
+                </MudText>
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Filled.Download"
+                           OnClick="DownloadCsvAsync"
+                           Disabled="@(_response.Punkter.Count == 0)">
+                    Last ned CSV
+                </MudButton>
+            </div>
+            <MudTable T="EffektivitetPunkt" Items="FilteredPunkter()"
+                      Hover="true" Dense="true" Elevation="0"
+                      FixedHeader="true" Height="500px" Virtualize="true"
+                      Filter="MatchesTimerSearch">
+                <ToolBarContent>
+                    <MudTextField @bind-Value="_timerSearch" Placeholder="Søk tidspunkt…"
+                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Margin="Margin.Dense" Immediate="true" />
+                </ToolBarContent>
+                <HeaderContent>
+                    <MudTh><MudTableSortLabel SortBy="@SortByTimeUtc"
+                           InitialDirection="SortDirection.Descending">Tidspunkt</MudTableSortLabel></MudTh>
+                    <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEffekt">Effekt (kW)</MudTableSortLabel></MudTh>
+                    <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEta">Virkningsgrad (%)</MudTableSortLabel></MudTh>
+                    <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVann">Vannføring (m³/s)</MudTableSortLabel></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Tidspunkt">@FormatLocal(context.TimeUtc)</MudTd>
+                    <MudTd DataLabel="Effekt" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.EffektKw.ToString("F0")</MudTd>
+                    <MudTd DataLabel="Virkningsgrad" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.EtaPct.ToString("F1")</MudTd>
+                    <MudTd DataLabel="Vannføring" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.VannforingM3PerS.ToString("F2")</MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>Ingen produksjons-timer matcher filteret.</MudText>
+                </NoRecordsContent>
             </MudTable>
         </MudPaper>
     }
@@ -137,6 +204,17 @@ else if (_response is not null)
     private CaptureRateResultDto? _captureRate;
     private int _chartVersion;
     private ApexChartOptions<EffektivitetPunkt> _scatterOptions = new();
+
+    // Drilldown-state: når brukeren klikker en bin filtreres
+    // Produksjons-timer-tabellen til den effekt-bin'en.
+    private double? _selectedBinStart;
+    private string _timerSearch = string.Empty;
+
+    // Sort-funksjoner — felt for å unngå Razor-attributt-escape-problemer.
+    private static readonly Func<EffektivitetPunkt, object> SortByTimeUtc = p => p.TimeUtc;
+    private static readonly Func<EffektivitetPunkt, object> SortByEffekt  = p => p.EffektKw;
+    private static readonly Func<EffektivitetPunkt, object> SortByEta     = p => p.EtaPct;
+    private static readonly Func<EffektivitetPunkt, object> SortByVann    = p => p.VannforingM3PerS;
 
     protected override async Task OnInitializedAsync()
     {
@@ -196,6 +274,21 @@ else if (_response is not null)
                 _captureRate = null;
             }
 
+            // Eksporter tidspunktene til JS slik at scatter-tooltip kan
+            // slå opp dato per dataPointIndex (samme rekkefølge som items).
+            try
+            {
+                var tidsstempler = _response.Punkter
+                    .Select(p => FormatLocal(p.TimeUtc))
+                    .ToArray();
+                await JS.InvokeVoidAsync("dkEffPunkterSet", (object)tidsstempler);
+            }
+            catch
+            {
+                // JS-interop kan feile under prerender — tooltip viser bare
+                // X/Y i så fall, ingen knekk.
+            }
+
             _chartVersion++;
             _scatterOptions = new ApexChartOptions<EffektivitetPunkt>
             {
@@ -214,7 +307,25 @@ else if (_response is not null)
                 },
                 Markers = new Markers { Size = 4 },
                 Stroke = new Stroke { Width = new ApexCharts.Size(2) },
-                Tooltip = new Tooltip { X = new TooltipX { Show = true } },
+                // Tooltip: vis tidspunkt + effekt + virkningsgrad. Punktene
+                // er lastet i samme rekkefølge til window.dkEffPunkter, slik at
+                // dataPointIndex i scatter-serien (seriesIndex 0) slår opp
+                // tidspunkt direkte. Bin-serien (seriesIndex 1) viser kun X/Y.
+                Tooltip = new Tooltip
+                {
+                    Custom = @"function({series, seriesIndex, dataPointIndex, w}) {
+                        var pkt = w.config.series[seriesIndex].data[dataPointIndex];
+                        var x = (pkt && pkt.x !== undefined) ? pkt.x : (pkt && pkt[0] !== undefined ? pkt[0] : 0);
+                        var y = (pkt && pkt.y !== undefined) ? pkt.y : (pkt && pkt[1] !== undefined ? pkt[1] : 0);
+                        var arr = (seriesIndex === 0 && window.dkEffPunkter) ? window.dkEffPunkter : null;
+                        var tid = (arr && arr[dataPointIndex]) ? arr[dataPointIndex] : null;
+                        var head = tid ? '<div style=""padding:4px 8px;font-weight:600;border-bottom:1px solid rgba(0,0,0,0.1);"">' + tid + '</div>' : '';
+                        return '<div style=""padding:4px 0;"">' + head +
+                            '<div style=""padding:2px 8px;"">Effekt: ' + (+x).toFixed(0) + ' kW</div>' +
+                            '<div style=""padding:2px 8px;"">η: ' + (+y).toFixed(1) + ' %</div>' +
+                            '</div>';
+                    }",
+                },
                 Colors = new List<string> { "#1E5F8E", "#E76F51" },
             };
         }
@@ -249,5 +360,68 @@ else if (_response is not null)
         if (v == 0) return "0 NOK";
         var sign = v > 0 ? "+" : "";
         return sign + v.ToString("N0", NorskTall) + " NOK";
+    }
+
+    // ----- Time-detalj-tabell --------------------------------------------------
+
+    private static string FormatLocal(DateTimeOffset dt) =>
+        dt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    /// <summary>Punkter filtrert på valgt bin (hvis noen). Brukes både til tabell og CSV.</summary>
+    private IEnumerable<EffektivitetPunkt> FilteredPunkter()
+    {
+        if (_response is null) return Enumerable.Empty<EffektivitetPunkt>();
+        if (!_selectedBinStart.HasValue) return _response.Punkter;
+        var start = _selectedBinStart.Value;
+        var end = start + 200;
+        return _response.Punkter.Where(p => p.EffektKw >= start && p.EffektKw < end);
+    }
+
+    /// <summary>Søk på tidspunkt (yyyy-MM-dd HH:mm i lokal tid).</summary>
+    private bool MatchesTimerSearch(EffektivitetPunkt p)
+    {
+        if (string.IsNullOrWhiteSpace(_timerSearch)) return true;
+        return FormatLocal(p.TimeUtc).Contains(_timerSearch.Trim(),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Setter / fjerner bin-filteret. Scroll til tabellen så drifts-leder ikke
+    /// må scrolle manuelt etter klikk. Bruker JS-interop fordi Blazor ikke har
+    /// innebygd scrollIntoView.
+    /// </summary>
+    private async Task SelectBin(double? binStart)
+    {
+        _selectedBinStart = binStart;
+        if (binStart.HasValue)
+        {
+            await JS.InvokeVoidAsync("scrollToElement", "produksjons-timer-tabell");
+        }
+    }
+
+    /// <summary>
+    /// Lager CSV av de filtrerte timene og trigger nedlasting via JS-interop.
+    /// Klientside — ingen backend nødvendig. UTF-8 BOM så Excel åpner som
+    /// nb-NO uten å gjette feil koding.
+    /// </summary>
+    private async Task DownloadCsvAsync()
+    {
+        if (_response is null) return;
+        var sb = new System.Text.StringBuilder();
+        sb.Append('﻿'); // UTF-8 BOM for Excel
+        sb.AppendLine("Tidspunkt (lokal);Effekt (kW);Virkningsgrad (%);Vannforing (m3/s)");
+        foreach (var p in FilteredPunkter().OrderBy(p => p.TimeUtc))
+        {
+            // Semikolon-separert for norsk Excel; komma som desimal.
+            sb.Append(FormatLocal(p.TimeUtc)).Append(';');
+            sb.Append(p.EffektKw.ToString("F0", NorskTall)).Append(';');
+            sb.Append(p.EtaPct.ToString("F1", NorskTall)).Append(';');
+            sb.AppendLine(p.VannforingM3PerS.ToString("F2", NorskTall));
+        }
+        var bin = _selectedBinStart.HasValue
+            ? $"-bin-{_selectedBinStart.Value:F0}-{_selectedBinStart.Value + 200:F0}kW"
+            : "";
+        var filename = $"effektivitet-{Filter.PlantId}{bin}-{DateTime.Now:yyyyMMdd}.csv";
+        await JS.InvokeVoidAsync("downloadTextFile", filename, sb.ToString());
     }
 }
