@@ -23,7 +23,10 @@ public class EffektivitetEpisodeServiceTests
     private static EffektivitetPunkt Genuine(int quarter, double kw, double eta) =>
         new(Q(quarter), kw, eta, 0.0, PunktKlassifisering.Genuine);
 
-    private static EffektivitetResponse ResponseMed(IEnumerable<EffektivitetPunkt> punkter, IEnumerable<EffektivitetBin> bins)
+    private static EffektivitetResponse ResponseMed(
+        IEnumerable<EffektivitetPunkt> punkter,
+        IEnumerable<EffektivitetBin> bins,
+        double sweetSpotEtaPct = 0)
     {
         var list = punkter.ToList();
         return new EffektivitetResponse(
@@ -33,7 +36,7 @@ public class EffektivitetEpisodeServiceTests
             ProduksjonsTimer: list.Count(p => p.Klassifisering == PunktKlassifisering.Genuine),
             SnittEtaPct: 0,
             SweetSpotEffektKw: 0,
-            SweetSpotEtaPct: 0,
+            SweetSpotEtaPct: sweetSpotEtaPct,
             SnittSpesifiktVannforbrukM3PerKwh: 0,
             TotalProduksjonKwh: 0,
             DataMissing: false,
@@ -256,6 +259,52 @@ public class EffektivitetEpisodeServiceTests
             ResponseMed(punkter, bins),
             null,
             new EpisodeAnalyseOpsjoner(DeltaEtaTerskelPp: -10.0));
+
+        result.Episoder.Should().BeEmpty();
+    }
+
+    // ----- Sweet-spot-referanse --------------------------------------------
+
+    [Fact]
+    public void Analyse_SweetSpotModus_BrukerSweetSpotIstedenforBaseline()
+    {
+        // Baseline (bin-snitt) er 90 %, sweet-spot er 93 %.
+        // Punkter på 91 % → -1 pp mot sweet-spot men +1 pp mot baseline.
+        // Med terskel -2 pp og sweet-spot-modus skal vi få 0 episoder (-1 pp under terskel).
+        // Med terskel -0.5 pp skal vi få 1 episode.
+        var bins = new[] { new EffektivitetBin(1600, 1700, Antall: 10, SnittEtaPct: 90.0) };
+        var punkter = new[]
+        {
+            Genuine(0, 1700, 91.0),
+            Genuine(1, 1700, 91.0),
+            Genuine(2, 1700, 91.0),
+        };
+
+        var svc = new EffektivitetEpisodeService();
+        var resp = ResponseMed(punkter, bins, sweetSpotEtaPct: 93.0);
+
+        // Mot baseline (90 %): alle på +1 pp → ingen episoder.
+        var motBaseline = svc.Analyse(resp, null);
+        motBaseline.Episoder.Should().BeEmpty();
+
+        // Mot sweet-spot (93 %): alle på -2 pp → terskelfilter (-2.0) treffer akkurat.
+        var motSweetSpot = svc.Analyse(resp, null,
+            new EpisodeAnalyseOpsjoner(Referanse: EpisodeReferanseTyp.SweetSpot));
+        motSweetSpot.Episoder.Should().HaveCount(1);
+        motSweetSpot.Episoder[0].SnittDeltaEtaPp.Should().BeApproximately(-2.0, 0.001);
+    }
+
+    [Fact]
+    public void Analyse_SweetSpotModus_UtenSweetSpot_GirTomtResultat()
+    {
+        // Hvis responsen har SweetSpotEtaPct = 0 (ikke nok data for sweet-spot),
+        // skal sweet-spot-modus returnere tomt resultat uten å kaste.
+        var bins = new[] { new EffektivitetBin(1600, 1700, Antall: 10, SnittEtaPct: 90.0) };
+        var punkter = new[] { Genuine(0, 1700, 85.0), Genuine(1, 1700, 85.0) };
+
+        var resp = ResponseMed(punkter, bins, sweetSpotEtaPct: 0); // ingen sweet-spot
+        var result = new EffektivitetEpisodeService().Analyse(resp, null,
+            new EpisodeAnalyseOpsjoner(Referanse: EpisodeReferanseTyp.SweetSpot));
 
         result.Episoder.Should().BeEmpty();
     }

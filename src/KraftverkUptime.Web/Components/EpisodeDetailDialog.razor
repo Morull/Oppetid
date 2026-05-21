@@ -49,7 +49,7 @@
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
                 <KpiCard Label="Tapt verdi"
-                         Value="@($"{FormatNok(Episode.TaptNok)} NOK")"
+                         Value="@FormatTapNok(Episode.TaptNok)"
                          SubText="@(Episode.TaptNokErEstimat ? "estimat — spotpris mangler" : "spotpris fra DB")"
                          Accent="KpiAccent.Negative" />
             </MudItem>
@@ -153,9 +153,13 @@
     private static string FormatLocal(DateTimeOffset t) =>
         t.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
 
-    private static string FormatNok(double v)
-    {
-        if (v == 0) return "–";
-        return v.ToString("N0", NumberFormat.Norsk);
-    }
+    private static string FormatNok(double v) =>
+        v == 0 ? "–" : v.ToString("N0", NumberFormat.Norsk);
+
+    /// <summary>
+    /// Tap-formatering: usignert + "NOK"-suffiks. Tap er alltid positivt — vi
+    /// dropper "+"-tegnet, men beholder " NOK" siden vi ikke wrapper i template.
+    /// </summary>
+    private static string FormatTapNok(double v) =>
+        v <= 0 ? "–" : v.ToString("N0", NumberFormat.Norsk) + " NOK";
 }

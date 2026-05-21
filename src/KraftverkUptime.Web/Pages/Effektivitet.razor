@@ -110,18 +110,44 @@ else if (_response is not null)
         }
 
         @* ---- Underytelse / tapstoppliste (Spec FORBEDRINGSFORSLAG-EFFEKTIVITET.md Del 3) ----
-           Handlings-visning: hvor taper vi virkningsgrad, hvor lenge, og hvor ofte.
-           Δη måles mot baseline per effekt-bin (ikke globalt snitt), så lav-effekt-
-           intervaller blir IKKE flagget bare fordi de naturlig har lavere η. *@
+           To referanse-modi:
+             Baseline   — bin-snitt-η. Tap = operativt avvik fra det vanlige.
+                          Skal være null ved normal drift.
+             Sweet-spot — anleggets toppunkt-η. Tap = strategisk potensial som
+                          kan utnyttes ved vannsparing til høyprisperioder. *@
         <MudPaper Class="pa-4 mb-4" Elevation="1">
             <div class="d-flex justify-space-between align-center mb-3" style="flex-wrap: wrap; gap: 12px;">
                 <div>
-                    <MudText Typo="Typo.h3">Underytelse — tapstoppliste</MudText>
+                    <MudText Typo="Typo.h3">
+                        @(_episodeReferanse == EpisodeReferanseTyp.SweetSpot
+                            ? "Strategisk potensial mot sweet-spot"
+                            : "Underytelse — tapstoppliste")
+                    </MudText>
                     <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">
-                        Episoder med Δη ≤ @_episodeTerskelPp.ToString("F1", NumberFormat.Norsk) pp mot baseline for effekt-bin'en.
+                        @if (_episodeReferanse == EpisodeReferanseTyp.SweetSpot)
+                        {
+                            <text>
+                                Intervaller med Δη ≤ @_episodeTerskelPp.ToString("F1", NumberFormat.Norsk) pp mot sweet-spot-η.
+                                Tap = hva vi kunne fått ut av samme vann ved å kjøre på sweet-spot.
+                            </text>
+                        }
+                        else
+                        {
+                            <text>
+                                Episoder med Δη ≤ @_episodeTerskelPp.ToString("F1", NumberFormat.Norsk) pp mot bin-baseline for effekt-bin'en.
+                            </text>
+                        }
                     </MudText>
                 </div>
-                <div class="d-flex align-center" style="gap: 12px;">
+                <div class="d-flex align-center" style="gap: 12px; flex-wrap: wrap;">
+                    @* Sammenlign-toggle: baseline vs sweet-spot *@
+                    <MudToggleGroup T="EpisodeReferanseTyp" SelectionMode="SelectionMode.SingleSelection"
+                                    @bind-Value="_episodeReferanse"
+                                    @bind-Value:after="ReloadEpisoderAsync"
+                                    Size="MudBlazor.Size.Small" Color="MudBlazor.Color.Primary">
+                        <MudToggleItem Value="EpisodeReferanseTyp.Baseline" Text="Mot baseline" />
+                        <MudToggleItem Value="EpisodeReferanseTyp.SweetSpot" Text="Mot sweet-spot" />
+                    </MudToggleGroup>
                     <MudNumericField T="double" Label="Δη-terskel (pp)" @bind-Value="_episodeTerskelPp"
                                      Min="-20" Max="0" Step="0.5"
                                      Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 160px;"
@@ -156,7 +182,7 @@ else if (_response is not null)
                 <MudGrid Class="mb-3">
                     <MudItem xs="12" sm="4">
                         <KpiCard Label="Total tapt verdi"
-                                 Value="@($"{FormatNok(_episoder.TotalTaptNok)} NOK")"
+                                 Value="@FormatTapNok(_episoder.TotalTaptNok)"
                                  SubText="@($"{_episoder.TotalTaptMwh.ToString("F2", NumberFormat.Norsk)} MWh tapt produksjon")"
                                  Accent="KpiAccent.Negative" />
                     </MudItem>
@@ -210,7 +236,7 @@ else if (_response is not null)
                         <MudTd Style="text-align:right; font-variant-numeric: tabular-nums; font-weight: 600;">
                             @if (context.TaptNok > 0)
                             {
-                                @($"{FormatNok(context.TaptNok)} NOK")
+                                @FormatTapNok(context.TaptNok)
                                 @if (context.TaptNokErEstimat)
                                 {
                                     <MudIcon Icon="@Icons.Material.Filled.Info" Size="MudBlazor.Size.Small"
@@ -245,7 +271,7 @@ else if (_response is not null)
                             <MudTd Style="text-align:right">@context.TotalVarighetTimer.ToString("F1", NumberFormat.Norsk) t</MudTd>
                             <MudTd Style="text-align:right">@context.SnittDeltaEtaPp.ToString("F1", NumberFormat.Norsk) pp</MudTd>
                             <MudTd Style="text-align:right">@context.TaptMwh.ToString("F2", NumberFormat.Norsk) MWh</MudTd>
-                            <MudTd Style="text-align:right; font-weight: 600;">@FormatNok(context.TaptNok) NOK</MudTd>
+                            <MudTd Style="text-align:right; font-weight: 600;">@FormatTapNok(context.TaptNok)</MudTd>
                         </RowTemplate>
                     </MudTable>
                 }
@@ -441,6 +467,9 @@ else if (_response is not null)
     private EpisodeAnalysisResult? _episoder;
     private bool _episodeLoading;
     private double _episodeTerskelPp = -2.0;
+    // Hva Δη måles MOT. Default = baseline (anleggets bin-snitt). Bruker kan
+    // toggle til sweet-spot for å se strategisk potensial mot toppen.
+    private EpisodeReferanseTyp _episodeReferanse = EpisodeReferanseTyp.Baseline;
 
     // Drilldown-state: når brukeren klikker en bin filtreres
     // Produksjons-timer-tabellen til den effekt-bin'en.
@@ -644,15 +673,28 @@ else if (_response is not null)
         return nok > 0 ? KpiAccent.Positive : KpiAccent.Negative;
     }
 
-    // Tall-formatering: Services/NumberFormat (kultur-uavhengig). Effektivitet
-    // viser "0 NOK" for null merverdi (ikke "–") siden CR-konteksten har samme
-    // semantikk som CaptureRate-siden — 0 betyr "tjente som spot".
+    // Tall-formatering: Services/NumberFormat (kultur-uavhengig).
+    //
+    // FormatNok = signert + "NOK"-suffiks. Brukes for merverdi-kort der
+    // fortegnet er meningsfullt (positivt = vi tjente bedre enn spot).
+    // Effektivitet viser "0 NOK" for null merverdi (ikke "–") siden CR-
+    // konteksten har samme semantikk som CaptureRate-siden — 0 betyr "tjente
+    // som spot".
     private static string FormatNok(double v)
     {
         if (v == 0) return "0 NOK";
         var sign = v > 0 ? "+" : "";
         return sign + v.ToString("N0", NumberFormat.Norsk) + " NOK";
     }
+
+    /// <summary>
+    /// Tap-formatering: usignert + "NOK"-suffiks. Brukes for "tapt verdi" der
+    /// fortegnet er meningsløst (tap er per definisjon positivt). Tidligere
+    /// brukte vi FormatNok her, men fikk "+651 NOK NOK"-dobling fordi templates
+    /// la på " NOK" igjen.
+    /// </summary>
+    private static string FormatTapNok(double v) =>
+        v <= 0 ? "–" : v.ToString("N0", NumberFormat.Norsk) + " NOK";
 
     // ----- Time-detalj-tabell --------------------------------------------------
 
@@ -683,7 +725,9 @@ else if (_response is not null)
         try
         {
             _episoder = await NedetidApi.GetEpisoderAsync(
-                Filter.PlantId, fromUtc, toUtc, terskelPp: _episodeTerskelPp);
+                Filter.PlantId, fromUtc, toUtc,
+                terskelPp: _episodeTerskelPp,
+                referanse: _episodeReferanse);
         }
         catch (Exception ex)
         {

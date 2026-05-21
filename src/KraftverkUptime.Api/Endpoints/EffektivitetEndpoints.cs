@@ -89,6 +89,7 @@ public static class EffektivitetEndpoints
         DateTimeOffset? to,
         double? terskelPp,
         int? gapIntervaller,
+        string? referanse,
         EffektivitetEpisodeQueryService episodeService,
         KraftverkDbContext db,
         IQueryContext queryContext,
@@ -122,11 +123,16 @@ public static class EffektivitetEndpoints
         }
 
         // Default-opsjoner i analyseren matcher Spec FORBEDRINGSFORSLAG-EFFEKTIVITET.md.
-        // Lar query-parameteret overstyre for å støtte UI-sliders senere.
-        var opsjoner = (terskelPp.HasValue || gapIntervaller.HasValue)
+        // Lar query-parametere overstyre for UI-sliders + referanse-toggle.
+        var referanseTyp = string.Equals(referanse, "sweetspot", StringComparison.OrdinalIgnoreCase)
+            ? EpisodeReferanseTyp.SweetSpot
+            : EpisodeReferanseTyp.Baseline;
+        var opsjoner = (terskelPp.HasValue || gapIntervaller.HasValue
+                        || referanseTyp != EpisodeReferanseTyp.Baseline)
             ? new EpisodeAnalyseOpsjoner(
                 DeltaEtaTerskelPp: terskelPp ?? -2.0,
-                TillattGapIntervaller: gapIntervaller ?? 1)
+                TillattGapIntervaller: gapIntervaller ?? 1,
+                Referanse: referanseTyp)
             : null;
 
         var result = await episodeService.GetAsync(plantId, fromUtc, toUtc, opsjoner, ct)

@@ -61,12 +61,15 @@ public sealed class NedetidApi
     /// </summary>
     public async Task<EpisodeAnalysisResult> GetEpisoderAsync(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc,
-        double? terskelPp = null, int? gapIntervaller = null, CancellationToken ct = default)
+        double? terskelPp = null, int? gapIntervaller = null,
+        EpisodeReferanseTyp referanse = EpisodeReferanseTyp.Baseline,
+        CancellationToken ct = default)
     {
         var url = BuildUrl(plantId, "effektivitet/episoder", fromUtc, toUtc, format: null);
         var extra = new List<string>();
         if (terskelPp.HasValue) extra.Add($"terskelPp={terskelPp.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         if (gapIntervaller.HasValue) extra.Add($"gapIntervaller={gapIntervaller.Value}");
+        if (referanse == EpisodeReferanseTyp.SweetSpot) extra.Add("referanse=sweetspot");
         if (extra.Count > 0) url += (url.Contains('?') ? "&" : "?") + string.Join("&", extra);
         var resp = await _http.GetFromJsonAsync<EpisodeAnalysisResult>(url, JsonOptions, ct).ConfigureAwait(false);
         return resp ?? throw new InvalidOperationException("Tom respons fra /effektivitet/episoder.");
@@ -634,6 +637,12 @@ public sealed record EffektBaandAggregat(
     double SnittDeltaEtaPp,
     double TaptMwh,
     double TaptNok);
+
+public enum EpisodeReferanseTyp
+{
+    Baseline = 0,
+    SweetSpot = 1,
+}
 
 public sealed record EffektivitetPortfolioRad(
     string PlantId,

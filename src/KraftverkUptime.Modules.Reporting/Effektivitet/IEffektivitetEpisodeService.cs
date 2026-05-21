@@ -30,7 +30,24 @@ public interface IEffektivitetEpisodeService
 public sealed record EpisodeAnalyseOpsjoner(
     double DeltaEtaTerskelPp = -2.0,
     int TillattGapIntervaller = 1,
-    int MinSamplesPerBaselineBin = 3);
+    int MinSamplesPerBaselineBin = 3,
+    EpisodeReferanseTyp Referanse = EpisodeReferanseTyp.Baseline);
+
+/// <summary>
+/// Hva Δη måles MOT. To gyldige perspektiver — begge gyldige, ulik historie:
+///   <see cref="Baseline"/>  — anleggets bin-snitt-η i samme effekt-bånd.
+///     Tap = "vi gjorde det dårligere enn vi pleier" (operativt avvik).
+///     Skal være null hvis driften er normal. Default-modus.
+///   <see cref="SweetSpot"/> — sweet-spot-η (anleggets toppunkt).
+///     Tap = "vi forlot effektivitet på bordet" (strategisk potensial).
+///     Gir mening for vann-optimalisering: lav-pris-perioder bør kjøres
+///     på sweet-spot for å spare vann til høy-pris-perioder.
+/// </summary>
+public enum EpisodeReferanseTyp
+{
+    Baseline = 0,
+    SweetSpot = 1,
+}
 
 /// <summary>
 /// Resultat fra <see cref="IEffektivitetEpisodeService.Analyse"/>. Returnerer

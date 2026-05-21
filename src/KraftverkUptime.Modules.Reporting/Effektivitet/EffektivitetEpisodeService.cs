@@ -31,12 +31,32 @@ public sealed class EffektivitetEpisodeService : IEffektivitetEpisodeService
         ArgumentNullException.ThrowIfNull(effektivitet);
         opsjoner ??= new EpisodeAnalyseOpsjoner();
 
-        // 1. Baseline-lookup: bin-start-kW → snitt-η (kun bin'er med nok samples).
-        var baselineByBinStart = effektivitet.Bins
-            .Where(b => b.Antall >= opsjoner.MinSamplesPerBaselineBin)
-            .ToDictionary(b => b.EffektKwStart, b => b.SnittEtaPct);
+        // 1. Referanse-lookup: returnerer "forventet η" for en gitt effekt-bin.
+        //    Baseline-modus  : bin-spesifikk (anleggets snitt-η i samme bin).
+        //    Sweet-spot-modus: konstant (anleggets toppunkt — uavhengig av bin).
+        Func<double, double?> getReferanseEta;
+        if (opsjoner.Referanse == EpisodeReferanseTyp.SweetSpot)
+        {
+            if (effektivitet.SweetSpotEtaPct <= 0)
+            {
+                // Ingen sweet-spot funnet → kan ikke kjøre denne analysen.
+                return EmptyResult(spotPrisNokMwhPerTime is null);
+            }
+            var sweetEta = effektivitet.SweetSpotEtaPct;
+            getReferanseEta = _ => sweetEta;
+        }
+        else
+        {
+            var baselineByBinStart = effektivitet.Bins
+                .Where(b => b.Antall >= opsjoner.MinSamplesPerBaselineBin)
+                .ToDictionary(b => b.EffektKwStart, b => b.SnittEtaPct);
+            getReferanseEta = binStart =>
+                baselineByBinStart.TryGetValue(binStart, out var eta) ? eta : null;
+        }
 
         // 2. Gjør Genuine-punktene om til Δη-pakker. Sorter på tid.
+        //    Punkter der referanse-η ikke finnes (bin uten baseline, eller
+        //    intervall ≥ sweet-spot-η) faller ut av analysen.
         var underytende = new List<EvaluertPunkt>();
         var totalGenuine = 0;
         foreach (var p in effektivitet.Punkter
@@ -46,9 +66,10 @@ public sealed class EffektivitetEpisodeService : IEffektivitetEpisodeService
             totalGenuine++;
             var binStart = Math.Floor(p.EffektKw / EffektivitetQueryService.PowerBinKw)
                 * EffektivitetQueryService.PowerBinKw;
-            if (!baselineByBinStart.TryGetValue(binStart, out var baseline)) continue;
-            var deltaEta = p.EtaPct - baseline;
-            underytende.Add(new EvaluertPunkt(p, binStart, baseline, deltaEta));
+            var referanseEta = getReferanseEta(binStart);
+            if (referanseEta is null) continue;
+            var deltaEta = p.EtaPct - referanseEta.Value;
+            underytende.Add(new EvaluertPunkt(p, binStart, referanseEta.Value, deltaEta));
         }
 
         // 3. Slå sammen sammenhengende underytende intervaller til episoder.
@@ -71,6 +92,17 @@ public sealed class EffektivitetEpisodeService : IEffektivitetEpisodeService
             AntallUnderytendeIntervaller: episoder.Sum(e => e.AntallIntervaller),
             ManglerSpotpriser: manglerPriser);
     }
+
+    /// <summary>Tomt resultat — brukes når sweet-spot-modus ikke har en gyldig referanse.</summary>
+    private static EpisodeAnalysisResult EmptyResult(bool manglerPriser) =>
+        new(
+            Array.Empty<UnderytendeEpisode>(),
+            Array.Empty<EffektBaandAggregat>(),
+            TotalTaptMwh: 0,
+            TotalTaptNok: 0,
+            AntallGenuineIntervaller: 0,
+            AntallUnderytendeIntervaller: 0,
+            ManglerSpotpriser: manglerPriser);
 
     private static IEnumerable<UnderytendeEpisode> BuildEpisoder(
         IReadOnlyList<EvaluertPunkt> punkter,
@@ -136,7 +168,7 @@ public sealed class EffektivitetEpisodeService : IEffektivitetEpisodeService
             // → tap = faktisk × (baseline − faktisk) / faktisk
             if (iv.Punkt.EtaPct > 0.0)
             {
-                var taptKwh = faktiskKwh * (iv.BaselineEtaPct - iv.Punkt.EtaPct) / iv.Punkt.EtaPct;
+                var taptKwh = faktiskKwh * (iv.ReferanseEtaPct - iv.Punkt.EtaPct) / iv.Punkt.EtaPct;
                 var taptMwhI = taptKwh / 1000.0;
                 taptMwh += taptMwhI;
 
@@ -224,7 +256,7 @@ public sealed class EffektivitetEpisodeService : IEffektivitetEpisodeService
                     var faktiskKwh = p.Punkt.EffektKw * intervallTimer;
                     if (p.Punkt.EtaPct > 0)
                     {
-                        var taptKwh = faktiskKwh * (p.BaselineEtaPct - p.Punkt.EtaPct) / p.Punkt.EtaPct;
+                        var taptKwh = faktiskKwh * (p.ReferanseEtaPct - p.Punkt.EtaPct) / p.Punkt.EtaPct;
                         var taptMwhI = taptKwh / 1000.0;
                         taptMwh += taptMwhI;
                         if (priser is not null && priser.TryGetValue(ToHourBucket(p.Punkt.TimeUtc), out var pris))
@@ -255,6 +287,6 @@ public sealed class EffektivitetEpisodeService : IEffektivitetEpisodeService
     private sealed record EvaluertPunkt(
         EffektivitetPunkt Punkt,
         double BinStartKw,
-        double BaselineEtaPct,
+        double ReferanseEtaPct,
         double DeltaEtaPp);
 }
