@@ -163,7 +163,7 @@ else if (_response is not null)
                 <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEventTapMwh">Tap (MWh)</MudTableSortLabel></MudTh>
                 <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEventTapNok">Tap (NOK)</MudTableSortLabel></MudTh>
                 <MudTh>Operlog</MudTh>
-                <MudTh Style="text-align:center; width:48px;">Rediger</MudTh>
+                <MudTh Style="text-align:center; width:56px;">Detaljer</MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="Start">@FormatLocal(context.StartUtc)</MudTd>
@@ -180,14 +180,23 @@ else if (_response is not null)
                 <MudTd DataLabel="Tap (MWh)" Style="text-align:right">@context.TapMwh.ToString("F2")</MudTd>
                 <MudTd DataLabel="Tap (NOK)" Style="text-align:right">@FormatNok(context.TapNok)</MudTd>
                 <MudTd DataLabel="Operlog">@(context.HarOperlogMatch ? "✓" : "")</MudTd>
-                <MudTd DataLabel="Rediger" Style="text-align:center;">
-                    <MudTooltip Text="@(IsAnnotated(context) ? "Rediger annotering" : "Annotér hendelse")">
-                        <MudIconButton
-                            Icon="@(IsAnnotated(context) ? Icons.Material.Filled.EditNote : Icons.Material.Outlined.Edit)"
-                            Size="MudBlazor.Size.Small"
-                            Color="@(IsAnnotated(context) ? MudBlazor.Color.Primary : MudBlazor.Color.Default)"
-                            OnClick="@(() => OpenAnnotationDialogAsync(context))" />
-                    </MudTooltip>
+                <MudTd DataLabel="Detaljer" Style="text-align:center;">
+                    <div class="d-flex align-center justify-center" style="gap:4px;">
+                        <MudTooltip Text="Vis hendelses-detaljer (årsak, økonomi, annotering)">
+                            <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
+                                           Size="MudBlazor.Size.Small"
+                                           Color="MudBlazor.Color.Primary"
+                                           OnClick="@(() => OpenDetailDialogAsync(context))" />
+                        </MudTooltip>
+                        @if (IsAnnotated(context))
+                        {
+                            <MudTooltip Text="Manuell annotering aktiv på denne hendelsen">
+                                <MudIcon Icon="@Icons.Material.Filled.EditNote"
+                                         Color="MudBlazor.Color.Warning"
+                                         Size="MudBlazor.Size.Small" />
+                            </MudTooltip>
+                        }
+                    </div>
                 </MudTd>
             </RowTemplate>
         </MudTable>
@@ -249,6 +258,40 @@ else if (_response is not null)
     /// </summary>
     private static bool IsAnnotated(NedetidEventDto e)
         => e.CauseCode?.StartsWith("annotation:", StringComparison.Ordinal) == true;
+
+    /// <summary>
+    /// Åpner detaljer-popup for én hendelse (Hendelses-detaljer-instruksen
+    /// 2026-05-21). Popupen er informativ + en knapp som lukker den med
+    /// signal "annotate" — siden åpner deretter annoterings-dialogen via
+    /// <see cref="OpenAnnotationDialogAsync"/>. Slik beholdes all
+    /// annoterings-logikk i ett sted.
+    /// </summary>
+    private async Task OpenDetailDialogAsync(NedetidEventDto evt)
+    {
+        var parameters = new DialogParameters<NedetidEventDetailDialog>
+        {
+            { x => x.Event, evt },
+            { x => x.IsAnnotated, IsAnnotated(evt) },
+        };
+        var options = new DialogOptions
+        {
+            CloseOnEscapeKey = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.Medium,
+        };
+        var dialog = await DialogService.ShowAsync<NedetidEventDetailDialog>(
+            "Hendelses-detaljer", parameters, options);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled) return;
+
+        // Detalj-dialogen signaliserer "annotate" når brukeren klikker
+        // annoterings-knappen — vi åpner da den eksisterende annoterings-
+        // flyten (gjenbruk, ikke duplikat).
+        if (result.Data is string s && s == "annotate")
+        {
+            await OpenAnnotationDialogAsync(evt);
+        }
+    }
 
     /// <summary>
     /// Åpner annoterings-dialogen forhåndsfylt med hendelsens periode. Hvis en

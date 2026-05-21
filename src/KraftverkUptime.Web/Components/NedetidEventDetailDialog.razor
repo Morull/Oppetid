@@ -1,0 +1,180 @@
+@using KraftverkUptime.Web.Services
+@inject CauseFormatter CauseFormatter
+
+@*
+    Detaljer-popup for én nedetids-hendelse fra Nedetid-tabellen.
+    Søster av VaktEventDetailDialog (Vakt-ROI B3) — samme layout og rytme,
+    men uten ROI-spesifikke felter siden Nedetid-data ikke har dem.
+
+    Dialogen er informativ + en handlings-knapp som triggerer annotering.
+    Selve annoterings-flyten gjenbrukes fra siden via signal-result, slik
+    at all annoterings-logikk forblir ett sted (Nedetid.razor's
+    OpenAnnotationDialogAsync).
+
+    Bruk:
+        var parameters = new DialogParameters<NedetidEventDetailDialog>
+        {
+            { x => x.Event, evt },
+            { x => x.IsAnnotated, annotated },
+        };
+        var dlg = await DialogService.ShowAsync<NedetidEventDetailDialog>(...);
+        var result = await dlg.Result;
+        if (result?.Data is "annotate") { await OpenAnnotationDialogAsync(evt); }
+*@
+
+<MudDialog>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            @* ====== Hendelsesinfo ====== *@
+            <MudItem xs="12">
+                <MudText Typo="Typo.h6" Class="mb-2">Hendelse</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Start (lokal)</MudText>
+                <MudText>@FormatLocal(Event.StartUtc)</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Slutt (lokal)</MudText>
+                <MudText>@FormatLocal(Event.EndUtc)</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Varighet</MudText>
+                <MudText>@Event.VarighetTimer.ToString("F1") t</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Kategori</MudText>
+                <MudText>@DisplayKategori(Event.Kategori)</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Tilstand (state)</MudText>
+                <MudText>@(string.IsNullOrEmpty(Event.State) ? "—" : Event.State)</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Operlog-match</MudText>
+                <MudText>
+                    @if (Event.HarOperlogMatch)
+                    {
+                        <MudChip T="string" Size="MudBlazor.Size.Small"
+                                 Color="MudBlazor.Color.Success" Variant="Variant.Text">Ja</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="MudBlazor.Size.Small"
+                                 Color="MudBlazor.Color.Default" Variant="Variant.Text">Nei</MudChip>
+                    }
+                </MudText>
+            </MudItem>
+
+            @* ====== Årsak: vennlig + rå kode ====== *@
+            <MudItem xs="12" Class="mt-3">
+                <MudDivider />
+                <MudText Typo="Typo.h6" Class="mt-2 mb-2">Årsak</MudText>
+            </MudItem>
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Brukervennlig tekst</MudText>
+                <MudText>@CauseFormatter.Display(Event.CauseCode)</MudText>
+            </MudItem>
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Rå cause-kode (fra SCADA/operlog)</MudText>
+                <MudText Style="font-family: monospace;">
+                    @(string.IsNullOrEmpty(Event.CauseCode) ? "—" : Event.CauseCode)
+                </MudText>
+            </MudItem>
+
+            @* ====== Økonomi ====== *@
+            <MudItem xs="12" Class="mt-3">
+                <MudDivider />
+                <MudText Typo="Typo.h6" Class="mt-2 mb-2">Økonomi</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudPaper Class="pa-2" Outlined="true">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Tap (MWh)</MudText>
+                    <MudText Typo="Typo.h6">@Event.TapMwh.ToString("F2")</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudPaper Class="pa-2" Outlined="true">
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Tap (NOK)</MudText>
+                    <MudText Typo="Typo.h6">@FormatNok(Event.TapNok)</MudText>
+                </MudPaper>
+            </MudItem>
+
+            @* ====== Annotering-status ====== *@
+            <MudItem xs="12" Class="mt-3">
+                <MudDivider />
+                <MudText Typo="Typo.h6" Class="mt-2 mb-2">Annotering</MudText>
+                @if (IsAnnotated)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
+                        Denne hendelsen kommer fra en manuell annotering (cause-kode-
+                        prefiks <code>annotation:</code>). Klikk «Rediger annotering»
+                        for å justere kategori, periode eller kommentar.
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">
+                        Hendelsen er klassifisert automatisk fra settlement/operlog. Klikk
+                        «Annotér hendelse» hvis du vil overstyre kategori eller legge til
+                        en kommentar.
+                    </MudText>
+                }
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Lukk</MudButton>
+        <MudButton OnClick="TriggerAnnotateAsync"
+                   Color="MudBlazor.Color.Primary"
+                   Variant="Variant.Filled"
+                   StartIcon="@(IsAnnotated ? Icons.Material.Filled.EditNote : Icons.Material.Outlined.Edit)">
+            @(IsAnnotated ? "Rediger annotering" : "Annotér hendelse")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired] public NedetidEventDto Event { get; set; } = default!;
+
+    /// <summary>True hvis hendelsen er fra en manuell annotering (cause-kode starter med "annotation:").</summary>
+    [Parameter] public bool IsAnnotated { get; set; }
+
+    private void Cancel() => Dialog.Cancel();
+
+    /// <summary>
+    /// Lukker dialogen med signal "annotate" så siden kan åpne annoterings-
+    /// dialogen i stedet. Vi gjør IKKE annotering her — gjenbrukt logikk
+    /// ligger i Nedetid-siden (én sannhets-kilde).
+    /// </summary>
+    private Task TriggerAnnotateAsync()
+    {
+        Dialog.Close(DialogResult.Ok("annotate"));
+        return Task.CompletedTask;
+    }
+
+    private static string FormatLocal(DateTimeOffset dt) =>
+        dt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    private static string DisplayKategori(string kategori) => kategori switch
+    {
+        "TripFeil" => "Trip / feil",
+        "TettInntaksrist" => "Tett inntaksrist",
+        "EksternForstyrrelse" => "Ekstern forstyrrelse",
+        "PlanlagtVedlikehold" => "Planlagt vedlikehold",
+        "Markedstopp" => "Markedstopp",
+        "Ressursmangel" => "Ressursmangel",
+        "DataMangel" => "Datamangel",
+        "UkjentNedetid" => "Ukjent nedetid",
+        _ => kategori,
+    };
+
+    private static readonly System.Globalization.NumberFormatInfo NorskTall = NumberFormat.Norsk;
+
+    private static string FormatNok(double v)
+    {
+        if (v == 0) return "–";
+        return v.ToString("N0", NorskTall) + " NOK";
+    }
+}
