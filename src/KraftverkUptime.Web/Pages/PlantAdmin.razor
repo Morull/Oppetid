@@ -56,6 +56,12 @@ else
                              Required="true" Variant="Variant.Outlined"
                              HelperText="0 = krever oppsett. Vakt-ROI gir 0 NOK for anlegg uten kapasitet." />
 
+            <MudNumericField T="double?" @bind-Value="_form.NormalAarsproduksjonGwh"
+                             Label="Normal årsproduksjon (GWh)"
+                             Min="0" Max="10000" Step="0.1" Format="F1"
+                             Variant="Variant.Outlined"
+                             HelperText="Forventet produksjon i et gjennomsnittlig (normalt) år. Brukes til å sammenligne mot faktisk produksjon og til å fordele felleskostnader etter GWh-andel. La stå tom hvis ukjent." />
+
             <MudTextField @bind-Value="_form.TimeZone" Label="Tidssone (IANA)"
                           Required="true" Variant="Variant.Outlined"
                           HelperText="F.eks. Europe/Oslo. Påvirker DST-tolkning av settlement-data." />
@@ -594,6 +600,7 @@ else
                     InstalledCapacityMw = plant.InstalledCapacityMw,
                     TimeZone = plant.TimeZone,
                     DeratingThreshold = plant.DeratingThreshold ?? 0.80,
+                    NormalAarsproduksjonGwh = plant.NormalAarsproduksjonGwh,
                 };
             }
             await ReloadDamsAsync();
@@ -1003,7 +1010,8 @@ else
         {
             var body = new UpdatePlantRequest(
                 _form.Name, _form.Type, _form.InstalledCapacityMw, _form.TimeZone,
-                DeratingThreshold: _form.DeratingThreshold);
+                DeratingThreshold: _form.DeratingThreshold,
+                NormalAarsproduksjonGwh: _form.NormalAarsproduksjonGwh);
             await Api.UpdatePlantAsync(PlantId, body);
             Snackbar.Add($"{_form.Name} oppdatert.", Severity.Success);
             Nav.NavigateTo("/plants");
@@ -1059,5 +1067,6 @@ else
         public double InstalledCapacityMw { get; set; }
         public string TimeZone { get; set; } = "Europe/Oslo";
         public double DeratingThreshold { get; set; } = 0.80;
+        public double? NormalAarsproduksjonGwh { get; set; }
     }
 }

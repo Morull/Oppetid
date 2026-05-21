@@ -73,6 +73,9 @@ public sealed class KraftverkDbContext : DbContext
             b.Property(x => x.OverflowMode).HasConversion<string>().HasMaxLength(32).IsRequired();
             // KAIAs faste årsavgift per anlegg (Spec KAIA-KOSTNAD). Default 4000.
             b.Property(x => x.KaiaAnnualFeeNok).HasDefaultValue(4000d);
+            // Normal årsproduksjon i GWh — nullable, default null. Snake-case-
+            // konvensjon mapper automatisk til kolonnen normal_aarsproduksjon_gwh.
+            b.Property(x => x.NormalAarsproduksjonGwh);
             b.Ignore(x => x.PlantId); // Computed fra Id – ikke mappet til kolonne.
         });
 

@@ -444,6 +444,13 @@ public static class DatabaseBootstrapper
             -- pro-rata-beregning: avgift × dager_i_periode / dager_i_året.
             ALTER TABLE core.plants
                 ADD COLUMN IF NOT EXISTS kaia_annual_fee_nok double precision NOT NULL DEFAULT 4000;
+
+            -- Normal årsproduksjon i GWh — forventet produksjon i et
+            -- gjennomsnittlig år. Nullable; drifts-leder fyller inn etter hvert
+            -- som tall verifiseres mot historikken. Brukes til normalår-
+            -- sammenligning og GWh-andel-fordeling av felleskostnader.
+            ALTER TABLE core.plants
+                ADD COLUMN IF NOT EXISTS normal_aarsproduksjon_gwh double precision NULL;
             """;
 
         try

@@ -40,6 +40,18 @@ public sealed class PlantRegistration : IOwnedEntity, ISoftDeletable
     /// </summary>
     public double KaiaAnnualFeeNok { get; set; } = 4000;
 
+    /// <summary>
+    /// Forventet produksjon i et gjennomsnittlig (normalt) år, i GWh.
+    /// Nullable — null = ikke satt ennå. Brukes til to ting (begge senere
+    /// oppgaver):
+    ///   1. Sammenligne faktisk produksjon mot normalåret (over/under snitt).
+    ///   2. Fordele felleskostnader (eks. samlet vaktkost) etter GWh-andel
+    ///      av porteføljen: <c>andel = anlegg_GWh / Σ alle_anlegg_GWh</c>.
+    /// Drifts-leder oppgir verdien i GWh; resten av appen regner i MWh fra
+    /// Elhub, så konvertering (1 GWh = 1000 MWh) gjøres i forbruks-koden.
+    /// </summary>
+    public double? NormalAarsproduksjonGwh { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? DeletedAt { get; set; }
     public string? DeletedBy { get; set; }

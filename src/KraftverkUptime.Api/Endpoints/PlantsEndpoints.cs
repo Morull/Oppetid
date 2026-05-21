@@ -125,6 +125,7 @@ public static class PlantsEndpoints
             plant.InstalledCapacityMw,
             plant.TimeZone,
             DeratingThreshold = deratingThreshold ?? 0.80, // default = 20 % avvik
+            plant.NormalAarsproduksjonGwh,
         });
     }
 
@@ -168,6 +169,15 @@ public static class PlantsEndpoints
                 detail: $"'{body.Type}' er ikke en gyldig PlantType. Lovlige verdier: Regulated, RunOfRiver, Mixed, Pumped.",
                 statusCode: StatusCodes.Status400BadRequest);
         }
+        // NormalAarsproduksjonGwh: nullbar; tom = ikke satt. Negativ er ugyldig.
+        // Øvre grense romslig nok til å dekke vannkraftverk uten å være helt åpen.
+        if (body.NormalAarsproduksjonGwh is { } gwh && (gwh < 0 || gwh > 10000))
+        {
+            return Results.Problem(
+                title: "Ugyldig årsproduksjon",
+                detail: "NormalAarsproduksjonGwh må være mellom 0 og 10000 GWh, eller tom.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
 
         var plant = await queryContext
             .Apply(db.Plants.AsQueryable())
@@ -185,6 +195,7 @@ public static class PlantsEndpoints
         plant.Type = typeValue;
         plant.InstalledCapacityMw = body.InstalledCapacityMw;
         plant.TimeZone = body.TimeZone.Trim();
+        plant.NormalAarsproduksjonGwh = body.NormalAarsproduksjonGwh;
 
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
 
@@ -220,6 +231,7 @@ public static class PlantsEndpoints
             plant.InstalledCapacityMw,
             plant.TimeZone,
             DeratingThreshold = savedThreshold ?? 0.80,
+            plant.NormalAarsproduksjonGwh,
         });
     }
 
@@ -301,7 +313,8 @@ public sealed record UpdatePlantRequest(
     string Type,
     double InstalledCapacityMw,
     string TimeZone,
-    double? DeratingThreshold = null);
+    double? DeratingThreshold = null,
+    double? NormalAarsproduksjonGwh = null);
 
 /// <summary>Bekreftelses-body for <c>DELETE /api/v1/plants/{plantId}/data</c>.</summary>
 public sealed record ResetPlantDataRequest(string ConfirmText);
