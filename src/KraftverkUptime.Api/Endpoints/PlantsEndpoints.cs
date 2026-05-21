@@ -83,7 +83,14 @@ public static class PlantsEndpoints
         }
 
         var dtos = items
-            .Select(p => (object)new { p.Id, p.Name, Type = p.Type.ToString(), p.InstalledCapacityMw, p.TimeZone })
+            .Select(p => (object)new
+            {
+                p.Id, p.Name,
+                Type = p.Type.ToString(),
+                p.InstalledCapacityMw,
+                p.TimeZone,
+                p.NormalAarsproduksjonGwh,
+            })
             .ToList();
 
         return Results.Ok(new PagedResult<object>(dtos, next, size));

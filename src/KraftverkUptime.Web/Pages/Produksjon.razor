@@ -3,6 +3,7 @@
 @using ApexCharts
 @implements IDisposable
 @inject NedetidApi NedetidApi
+@inject ReportsApi ReportsApi
 @inject FilterState Filter
 @inject NavigationManager Nav
 
@@ -139,6 +140,24 @@ else if (_data is not null)
                          HigherIsBetter="true" />
             </MudItem>
         </MudGrid>
+
+        @* Normalår-sammenligning — sammenligner faktisk produksjon mot
+           pro-rata normalåret. Vises kun når NormalAarsproduksjonGwh er
+           satt på anlegget (PlantAdmin). *@
+        var normalAars = NormalAarsAndel();
+        @if (normalAars.HasValue)
+        {
+            <MudGrid Class="mb-4">
+                <MudItem xs="12" sm="6" md="4">
+                    <KpiCard Label="Faktisk vs normalår"
+                             Value="@($"{(normalAars.Value * 100):F0} %")"
+                             SubText="@($"{(_plant?.NormalAarsproduksjonGwh ?? 0):F1} GWh i et normalår · pro-rata på perioden")"
+                             Accent="@(normalAars.Value >= 0.95 ? KpiAccent.Positive : normalAars.Value >= 0.80 ? KpiAccent.Warning : KpiAccent.Negative)"
+                             InfoText="Faktisk Elhub-produksjon delt på forventet produksjon i perioden, gitt normalåret. 100 % = på snitt; under = under snitt; over = bedre enn snitt."
+                             InfoFormula="andel = ElhubMwh / (NormalGwh × 1000 × dager / 365)" />
+                </MudItem>
+            </MudGrid>
+        }
 
         @* ---- Tolkning-banner ---- *@
         <MudAlert Severity="@TolkningSeverity()" Class="mb-4" Dense="true" Icon="@Icons.Material.Filled.Insights">
@@ -328,6 +347,10 @@ else if (_data is not null)
     private ProduksjonAnalyseDto? _previous;
     private DataQualitySummaryDto? _dataQuality;
 
+    // Plant-detalj for å få NormalAarsproduksjonGwh til normalår-KPI.
+    // Lastes parallelt med Produksjon-data.
+    private PlantDto? _plant;
+
     // Kolonnesynlighet for månedstabellen: default 7 kjerne-kolonner, 5 ekstra
     // bak switch. UI-gjennomgang 2026-05-20 tiltak 3.
     private bool _showAllColumns;
@@ -401,6 +424,7 @@ else if (_data is not null)
         _data = null;
         _previous = null;
         _dataQuality = null;
+        _plant = null;
         await InvokeAsync(StateHasChanged);
         try
         {
@@ -421,6 +445,10 @@ else if (_data is not null)
             // Datakvalitet — informasjons-banner.
             try { _dataQuality = await NedetidApi.GetDataQualityAsync(Filter.PlantId, fromUtc, toUtc); }
             catch { _dataQuality = null; }
+
+            // Plant-detalj for NormalAarsproduksjonGwh — feiler stille.
+            try { _plant = await ReportsApi.GetPlantAsync(Filter.PlantId); }
+            catch { _plant = null; }
 
             BuildDailyPoints();
             _chartVersion++;
@@ -624,6 +652,25 @@ else if (_data is not null)
         if (_data.PlanTreffProsent >= 0.85 && _data.AndelProdIToppKvartil >= 0.27) return Severity.Success;
         if (_data.PlanTreffProsent < 0.65 || _data.AndelProdIToppKvartil < 0.20) return Severity.Warning;
         return Severity.Info;
+    }
+
+    /// <summary>
+    /// Faktisk produksjon som andel av pro-rata normalår. Returnerer null
+    /// hvis NormalAarsproduksjonGwh ikke er satt eller perioden er ugyldig.
+    /// Beregning: andel = ElhubMwh / (NormalGwh × 1000 × dager / 365).
+    /// </summary>
+    private double? NormalAarsAndel()
+    {
+        if (_data is null) return null;
+        if (_plant?.NormalAarsproduksjonGwh is not { } normalGwh) return null;
+        if (normalGwh <= 0) return null;
+        if (!Filter.FromDate.HasValue || !Filter.ToDate.HasValue) return null;
+        var dager = (Filter.ToDate.Value - Filter.FromDate.Value).TotalDays;
+        if (dager <= 0) return null;
+        var dagerIAaret = DateTime.IsLeapYear(Filter.FromDate.Value.Year) ? 366 : 365;
+        var forventetMwh = normalGwh * 1000.0 * dager / dagerIAaret;
+        if (forventetMwh <= 0) return null;
+        return _data.TotalElhubMwh / forventetMwh;
     }
 
     private string HelhetligTolkning()

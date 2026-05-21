@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject NedetidApi NedetidApi
 @inject KaiaCostApi KaiaCostApi
+@inject ReportsApi ReportsApi
 @inject FilterState Filter
 @inject NavigationManager Nav
 
@@ -171,6 +172,11 @@ else if (_rows is not null)
                             </MudTooltip>
                         </MudTh>
                         <MudTh Style="text-align:right">
+                            <MudTooltip Text="Faktisk produksjon som andel av normalåret pro-rata på perioden. 100 % = på snitt; > 100 % over et normalår; < 100 % under. Krever at normal årsproduksjon er satt på anlegget (PlantAdmin).">
+                                <MudTableSortLabel SortBy="@SortByNormalAar">Normalår %</MudTableSortLabel>
+                            </MudTooltip>
+                        </MudTh>
+                        <MudTh Style="text-align:right">
                             <MudTooltip Text="Spotomsetning — produksjon × spotpris time-for-time. Det du teoretisk ville fått hvis du solgte alt på spot.">
                                 <MudTableSortLabel SortBy="@SortByNok"
                                     InitialDirection="SortDirection.Descending">Spotoms (NOK)</MudTableSortLabel>
@@ -240,6 +246,7 @@ else if (_rows is not null)
                         <MudTd Style="text-align:right">@FormatRatio(context.AvailabilityFactor)</MudTd>
                         <MudTd Style="text-align:right">@FormatRatio(context.ForcedOutageRate)</MudTd>
                         <MudTd Style="text-align:right">@FormatMwh(context.TotalProductionMwh)</MudTd>
+                        <MudTd Style="text-align:right">@FormatNormalAarsAndel(NormalAarsAndel(context))</MudTd>
                         <MudTd Style="text-align:right">@FormatNok(context.SpotomsetningNok)</MudTd>
                         @if (_showAllColumns)
                         {
@@ -271,6 +278,7 @@ else if (_rows is not null)
                             <MudTd Style="text-align:right; color: var(--mud-palette-text-secondary);">—</MudTd>
                             <MudTd Style="text-align:right; color: var(--mud-palette-text-secondary);">—</MudTd>
                             <MudTd Style="text-align:right; white-space: nowrap;">@FormatMwh(_rows.Sum(r => r.TotalProductionMwh))</MudTd>
+                            <MudTd Style="text-align:right; white-space: nowrap;">@FormatNormalAarsAndel(NormalAarsAndelTotal())</MudTd>
                             <MudTd Style="text-align:right; white-space: nowrap;">@FormatNok(_rows.Sum(r => r.SpotomsetningNok))</MudTd>
                             @if (_showAllColumns)
                             {
@@ -335,6 +343,7 @@ else if (_rows is not null)
         int AntallEvents,
         int AntallReddbare,
         DataQualitySummaryDto? DataQuality,
+        double? NormalAarsproduksjonGwh,
         IReadOnlyList<string> MissingData);
 
     protected override async Task OnInitializedAsync()
@@ -386,6 +395,16 @@ else if (_rows is not null)
 
             var portfolio = await NedetidApi.GetPortfolioKpisAsync(fromUtc, toUtc);
 
+            // Plant-detaljer for å få NormalAarsproduksjonGwh (Normalår-andel-
+            // kolonnen). Failer stille — uten verdiene blir kolonnen tom.
+            IReadOnlyList<PlantDto> plantDetails = Array.Empty<PlantDto>();
+            try { plantDetails = await ReportsApi.ListPlantsAsync(); }
+            catch { /* Normalår-andel vises tom */ }
+            var normalGwhByPlant = plantDetails
+                .Where(p => p.NormalAarsproduksjonGwh.HasValue)
+                .ToDictionary(p => p.Id, p => p.NormalAarsproduksjonGwh!.Value,
+                    StringComparer.Ordinal);
+
             // Datakvalitet i én bulk-spørring (SPEC-MVP-HARDENING tiltak C) —
             // unngår N+1 ved å hente alle anlegg på én gang.
             IReadOnlyList<DataQualitySummaryDto> dqSummaries = Array.Empty<DataQualitySummaryDto>();
@@ -399,7 +418,9 @@ else if (_rows is not null)
 
             // Fan-out: vakt-ROI + nedetid for hver plant parallelt.
             var enrichTasks = portfolio.Plants.Select(p =>
-                EnrichAsync(p, dqByPlant.GetValueOrDefault(p.PlantId), fromUtc, toUtc));
+                EnrichAsync(p, dqByPlant.GetValueOrDefault(p.PlantId),
+                    normalGwhByPlant.TryGetValue(p.PlantId, out var n) ? n : (double?)null,
+                    fromUtc, toUtc));
             var enriched = await Task.WhenAll(enrichTasks);
 
             _rows = enriched.OrderByDescending(r => r.ReddetNok).ToList();
@@ -449,7 +470,9 @@ else if (_rows is not null)
         }
     }
 
-    private async Task<Row> EnrichAsync(PortfolioPlantKpi p, DataQualitySummaryDto? dq, DateTimeOffset fromUtc, DateTimeOffset toUtc)
+    private async Task<Row> EnrichAsync(
+        PortfolioPlantKpi p, DataQualitySummaryDto? dq, double? normalGwh,
+        DateTimeOffset fromUtc, DateTimeOffset toUtc)
     {
         double Kpi(string name) => p.Kpis.TryGetValue(name, out var v) && v.HasValue ? v.Value : 0;
 
@@ -487,7 +510,28 @@ else if (_rows is not null)
             AntallEvents: vakt?.AntallEventsTotalt ?? 0,
             AntallReddbare: vakt?.AntallReddbareInnenforVakt ?? 0,
             DataQuality: dq,
+            NormalAarsproduksjonGwh: normalGwh,
             MissingData: missing);
+    }
+
+    /// <summary>
+    /// Faktisk produksjon som andel av pro-rata normalår. Returnerer null
+    /// hvis NormalAarsproduksjonGwh ikke er satt for anlegget eller
+    /// periode-dager &lt;= 0.
+    /// Beregning:
+    ///   forventet_mwh = NormalGwh × 1000 × periode_dager / dager_i_året
+    ///   andel = TotalProductionMwh / forventet_mwh
+    /// </summary>
+    private double? NormalAarsAndel(Row r)
+    {
+        if (!r.NormalAarsproduksjonGwh.HasValue || r.NormalAarsproduksjonGwh.Value <= 0) return null;
+        if (!Filter.FromDate.HasValue || !Filter.ToDate.HasValue) return null;
+        var dager = (Filter.ToDate.Value - Filter.FromDate.Value).TotalDays;
+        if (dager <= 0) return null;
+        var dagerIAaret = DateTime.IsLeapYear(Filter.FromDate.Value.Year) ? 366 : 365;
+        var forventetMwh = r.NormalAarsproduksjonGwh.Value * 1000.0 * dager / dagerIAaret;
+        if (forventetMwh <= 0) return null;
+        return r.TotalProductionMwh / forventetMwh;
     }
 
     private double MerverdiSum() => _rows?.Sum(r => r.MerverdiNok) ?? 0;
@@ -524,6 +568,7 @@ else if (_rows is not null)
     private static readonly Func<Row, object> SortByAf       = r => r.AvailabilityFactor;
     private static readonly Func<Row, object> SortByFor      = r => r.ForcedOutageRate;
     private static readonly Func<Row, object> SortByMwh      = r => r.TotalProductionMwh;
+    private static readonly Func<Row, object> SortByNormalAar = r => r.NormalAarsproduksjonGwh ?? 0;
     private static readonly Func<Row, object> SortByNok      = r => r.SpotomsetningNok;
     private static readonly Func<Row, object> SortByCr       = r => r.CaptureRateTimes;
     private static readonly Func<Row, object> SortByMerverdi = r => r.MerverdiNok;
@@ -554,6 +599,32 @@ else if (_rows is not null)
     // Local alias beholdes for å unngå å touche alle call-sites i ToString("N0", NorskTall).
     private static readonly System.Globalization.NumberFormatInfo NorskTall = NumberFormat.Norsk;
     private static string FormatNok(double v) => v == 0 ? "–" : v.ToString("N0", NorskTall);
+
+    /// <summary>Formatterer normalår-andel som "X %" eller "–" hvis ikke tilgjengelig.</summary>
+    private static string FormatNormalAarsAndel(double? andel) =>
+        andel.HasValue ? (andel.Value * 100).ToString("F0", NorskTall) + " %" : "–";
+
+    /// <summary>
+    /// Portefølje-andel: total faktisk MWh / sum forventet MWh for alle anlegg
+    /// med NormalAarsproduksjonGwh satt. Pro-rata på periode-lengden.
+    /// </summary>
+    private double? NormalAarsAndelTotal()
+    {
+        if (_rows is null || _rows.Count == 0) return null;
+        if (!Filter.FromDate.HasValue || !Filter.ToDate.HasValue) return null;
+        var dager = (Filter.ToDate.Value - Filter.FromDate.Value).TotalDays;
+        if (dager <= 0) return null;
+        var dagerIAaret = DateTime.IsLeapYear(Filter.FromDate.Value.Year) ? 366 : 365;
+        double forventetMwh = 0;
+        double faktiskMwh = 0;
+        foreach (var r in _rows)
+        {
+            if (!r.NormalAarsproduksjonGwh.HasValue || r.NormalAarsproduksjonGwh.Value <= 0) continue;
+            forventetMwh += r.NormalAarsproduksjonGwh.Value * 1000.0 * dager / dagerIAaret;
+            faktiskMwh += r.TotalProductionMwh;
+        }
+        return forventetMwh > 0 ? faktiskMwh / forventetMwh : null;
+    }
     private static string FormatNokSigned(double v)
     {
         if (v == 0) return "–";

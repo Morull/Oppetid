@@ -130,6 +130,10 @@ public static class DatabaseBootstrapper
             // Idempotent — endrer kun rader med default-verdi.
             await OverflowModeSeeder.SeedAsync(services, ct).ConfigureAwait(false);
 
+            // Default normal årsproduksjon (GWh) per anlegg fra drifts-leders
+            // kraftverkoversikt 2022. Idempotent — kun NULL-rader får default.
+            await NormalAarsproduksjonSeeder.SeedAsync(services, ct).ConfigureAwait(false);
+
             // Backfill data_imports fra eksisterende settlement_imports-historikk
             // (SPEC-IMPORT-COMPLETENESS steg 3). Idempotent — NOT EXISTS-filter.
             await DataImportsBackfillSeeder.SeedAsync(services, ct).ConfigureAwait(false);

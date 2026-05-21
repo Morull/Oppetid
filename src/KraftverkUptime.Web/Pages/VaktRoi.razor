@@ -3,6 +3,7 @@
 @using ApexCharts
 @implements IDisposable
 @inject NedetidApi NedetidApi
+@inject ReportsApi ReportsApi
 @inject FilterState Filter
 @inject NavigationManager Nav
 @inject CauseFormatter CauseFormatter
@@ -73,17 +74,44 @@
     <MudPaper Class="pa-4 mb-4" Elevation="1">
         <MudGrid>
             <MudItem xs="12" sm="6">
-                <MudNumericField T="double" @bind-Value="_aarligVaktKost" Label="Årlig vakt-kost (NOK)"
+                <MudNumericField T="double" @bind-Value="_aarligVaktKost"
+                                 Label="Samlet portefølje-vaktkost (NOK/år)"
                                  Step="50000" Format="N0"
-                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                 Variant="Variant.Outlined" Margin="Margin.Dense"
+                                 HelperText="Hele porteføljens årlige vaktkost. Anleggets andel beregnes ut fra normal GWh-produksjon (se admin)." />
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
-                    Reddet produksjon beregnes fra <strong>Hydrogrid-plan per time</strong> (settlement-data),
-                    ikke en flat kapasitetsfaktor. Plan fanger sesongvariasjon i vannføring og marked
-                    direkte. For counterfactual-timer utenfor importert plan brukes proxy fra
-                    nærmeste samme ukedag/time bakover (maks 4 uker).
-                </MudText>
+                @{
+                    var plantKost = PlantAarligVaktKost(Filter.PlantId);
+                    var plantAndel = PlantGwhAndel(Filter.PlantId);
+                }
+                @if (plantKost.HasValue)
+                {
+                    <MudPaper Class="pa-3" Elevation="0" Style="background: var(--mud-palette-action-disabled-background);">
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                            Anleggets andel av vaktkost
+                        </MudText>
+                        <MudText Typo="Typo.h6">
+                            @FormatNok(plantKost.Value) NOK/år
+                            @if (plantAndel.HasValue)
+                            {
+                                <span style="font-weight: 400; font-size: 0.85em; color: var(--mud-palette-text-secondary);">
+                                    @($" · {plantAndel.Value * 100:F1} % av total")
+                                </span>
+                            }
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                            Fordelt etter normal årsproduksjon (GWh-andel).
+                        </MudText>
+                    </MudPaper>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
+                        Reddet produksjon beregnes fra <strong>Hydrogrid-plan per time</strong> (settlement-data),
+                        ikke en flat kapasitetsfaktor.
+                    </MudText>
+                }
             </MudItem>
         </MudGrid>
     </MudPaper>
@@ -570,7 +598,16 @@ else if (!IsPortfolioMode && _response is not null)
 @code {
     [Parameter] public string? PlantId { get; set; }
 
+    // Samlet portefølje-vaktkost. Brukes i porteføljemodus direkte og som
+    // grunnlag for GWh-andel-fordeling i per-plant-modus. Default = drifts-leders
+    // første estimat 2026; bruker endrer via input-feltet i UI.
     private double _aarligVaktKost = 360_000;
+
+    // Plant-listen med NormalAarsproduksjonGwh lastes for å fordele samlet
+    // vaktkost etter GWh-andel. Default fallback: lik fordeling 1/N hvis
+    // ingen anlegg har GWh satt (forhindrer 0-divisjon).
+    private IReadOnlyList<PlantDto> _allPlants = Array.Empty<PlantDto>();
+
     private bool _loading;
     private string? _error;
 
@@ -628,6 +665,51 @@ else if (!IsPortfolioMode && _response is not null)
 
     private static string FormatVaktVindu(string start, string slutt, string oppmote) =>
         $"{start}-{slutt} (oppmøte {oppmote})";
+
+    // ----- GWh-andel-fordeling av samlet vaktkost ----------------------------
+
+    /// <summary>
+    /// Returnerer denne plantens andel av samlet portefølje-vaktkost,
+    /// fordelt etter normal årsproduksjon i GWh:
+    ///   andel_plant = plant.NormalGwh / Σ alle anleggs NormalGwh
+    ///   plant_kost  = _aarligVaktKost × andel_plant
+    /// Fallback (ingen GWh-data): lik fordeling 1/N. Returnerer null hvis
+    /// ingen plant er valgt eller listen er tom.
+    /// </summary>
+    private double? PlantAarligVaktKost(string? plantId)
+    {
+        if (string.IsNullOrEmpty(plantId)) return null;
+        if (_allPlants.Count == 0) return null;
+        var totalGwh = _allPlants.Sum(p => p.NormalAarsproduksjonGwh ?? 0);
+        if (totalGwh <= 0)
+        {
+            // Fallback: lik fordeling 1/N hvis ingen anlegg har GWh satt.
+            return _aarligVaktKost / _allPlants.Count;
+        }
+        var plant = _allPlants.FirstOrDefault(p => p.Id == plantId);
+        var plantGwh = plant?.NormalAarsproduksjonGwh ?? 0;
+        if (plantGwh <= 0)
+        {
+            // Plant uten GWh i en portefølje der andre HAR GWh — gi 0 andel
+            // (plantet bidrar ikke til delt vaktkost) heller enn null.
+            return 0;
+        }
+        return _aarligVaktKost * plantGwh / totalGwh;
+    }
+
+    /// <summary>
+    /// GWh-andel som tall i prosent for vist tekst. Null hvis ikke beregnelig.
+    /// </summary>
+    private double? PlantGwhAndel(string? plantId)
+    {
+        if (string.IsNullOrEmpty(plantId)) return null;
+        var totalGwh = _allPlants.Sum(p => p.NormalAarsproduksjonGwh ?? 0);
+        if (totalGwh <= 0) return null;
+        var plantGwh = _allPlants.FirstOrDefault(p => p.Id == plantId)
+            ?.NormalAarsproduksjonGwh ?? 0;
+        if (plantGwh <= 0) return 0;
+        return plantGwh / totalGwh;
+    }
 
     // ----- Vakt-vurdering (flyttet fra /portefolje) -----
 
@@ -739,6 +821,12 @@ else if (!IsPortfolioMode && _response is not null)
 
         _ = CauseFormatter.EnsureLoadedAsync()
             .ContinueWith(_ => InvokeAsync(StateHasChanged), TaskScheduler.Default);
+
+        // Plant-listen (med NormalAarsproduksjonGwh) trenger vi for å
+        // fordele vaktkost etter GWh-andel. Feiler stille — fallback til
+        // lik fordeling.
+        try { _allPlants = await ReportsApi.ListPlantsAsync(); }
+        catch { _allPlants = Array.Empty<PlantDto>(); }
 
         await LoadFromFilterAsync();
     }
@@ -1029,22 +1117,31 @@ else if (!IsPortfolioMode && _response is not null)
         }
     }
 
+    /// <summary>
+    /// Vaktkost for per-plant-ROI: bruker GWh-fordelt andel av samlet
+    /// portefølje-vaktkost. Fallback til hele _aarligVaktKost hvis andelen
+    /// ikke er beregnelig — bevarer tidligere oppførsel.
+    /// </summary>
+    private double PerPlantVaktKost()
+        => PlantAarligVaktKost(Filter.PlantId) ?? _aarligVaktKost;
+
     private string RoiSubText()
     {
         var aarlig = EstimertAarligReddet();
-        if (_aarligVaktKost <= 0) return "Sett inn vakt-kost for ROI-sammenlikning";
-        var diff = aarlig - _aarligVaktKost;
-        var ratio = aarlig / _aarligVaktKost;
+        var kost = PerPlantVaktKost();
+        if (kost <= 0) return "Sett inn vakt-kost for ROI-sammenlikning";
+        var diff = aarlig - kost;
+        var ratio = aarlig / kost;
         if (diff >= 0)
         {
-            return $"Reddet ≈ {ratio:F1}× vakt-kosten";
+            return $"Reddet ≈ {ratio:F1}× anleggets vakt-andel";
         }
-        return $"Reddet < vakt-kost (~{ratio:F1}×)";
+        return $"Reddet < anleggets vakt-andel (~{ratio:F1}×)";
     }
 
     private KpiAccent RoiAccent()
     {
-        var diff = EstimertAarligReddet() - _aarligVaktKost;
+        var diff = EstimertAarligReddet() - PerPlantVaktKost();
         return diff >= 0 ? KpiAccent.Positive : KpiAccent.Negative;
     }
 
