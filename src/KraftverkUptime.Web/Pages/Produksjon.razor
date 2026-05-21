@@ -412,7 +412,7 @@ else if (_data is not null)
         catch (Exception ex)
         {
             _error = $"Kunne ikke hente produksjons-analyse: {ex.Message}";
-            await InvokeAsync(StateHasChanged);
+            try { await InvokeAsync(StateHasChanged); } catch { /* disposed */ }
         }
     }
 

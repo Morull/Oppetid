@@ -246,7 +246,7 @@ else if (_response is not null)
         catch (Exception ex)
         {
             _error = $"Kunne ikke hente effektivitets-data: {ex.Message}";
-            await InvokeAsync(StateHasChanged);
+            try { await InvokeAsync(StateHasChanged); } catch { /* disposed */ }
         }
     }
 

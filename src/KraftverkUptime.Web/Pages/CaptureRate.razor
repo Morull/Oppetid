@@ -250,7 +250,10 @@ else if (_aggregate is not null)
         catch (Exception ex)
         {
             _error = $"Kunne ikke hente capture rate-data: {ex.Message}";
-            await InvokeAsync(StateHasChanged);
+            // Svelg ObjectDisposed/TaskCanceled hvis bruker navigerte bort
+            // mens async-en pågikk — ellers krasjer Blazor's unhandled-pipeline
+            // og #blazor-error-ui dukker opp uten egentlig årsak (2026-05-21).
+            try { await InvokeAsync(StateHasChanged); } catch { }
         }
     }
 

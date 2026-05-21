@@ -1,6 +1,18 @@
 // Små JS-interop-hjelpere kalt fra Blazor-sidene. Holdes minimal — alt
 // som kan gjøres i C# bør holdes i C#.
 
+// ----- Global error capture ------------------------------------------------
+// Blazor's standard #blazor-error-ui viser bare "En uventet feil har
+// oppstått" uten detaljer. Disse handlerene logger den fulle stack-tracen
+// til console (åpne F12) så drifts-leder kan rapportere hva som faktisk
+// krasjet — eller kopiere stack-trace til neste feilrapport.
+window.addEventListener('error', function (e) {
+    console.error('[DK] Unhandled error:', e.error || e.message, e);
+});
+window.addEventListener('unhandledrejection', function (e) {
+    console.error('[DK] Unhandled promise rejection:', e.reason);
+});
+
 window.dkEffPunkter = null;
 
 /**

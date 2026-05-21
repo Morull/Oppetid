@@ -363,7 +363,7 @@ else if (_rows is not null)
         catch (Exception ex)
         {
             _error = $"Kunne ikke oppdatere portefølje: {ex.Message}";
-            await InvokeAsync(StateHasChanged);
+            try { await InvokeAsync(StateHasChanged); } catch { /* disposed */ }
         }
     }
 

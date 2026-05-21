@@ -124,7 +124,7 @@ else
         catch (Exception ex)
         {
             _error = $"Kunne ikke oppdatere rapport-liste: {ex.Message}";
-            await InvokeAsync(StateHasChanged);
+            try { await InvokeAsync(StateHasChanged); } catch { /* disposed */ }
         }
     }
 
