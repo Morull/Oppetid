@@ -52,6 +52,28 @@ public sealed class PlantRegistration : IOwnedEntity, ISoftDeletable
     /// </summary>
     public double? NormalAarsproduksjonGwh { get; set; }
 
+    /// <summary>
+    /// Turbin-type — typisk "Francis", "Kaplan" eller "Pelton". Lagres som
+    /// fri streng for å tillate fremtidige varianter uten kode-endring.
+    /// Null = ikke satt.
+    /// </summary>
+    public string? TurbineType { get; set; }
+
+    /// <summary>
+    /// Fallhøyde i meter — vertikal forskjell mellom inntak og turbin.
+    /// Brukes (sammen med <see cref="EnergyEquivalentKwhPerM3"/>) som basis
+    /// for vannverdi-beregninger. Null = ikke satt.
+    /// </summary>
+    public double? HeadM { get; set; }
+
+    /// <summary>
+    /// Energiekvivalent — hvor mye energi en kubikkmeter vann gir gjennom
+    /// dette anlegget, i kWh/m³. Funksjon av fallhøyde × virkningsgrad × g.
+    /// Brukes til å konvertere SCADA-vannføring til potensiell energi.
+    /// Null = ikke satt.
+    /// </summary>
+    public double? EnergyEquivalentKwhPerM3 { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? DeletedAt { get; set; }
     public string? DeletedBy { get; set; }

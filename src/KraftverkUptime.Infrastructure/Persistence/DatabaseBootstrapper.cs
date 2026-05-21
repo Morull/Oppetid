@@ -134,6 +134,10 @@ public static class DatabaseBootstrapper
             // kraftverkoversikt 2022. Idempotent — kun NULL-rader får default.
             await NormalAarsproduksjonSeeder.SeedAsync(services, ct).ConfigureAwait(false);
 
+            // Anleggs-metadata (turbin-type, fallhøyde, energiekvivalent) fra
+            // samme kraftverkoversikt. Idempotent per kolonne.
+            await PlantMetadataSeeder.SeedAsync(services, ct).ConfigureAwait(false);
+
             // Backfill data_imports fra eksisterende settlement_imports-historikk
             // (SPEC-IMPORT-COMPLETENESS steg 3). Idempotent — NOT EXISTS-filter.
             await DataImportsBackfillSeeder.SeedAsync(services, ct).ConfigureAwait(false);
@@ -455,6 +459,17 @@ public static class DatabaseBootstrapper
             -- sammenligning og GWh-andel-fordeling av felleskostnader.
             ALTER TABLE core.plants
                 ADD COLUMN IF NOT EXISTS normal_aarsproduksjon_gwh double precision NULL;
+
+            -- Anleggs-metadata fra kraftverkoversikten (2026-05-21):
+            -- turbin-type, fallhøyde og energiekvivalent. Alle nullable;
+            -- fylles via seeder for de 11 Dalane-anleggene, redigerbar via
+            -- PlantAdmin.
+            ALTER TABLE core.plants
+                ADD COLUMN IF NOT EXISTS turbine_type varchar(32) NULL;
+            ALTER TABLE core.plants
+                ADD COLUMN IF NOT EXISTS head_m double precision NULL;
+            ALTER TABLE core.plants
+                ADD COLUMN IF NOT EXISTS energy_equivalent_kwh_per_m3 double precision NULL;
             """;
 
         try

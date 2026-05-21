@@ -365,13 +365,18 @@ public sealed class ReportsApi
 public sealed record PlantDto(
     string Id, string Name, string Type, double InstalledCapacityMw, string TimeZone,
     double? DeratingThreshold = null,
-    double? NormalAarsproduksjonGwh = null);
+    double? NormalAarsproduksjonGwh = null,
+    string? TurbineType = null,
+    double? HeadM = null,
+    double? EnergyEquivalentKwhPerM3 = null);
 
 /// <summary>
 /// Body for <c>PUT /api/v1/plants/{plantId}</c>. <see cref="Type"/> er enum-string —
 /// "Regulated", "RunOfRiver", "Mixed" eller "Pumped".
 /// <see cref="DeratingThreshold"/> i (0, 1]; null beholder eksisterende verdi.
 /// <see cref="NormalAarsproduksjonGwh"/> i GWh; null = ikke satt.
+/// <see cref="TurbineType"/>: typisk "Francis", "Kaplan", "Pelton".
+/// <see cref="HeadM"/>: fallhøyde i meter. <see cref="EnergyEquivalentKwhPerM3"/>: kWh/m³.
 /// </summary>
 public sealed record UpdatePlantRequest(
     string Name,
@@ -379,7 +384,10 @@ public sealed record UpdatePlantRequest(
     double InstalledCapacityMw,
     string TimeZone,
     double? DeratingThreshold = null,
-    double? NormalAarsproduksjonGwh = null);
+    double? NormalAarsproduksjonGwh = null,
+    string? TurbineType = null,
+    double? HeadM = null,
+    double? EnergyEquivalentKwhPerM3 = null);
 
 /// <summary>Bekreftelses-body for <c>DELETE /api/v1/plants/{plantId}/data</c>.</summary>
 public sealed record ResetPlantDataRequestDto(string ConfirmText);

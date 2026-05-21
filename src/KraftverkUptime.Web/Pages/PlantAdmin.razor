@@ -62,6 +62,28 @@ else
                              Variant="Variant.Outlined"
                              HelperText="Forventet produksjon i et gjennomsnittlig (normalt) år. Brukes til å sammenligne mot faktisk produksjon og til å fordele felleskostnader etter GWh-andel. La stå tom hvis ukjent." />
 
+            <MudSelect T="string" @bind-Value="_form.TurbineType"
+                       Label="Turbin-type"
+                       Variant="Variant.Outlined" Clearable="true"
+                       HelperText="Type turbin i anlegget. La stå tom hvis ikke kjent.">
+                <MudSelectItem Value="@("Francis")">Francis</MudSelectItem>
+                <MudSelectItem Value="@("Kaplan")">Kaplan</MudSelectItem>
+                <MudSelectItem Value="@("Pelton")">Pelton</MudSelectItem>
+                <MudSelectItem Value="@("Annet")">Annet</MudSelectItem>
+            </MudSelect>
+
+            <MudNumericField T="double?" @bind-Value="_form.HeadM"
+                             Label="Fallhøyde (m)"
+                             Min="0" Max="2000" Step="0.5" Format="F1"
+                             Variant="Variant.Outlined"
+                             HelperText="Vertikal forskjell mellom inntak og turbin. Brukes til vannverdi-modell." />
+
+            <MudNumericField T="double?" @bind-Value="_form.EnergyEquivalentKwhPerM3"
+                             Label="Energiekvivalent (kWh/m³)"
+                             Min="0" Max="10" Step="0.001" Format="F4"
+                             Variant="Variant.Outlined"
+                             HelperText="Hvor mye energi en m³ vann gir gjennom anlegget. Funksjon av fallhøyde × virkningsgrad. Brukes til å konvertere vannføring til potensiell energi." />
+
             <MudTextField @bind-Value="_form.TimeZone" Label="Tidssone (IANA)"
                           Required="true" Variant="Variant.Outlined"
                           HelperText="F.eks. Europe/Oslo. Påvirker DST-tolkning av settlement-data." />
@@ -601,6 +623,9 @@ else
                     TimeZone = plant.TimeZone,
                     DeratingThreshold = plant.DeratingThreshold ?? 0.80,
                     NormalAarsproduksjonGwh = plant.NormalAarsproduksjonGwh,
+                    TurbineType = plant.TurbineType,
+                    HeadM = plant.HeadM,
+                    EnergyEquivalentKwhPerM3 = plant.EnergyEquivalentKwhPerM3,
                 };
             }
             await ReloadDamsAsync();
@@ -1011,7 +1036,10 @@ else
             var body = new UpdatePlantRequest(
                 _form.Name, _form.Type, _form.InstalledCapacityMw, _form.TimeZone,
                 DeratingThreshold: _form.DeratingThreshold,
-                NormalAarsproduksjonGwh: _form.NormalAarsproduksjonGwh);
+                NormalAarsproduksjonGwh: _form.NormalAarsproduksjonGwh,
+                TurbineType: _form.TurbineType,
+                HeadM: _form.HeadM,
+                EnergyEquivalentKwhPerM3: _form.EnergyEquivalentKwhPerM3);
             await Api.UpdatePlantAsync(PlantId, body);
             Snackbar.Add($"{_form.Name} oppdatert.", Severity.Success);
             Nav.NavigateTo("/plants");
@@ -1068,5 +1096,8 @@ else
         public string TimeZone { get; set; } = "Europe/Oslo";
         public double DeratingThreshold { get; set; } = 0.80;
         public double? NormalAarsproduksjonGwh { get; set; }
+        public string? TurbineType { get; set; }
+        public double? HeadM { get; set; }
+        public double? EnergyEquivalentKwhPerM3 { get; set; }
     }
 }

@@ -133,6 +133,9 @@ public static class PlantsEndpoints
             plant.TimeZone,
             DeratingThreshold = deratingThreshold ?? 0.80, // default = 20 % avvik
             plant.NormalAarsproduksjonGwh,
+            plant.TurbineType,
+            plant.HeadM,
+            plant.EnergyEquivalentKwhPerM3,
         });
     }
 
@@ -203,6 +206,11 @@ public static class PlantsEndpoints
         plant.InstalledCapacityMw = body.InstalledCapacityMw;
         plant.TimeZone = body.TimeZone.Trim();
         plant.NormalAarsproduksjonGwh = body.NormalAarsproduksjonGwh;
+        // Metadata fra kraftverkoversikten — alle valgfrie.
+        plant.TurbineType = string.IsNullOrWhiteSpace(body.TurbineType)
+            ? null : body.TurbineType.Trim();
+        plant.HeadM = body.HeadM;
+        plant.EnergyEquivalentKwhPerM3 = body.EnergyEquivalentKwhPerM3;
 
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
 
@@ -239,6 +247,9 @@ public static class PlantsEndpoints
             plant.TimeZone,
             DeratingThreshold = savedThreshold ?? 0.80,
             plant.NormalAarsproduksjonGwh,
+            plant.TurbineType,
+            plant.HeadM,
+            plant.EnergyEquivalentKwhPerM3,
         });
     }
 
@@ -321,7 +332,10 @@ public sealed record UpdatePlantRequest(
     double InstalledCapacityMw,
     string TimeZone,
     double? DeratingThreshold = null,
-    double? NormalAarsproduksjonGwh = null);
+    double? NormalAarsproduksjonGwh = null,
+    string? TurbineType = null,
+    double? HeadM = null,
+    double? EnergyEquivalentKwhPerM3 = null);
 
 /// <summary>Bekreftelses-body for <c>DELETE /api/v1/plants/{plantId}/data</c>.</summary>
 public sealed record ResetPlantDataRequest(string ConfirmText);
