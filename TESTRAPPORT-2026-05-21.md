@@ -66,6 +66,8 @@ System.NullReferenceException: Arg_NullReferenceException
 
 **Merknad:** Dette er etter alt å dømme siden som ble kodet under testen (effektivitet 15-min). Verifiser om dette allerede er fanget i pågående arbeid før det logges som ny feil.
 
+> **⚠️ Oppdatering 2026-05-21 11:52 — fortsatt åpen.** Re-testet live etter at appen ble stoppet og startet på nytt: krasjet og feilbanneret er **fremdeles til stede**. Hvis dette ble antatt fikset: bekreft at endringen faktisk ligger i kildekoden, og bygg på nytt med `docker compose build` (ikke bare `up`). Egen detaljert plan i `FORBEDRINGSFORSLAG-EFFEKTIVITET.md`.
+
 ---
 
 ## Funn #3 — Inkonsistent tallformatering mellom sider

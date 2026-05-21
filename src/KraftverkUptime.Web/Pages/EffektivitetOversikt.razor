@@ -1,0 +1,216 @@
+@page "/effektivitet/oversikt"
+@implements IDisposable
+@inject NedetidApi NedetidApi
+@inject FilterState Filter
+@inject NavigationManager Nav
+
+<PageTitle>Effektivitet — anleggssammenligning</PageTitle>
+
+<PageHeader Title="Effektivitet — anleggssammenligning"
+            Subtitle="Alle anlegg side om side: snitt η, sweet-spot, vannforbruk og total tapt verdi i perioden. Klikk en rad for å gå til detaljvisning.">
+    <Actions>
+        <MudButton Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.OpenInNew"
+                   OnClick="@(() => Nav.NavigateTo("/effektivitet"))">
+            Detaljvisning
+        </MudButton>
+    </Actions>
+</PageHeader>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="MudBlazor.Color.Primary" />
+    <MudText Class="ml-2 d-inline">Henter data for alle anlegg…</MudText>
+}
+else if (_rader is null || _rader.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">Ingen data tilgjengelig for valgt periode.</MudAlert>
+}
+else
+{
+    @* KPI-strip øverst — portefølje-totals *@
+    <MudGrid Class="mb-3">
+        <MudItem xs="12" sm="6" md="3">
+            <KpiCard Label="Total tapt verdi"
+                     Value="@($"{FormatNok(_rader.Sum(r => r.TotalTaptNok))} NOK")"
+                     SubText="@($"summert over {_rader.Count(r => !r.DataMangler)} anlegg")"
+                     Accent="KpiAccent.Negative" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <KpiCard Label="Total tapt energi"
+                     Value="@($"{_rader.Sum(r => r.TotalTaptMwh).ToString("F2", NumberFormat.Norsk)} MWh")"
+                     SubText="i perioden"
+                     Accent="KpiAccent.Warning" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <KpiCard Label="Snitt η (vektet)"
+                     Value="@($"{VektetSnittEta().ToString("F1", NumberFormat.Norsk)} %")"
+                     SubText="vektet på faktisk produksjon"
+                     Accent="KpiAccent.Positive" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <KpiCard Label="Anlegg med data"
+                     Value="@($"{_rader.Count(r => !r.DataMangler)} / {_rader.Count}")"
+                     SubText="@($"{_rader.Count(r => r.DataMangler)} mangler SCADA-data i perioden")"
+                     Accent="KpiAccent.Neutral" />
+        </MudItem>
+    </MudGrid>
+
+    @* Hovedtabellen — én rad per anlegg, klikkbar til detaljvisning *@
+    <MudPaper Class="pa-4" Elevation="0">
+        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-2">
+            Klikk en rad for å åpne detaljvisningen for det anlegget. Sortér på «Tapt verdi» for å se hvor det er mest å hente.
+        </MudText>
+        <MudTable T="EffektivitetPortfolioRad" Items="_rader" Hover="true" Striped="true" Elevation="0"
+                  Dense="true"
+                  OnRowClick="@((TableRowClickEventArgs<EffektivitetPortfolioRad> args) => OnRowClick(args.Item))"
+                  RowStyle="cursor: pointer;">
+            <HeaderContent>
+                <MudTh><MudTableSortLabel SortBy="@SortByName">Anlegg</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEta">Snitt η</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortBySweet">Sweet-spot</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortBySvf">SVF</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByProd">Produksjon</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEpisoder">Episoder</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByTaptMwh">Tapt energi</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByTaptNok"
+                       InitialDirection="SortDirection.Descending">Tapt verdi</MudTableSortLabel></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Anlegg">
+                    @if (context.DataMangler)
+                    {
+                        <span style="opacity: 0.5;">@context.PlantName</span>
+                        <MudChip T="string" Size="MudBlazor.Size.Small" Color="MudBlazor.Color.Default"
+                                 Variant="Variant.Text" Class="ml-2">mangler data</MudChip>
+                    }
+                    else
+                    {
+                        <strong>@context.PlantName</strong>
+                    }
+                </MudTd>
+                <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
+                    @(context.DataMangler ? "–" : $"{context.SnittEtaPct.ToString("F1", NumberFormat.Norsk)} %")
+                </MudTd>
+                <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
+                    @(context.DataMangler ? "–" : $"{context.SweetSpotEffektKw.ToString("F0", NumberFormat.Norsk)} kW")
+                </MudTd>
+                <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
+                    @(context.DataMangler ? "–" : $"{context.SvfM3PerKwh.ToString("F2", NumberFormat.Norsk)}")
+                </MudTd>
+                <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
+                    @(context.DataMangler ? "–" : $"{context.TotalProduksjonMwh.ToString("F1", NumberFormat.Norsk)} MWh")
+                </MudTd>
+                <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
+                    @(context.DataMangler ? "–" : context.AntallEpisoder.ToString())
+                </MudTd>
+                <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
+                    @(context.DataMangler ? "–" : $"{context.TotalTaptMwh.ToString("F2", NumberFormat.Norsk)} MWh")
+                </MudTd>
+                <MudTd Style="text-align:right; font-variant-numeric: tabular-nums; font-weight: 600;">
+                    @if (context.DataMangler || context.TotalTaptNok == 0)
+                    {
+                        <span style="opacity: 0.5;">–</span>
+                    }
+                    else
+                    {
+                        @($"{FormatNok(context.TotalTaptNok)} NOK")
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private List<EffektivitetPortfolioRad>? _rader;
+    private bool _loading;
+    private string? _error;
+
+    private static readonly Func<EffektivitetPortfolioRad, object> SortByName     = r => r.PlantName;
+    private static readonly Func<EffektivitetPortfolioRad, object> SortByEta      = r => r.SnittEtaPct;
+    private static readonly Func<EffektivitetPortfolioRad, object> SortBySweet    = r => r.SweetSpotEffektKw;
+    private static readonly Func<EffektivitetPortfolioRad, object> SortBySvf      = r => r.SvfM3PerKwh;
+    private static readonly Func<EffektivitetPortfolioRad, object> SortByProd     = r => r.TotalProduksjonMwh;
+    private static readonly Func<EffektivitetPortfolioRad, object> SortByEpisoder = r => r.AntallEpisoder;
+    private static readonly Func<EffektivitetPortfolioRad, object> SortByTaptMwh  = r => r.TotalTaptMwh;
+    private static readonly Func<EffektivitetPortfolioRad, object> SortByTaptNok  = r => r.TotalTaptNok;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Filter.OnChange += OnFilterChanged;
+        if (Filter.ErKlar) await LoadAsync();
+    }
+
+    public void Dispose() => Filter.OnChange -= OnFilterChanged;
+
+    private async void OnFilterChanged()
+    {
+        try
+        {
+            if (Filter.ErKlar) await LoadAsync();
+            else await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente data: {ex.Message}";
+            try { await InvokeAsync(StateHasChanged); } catch { /* disposed */ }
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        if (!Filter.ErKlar) return;
+        _loading = true;
+        _error = null;
+        _rader = null;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
+            var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
+            var data = await NedetidApi.GetEffektivitetPortfolioAsync(fromUtc, toUtc);
+            _rader = data.ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente portefølje: {ex.Message}";
+            _rader = new List<EffektivitetPortfolioRad>();
+        }
+        finally
+        {
+            _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void OnRowClick(EffektivitetPortfolioRad? row)
+    {
+        if (row is null || row.DataMangler) return;
+        // Sett plant i FilterState og naviger til Effektivitet-detaljvisningen.
+        // Periodevelgeren beholdes på tvers av sider.
+        Filter.PlantId = row.PlantId;
+        Nav.NavigateTo("/effektivitet");
+    }
+
+    /// <summary>Produksjon-vektet snitt η over alle anlegg som har data.</summary>
+    private double VektetSnittEta()
+    {
+        if (_rader is null) return 0;
+        var medData = _rader.Where(r => !r.DataMangler && r.TotalProduksjonMwh > 0).ToList();
+        if (medData.Count == 0) return 0;
+        var totalProd = medData.Sum(r => r.TotalProduksjonMwh);
+        if (totalProd <= 0) return 0;
+        return medData.Sum(r => r.SnittEtaPct * r.TotalProduksjonMwh) / totalProd;
+    }
+
+    private static string FormatNok(double v)
+    {
+        if (v == 0) return "0";
+        return v.ToString("N0", NumberFormat.Norsk);
+    }
+}

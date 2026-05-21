@@ -34,5 +34,9 @@ public sealed class ReportingModule : IPlatformModule
 
         // Effektivitet (Steg 2 i veikartet — anlegg-uavhengig η(P)/SVF/sweet-spot).
         services.AddScoped<IEffectivityQueryService, EffektivitetQueryService>();
+        // Episode-analyse (FORBEDRINGSFORSLAG-EFFEKTIVITET.md Del 3) — flagger
+        // underytende intervaller og slår dem sammen til episoder rangert på
+        // tapt verdi. Ren funksjon, ingen DB-avhengighet.
+        services.AddScoped<IEffektivitetEpisodeService, EffektivitetEpisodeService>();
     }
 }

@@ -132,6 +132,15 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<KraftverkUptime.Modules.Reporting.CaptureRate.ICaptureRateQueryService,
                           KraftverkUptime.Infrastructure.Reporting.CaptureRateQueryService>();
 
+        // Episode-analyse query-service (FORBEDRINGSFORSLAG-EFFEKTIVITET.md Del 3) —
+        // henter effektivitets-data + time-spotpriser fra DB og kjører den rene
+        // analyzer-en. Eksponeres via /api/v1/effektivitet/{plant}/episoder.
+        services.AddScoped<KraftverkUptime.Infrastructure.Reporting.EffektivitetEpisodeQueryService>();
+
+        // Portefølje-blikk på effektivitet (FORBEDRINGSFORSLAG-EFFEKTIVITET.md Del 4.1) —
+        // én rad per anlegg med snitt-η, sweet-spot, total tapt verdi.
+        services.AddScoped<KraftverkUptime.Infrastructure.Reporting.EffektivitetPortfolioQueryService>();
+
         // --- KAIA-kostnad per rapportperiode (Spec KAIA-KOSTNAD) ---
         services.AddScoped<KraftverkUptime.Modules.Reporting.KaiaCost.IKaiaCostQueryService,
                           KraftverkUptime.Infrastructure.Reporting.KaiaCostQueryService>();

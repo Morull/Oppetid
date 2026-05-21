@@ -5,11 +5,21 @@
 @inject NedetidApi NedetidApi
 @inject FilterState Filter
 @inject IJSRuntime JS
+@inject IDialogService DialogService
+@inject NavigationManager Nav
 
 <PageTitle>Effektivitet</PageTitle>
 
 <PageHeader Title="Effektivitet"
-            Subtitle="η(P)-kurve, sweet-spot og spesifikt vannforbruk per anlegg. 15-min-oppløsning (Spec NESTE-CHAT-EFFEKTIVITET-15MIN). Start/stopp-ramper (Transition) vises i scatter men teller ikke i snitt-aggregat." />
+            Subtitle="η(P)-kurve, sweet-spot og spesifikt vannforbruk per anlegg. 15-min-oppløsning. Start/stopp-ramper vises i scatter, men teller ikke i snitt-aggregat.">
+    <Actions>
+        <MudButton Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.Compare"
+                   OnClick="@(() => Nav.NavigateTo("/effektivitet/oversikt"))">
+            Anleggssammenligning
+        </MudButton>
+    </Actions>
+</PageHeader>
 
 @* Anlegg + periode styres av global velger i AppBar (FilterState). *@
 
@@ -42,54 +52,205 @@ else if (_response is not null)
     else if (_response.ProduksjonsTimer == 0 && _response.Punkter.Count > 0)
     {
         <MudAlert Severity="Severity.Warning" Class="mb-4">
-            Ingen Genuine-intervaller i perioden — kun start/stopp-ramper (Transition).
+            Ingen intervaller med normal drift i perioden — kun start/stopp-ramper.
             Aggregat-KPI-ene er derfor 0. Punktene vises i scatter for innsyn i ramp-mønster.
         </MudAlert>
     }
 
     @if (_response.Punkter.Count > 0)
     {
-        @* ---- KPI-kort ---- *@
-        <MudGrid Class="mb-4">
-            <MudItem xs="12" sm="6" md="3" lg="2">
+        @* ---- KPI-kort: gruppert i effektivitet + (om aktivt) økonomi ----
+           UI-gjennomgang 2026-05-21 punkt 7: tidligere én MudGrid blandet KPI-er
+           på tvers. Splittet nå i to seksjoner med liten tittel slik at brukeren
+           ser drifts-KPI vs. økonomi-KPI som distinkte konsepter. *@
+        <MudText Typo="Typo.subtitle2" Color="MudBlazor.Color.Secondary" Class="mb-2">Effektivitet</MudText>
+        <MudGrid Class="mb-3">
+            <MudItem xs="12" sm="6" md="3" lg="3">
                 <KpiCard Label="Snitt η"
-                         Value="@($"{_response.SnittEtaPct:F1} %")"
-                         SubText="@($"over {_response.ProduksjonsTimer} Genuine-intervaller (15 min)")"
+                         Value="@($"{_response.SnittEtaPct.ToString("F1", NumberFormat.Norsk)} %")"
+                         SubText="@($"over {_response.ProduksjonsTimer} intervaller med normal drift (15 min)")"
                          Accent="KpiAccent.Positive" />
             </MudItem>
-            <MudItem xs="12" sm="6" md="3" lg="2">
+            <MudItem xs="12" sm="6" md="3" lg="3">
                 <KpiCard Label="Sweet-spot effekt"
-                         Value="@($"{_response.SweetSpotEffektKw:F0} kW")"
-                         SubText="@($"{_response.SweetSpotEtaPct:F1} % η i bin'en")"
+                         Value="@($"{_response.SweetSpotEffektKw.ToString("F0", NumberFormat.Norsk)} kW")"
+                         SubText="@($"{_response.SweetSpotEtaPct.ToString("F1", NumberFormat.Norsk)} % η i bin'en")"
                          Accent="KpiAccent.Neutral" />
             </MudItem>
-            <MudItem xs="12" sm="6" md="3" lg="2">
+            <MudItem xs="12" sm="6" md="3" lg="3">
                 <KpiCard Label="Spesifikt vannforbruk"
-                         Value="@_response.SnittSpesifiktVannforbrukM3PerKwh.ToString("F2")"
+                         Value="@_response.SnittSpesifiktVannforbrukM3PerKwh.ToString("F2", NumberFormat.Norsk)"
                          SubText="m³ per kWh"
                          Accent="KpiAccent.Warning" />
             </MudItem>
-            <MudItem xs="12" sm="6" md="3" lg="2">
+            <MudItem xs="12" sm="6" md="3" lg="3">
                 <KpiCard Label="Total produksjon"
-                         Value="@($"{(_response.TotalProduksjonKwh / 1000):F1} MWh")"
+                         Value="@($"{(_response.TotalProduksjonKwh / 1000).ToString("F1", NumberFormat.Norsk)} MWh")"
                          SubText="i perioden"
                          Accent="KpiAccent.Accent" />
             </MudItem>
-            @if (_captureRate is not null)
-            {
-                <MudItem xs="12" sm="6" md="3" lg="2">
+        </MudGrid>
+
+        @if (_captureRate is not null)
+        {
+            <MudText Typo="Typo.subtitle2" Color="MudBlazor.Color.Secondary" Class="mb-2 mt-2">Økonomi</MudText>
+            <MudGrid Class="mb-4">
+                <MudItem xs="12" sm="6" md="3" lg="3">
                     <KpiCard Label="Capture rate (times)"
-                             Value="@_captureRate.TimesCr.ToString("F2")"
-                             SubText="@($"capt.pris {_captureRate.CapturePriceNokMwh:F0} NOK/MWh")"
+                             Value="@_captureRate.TimesCr.ToString("F2", NumberFormat.Norsk)"
+                             SubText="@($"capt.pris {_captureRate.CapturePriceNokMwh.ToString("F0", NumberFormat.Norsk)} NOK/MWh")"
                              Accent="@CrAccent(_captureRate.TimesCr)" />
                 </MudItem>
-                <MudItem xs="12" sm="6" md="3" lg="2">
+                <MudItem xs="12" sm="6" md="3" lg="3">
                     <KpiCard Label="Merverdi vs spot"
                              Value="@FormatNok(_captureRate.MerverdiNok)"
                              Accent="@MerverdiAccent(_captureRate.MerverdiNok)" />
                 </MudItem>
+            </MudGrid>
+        }
+
+        @* ---- Underytelse / tapstoppliste (Spec FORBEDRINGSFORSLAG-EFFEKTIVITET.md Del 3) ----
+           Handlings-visning: hvor taper vi virkningsgrad, hvor lenge, og hvor ofte.
+           Δη måles mot baseline per effekt-bin (ikke globalt snitt), så lav-effekt-
+           intervaller blir IKKE flagget bare fordi de naturlig har lavere η. *@
+        <MudPaper Class="pa-4 mb-4" Elevation="1">
+            <div class="d-flex justify-space-between align-center mb-3" style="flex-wrap: wrap; gap: 12px;">
+                <div>
+                    <MudText Typo="Typo.h3">Underytelse — tapstoppliste</MudText>
+                    <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">
+                        Episoder med Δη ≤ @_episodeTerskelPp.ToString("F1", NumberFormat.Norsk) pp mot baseline for effekt-bin'en.
+                    </MudText>
+                </div>
+                <div class="d-flex align-center" style="gap: 12px;">
+                    <MudNumericField T="double" Label="Δη-terskel (pp)" @bind-Value="_episodeTerskelPp"
+                                     Min="-20" Max="0" Step="0.5"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 160px;"
+                                     OnBlur="ReloadEpisoderAsync" />
+                </div>
+            </div>
+
+            @if (_episodeLoading)
+            {
+                <MudProgressLinear Indeterminate="true" Color="MudBlazor.Color.Primary" />
             }
-        </MudGrid>
+            else if (_episoder is null)
+            {
+                <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">Laster episode-data…</MudText>
+            }
+            else if (_episoder.Episoder.Count == 0)
+            {
+                <MudAlert Severity="Severity.Success" Class="mb-0">
+                    Ingen episoder under terskel i perioden — driften ligger jevnt på eller over baseline. 👌
+                </MudAlert>
+            }
+            else
+            {
+                @if (_episoder.ManglerSpotpriser)
+                {
+                    <MudAlert Severity="Severity.Info" Class="mb-3">
+                        Spotpriser mangler eller er delvis ufullstendige — tapt verdi i NOK er et estimat.
+                    </MudAlert>
+                }
+
+                @* Tre-kort-sammendrag øverst — totalt tap, antall episoder, snitt-Δη *@
+                <MudGrid Class="mb-3">
+                    <MudItem xs="12" sm="4">
+                        <KpiCard Label="Total tapt verdi"
+                                 Value="@($"{FormatNok(_episoder.TotalTaptNok)} NOK")"
+                                 SubText="@($"{_episoder.TotalTaptMwh.ToString("F2", NumberFormat.Norsk)} MWh tapt produksjon")"
+                                 Accent="KpiAccent.Negative" />
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <KpiCard Label="Antall episoder"
+                                 Value="@_episoder.Episoder.Count.ToString()"
+                                 SubText="@($"{_episoder.AntallUnderytendeIntervaller} intervaller under terskel")"
+                                 Accent="KpiAccent.Warning" />
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <KpiCard Label="Snitt-Δη i episoder"
+                                 Value="@($"{(_episoder.Episoder.Count > 0 ? _episoder.Episoder.Average(e => e.SnittDeltaEtaPp) : 0).ToString("F1", NumberFormat.Norsk)} pp")"
+                                 SubText="mot baseline for effekt-bin"
+                                 Accent="KpiAccent.Neutral" />
+                    </MudItem>
+                </MudGrid>
+
+                @* Tapstoppliste — sortert synkende på tapt verdi.
+                   Klikk på rad åpner episode-detalj-dialog med intervall-bryting. *@
+                <MudTable T="UnderytendeEpisode" Items="_episoder.Episoder" Hover="true" Dense="true" Elevation="0"
+                          FixedHeader="true" Height="380px" Virtualize="true"
+                          OnRowClick="@((TableRowClickEventArgs<UnderytendeEpisode> args) => { if (args.Item is not null) _ = OpenEpisodeDialogAsync(args.Item); })"
+                          RowStyle="cursor: pointer;">
+                    <HeaderContent>
+                        <MudTh><MudTableSortLabel SortBy="@SortByEpisodeStart"
+                               InitialDirection="SortDirection.Descending">Start</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right">Varighet</MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEpisodeDelta">Snitt Δη</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right">Effektområde</MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEpisodeTaptMwh">Tapt energi</MudTableSortLabel></MudTh>
+                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEpisodeTaptNok"
+                               InitialDirection="SortDirection.Descending">Tapt verdi</MudTableSortLabel></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@FormatLocal(context.StartUtc)</MudTd>
+                        <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
+                            @context.VarighetTimer.ToString("F2", NumberFormat.Norsk) t
+                            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="d-block">
+                                @context.AntallIntervaller × 15 min
+                            </MudText>
+                        </MudTd>
+                        <MudTd Style="text-align:right; font-variant-numeric: tabular-nums; color: var(--mud-palette-error);">
+                            @context.SnittDeltaEtaPp.ToString("F1", NumberFormat.Norsk) pp
+                        </MudTd>
+                        <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
+                            @context.EffektMinKw.ToString("F0", NumberFormat.Norsk) – @context.EffektMaksKw.ToString("F0", NumberFormat.Norsk) kW
+                        </MudTd>
+                        <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
+                            @context.TaptMwh.ToString("F3", NumberFormat.Norsk) MWh
+                        </MudTd>
+                        <MudTd Style="text-align:right; font-variant-numeric: tabular-nums; font-weight: 600;">
+                            @if (context.TaptNok > 0)
+                            {
+                                @($"{FormatNok(context.TaptNok)} NOK")
+                                @if (context.TaptNokErEstimat)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Info" Size="MudBlazor.Size.Small"
+                                             Style="opacity: 0.6; margin-left: 4px;" Title="Estimat (manglende spotpriser)" />
+                                }
+                            }
+                            else
+                            {
+                                <span style="opacity: 0.5;">–</span>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                @* Aggregat per effekt-bånd — gjentakende mønster-tabell *@
+                @if (_episoder.AggregatPerEffektBaand.Count > 0)
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Gjentakende mønster per effekt-bånd</MudText>
+                    <MudTable T="EffektBaandAggregat" Items="_episoder.AggregatPerEffektBaand"
+                              Hover="true" Dense="true" Elevation="0">
+                        <HeaderContent>
+                            <MudTh>Bånd (kW)</MudTh>
+                            <MudTh Style="text-align:right">Episoder</MudTh>
+                            <MudTh Style="text-align:right">Total varighet</MudTh>
+                            <MudTh Style="text-align:right">Snitt Δη</MudTh>
+                            <MudTh Style="text-align:right">Tapt energi</MudTh>
+                            <MudTh Style="text-align:right">Tapt verdi</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.EffektKwStart.ToString("F0", NumberFormat.Norsk) – @context.EffektKwSlutt.ToString("F0", NumberFormat.Norsk)</MudTd>
+                            <MudTd Style="text-align:right">@context.AntallEpisoder</MudTd>
+                            <MudTd Style="text-align:right">@context.TotalVarighetTimer.ToString("F1", NumberFormat.Norsk) t</MudTd>
+                            <MudTd Style="text-align:right">@context.SnittDeltaEtaPp.ToString("F1", NumberFormat.Norsk) pp</MudTd>
+                            <MudTd Style="text-align:right">@context.TaptMwh.ToString("F2", NumberFormat.Norsk) MWh</MudTd>
+                            <MudTd Style="text-align:right; font-weight: 600;">@FormatNok(context.TaptNok) NOK</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            }
+        </MudPaper>
 
         @* ---- η(P)-scatter — Genuine + Transition splittet i to serier ----
            Testrapport 2026-05-21 funn #2: ApexPointSeries<EffektivitetBin>
@@ -111,7 +272,7 @@ else if (_response is not null)
                     {
                         <ApexPointSeries TItem="EffektivitetPunkt"
                                          Items="_genuinePunkter"
-                                         Name="Genuine drift"
+                                         Name="Normal drift"
                                          SeriesType="SeriesType.Scatter"
                                          XValue="p => (decimal)p.EffektKw"
                                          YValue="p => (decimal)p.EtaPct" />
@@ -120,7 +281,7 @@ else if (_response is not null)
                     {
                         <ApexPointSeries TItem="EffektivitetPunkt"
                                          Items="_transitionPunkter"
-                                         Name="Start/stopp-ramp"
+                                         Name="Start/stopp"
                                          SeriesType="SeriesType.Scatter"
                                          XValue="p => (decimal)p.EffektKw"
                                          YValue="p => (decimal)p.EtaPct" />
@@ -139,8 +300,9 @@ else if (_response is not null)
                     }
                 </ApexChart>
                 <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mt-2">
-                    Genuine = produksjons-intervall der η ≥ @GenuineEtaFloorPctDisplay %.
-                    Transition = start/stopp-ramp (P over terskel men η under gulvet); vises i scatter men teller ikke i snitt-aggregat.
+                    Normal drift = produksjons-intervall der η ≥ @GenuineEtaFloorPctDisplay %.
+                    Start/stopp = ramp-intervall (P over terskel men η under gulvet); vises i scatter,
+                    men teller ikke i snitt-aggregat.
                 </MudText>
             }
             else
@@ -231,12 +393,12 @@ else if (_response is not null)
                         @if (context.Klassifisering == PunktKlassifisering.Genuine)
                         {
                             <MudChip T="string" Size="MudBlazor.Size.Small"
-                                     Color="MudBlazor.Color.Success" Variant="Variant.Text">Genuine</MudChip>
+                                     Color="MudBlazor.Color.Success" Variant="Variant.Text">Normal drift</MudChip>
                         }
                         else
                         {
                             <MudChip T="string" Size="MudBlazor.Size.Small"
-                                     Color="MudBlazor.Color.Warning" Variant="Variant.Text">Transition</MudChip>
+                                     Color="MudBlazor.Color.Warning" Variant="Variant.Text">Start/stopp</MudChip>
                         }
                     </MudTd>
                 </RowTemplate>
@@ -273,6 +435,13 @@ else if (_response is not null)
     private List<EffektivitetPunkt> _transitionPunkter = new();
     private List<EffektivitetPunkt> _binLine = new();
 
+    // Episode-analyse (Spec FORBEDRINGSFORSLAG-EFFEKTIVITET.md Del 3) —
+    // lastes etter at _response er klart. Egen loading-flag siden tjenesten
+    // sannsynligvis tar litt lenger (price-lookup + grupperingslogikk).
+    private EpisodeAnalysisResult? _episoder;
+    private bool _episodeLoading;
+    private double _episodeTerskelPp = -2.0;
+
     // Drilldown-state: når brukeren klikker en bin filtreres
     // Produksjons-timer-tabellen til den effekt-bin'en.
     private double? _selectedBinStart;
@@ -284,6 +453,12 @@ else if (_response is not null)
     private static readonly Func<EffektivitetPunkt, object> SortByEta     = p => p.EtaPct;
     private static readonly Func<EffektivitetPunkt, object> SortByVann    = p => p.VannforingM3PerS;
     private static readonly Func<EffektivitetPunkt, object> SortByKlass   = p => p.Klassifisering;
+
+    // Sort-felt for episode-tabellen (Punkt 4-visningen).
+    private static readonly Func<UnderytendeEpisode, object> SortByEpisodeStart    = e => e.StartUtc;
+    private static readonly Func<UnderytendeEpisode, object> SortByEpisodeDelta    = e => e.SnittDeltaEtaPp;
+    private static readonly Func<UnderytendeEpisode, object> SortByEpisodeTaptMwh  = e => e.TaptMwh;
+    private static readonly Func<UnderytendeEpisode, object> SortByEpisodeTaptNok  = e => e.TaptNok;
 
     // η-gulv som vises i caption — speiler EffektivitetQueryService.GenuineEtaFloorPct.
     // Holdt som konstant her så vi ikke trenger en ny API-roundtrip for å lese den.
@@ -333,6 +508,7 @@ else if (_response is not null)
         _genuinePunkter = new();
         _transitionPunkter = new();
         _binLine = new();
+        _episoder = null;
         await InvokeAsync(StateHasChanged);
         try
         {
@@ -373,6 +549,10 @@ else if (_response is not null)
                 _captureRate = null;
             }
 
+            // Episode-analyse i bakgrunn — UI rendrer KPI-er + scatter med en gang
+            // og fyller inn tapstopplisten når responsen kommer.
+            _ = LoadEpisoderInBackgroundAsync(fromUtc, toUtc);
+
             // Eksporter tidspunktene til JS slik at scatter-tooltip kan
             // slå opp dato per dataPointIndex (samme rekkefølge som items).
             try
@@ -395,6 +575,16 @@ else if (_response is not null)
                 {
                     Title = new AxisTitle { Text = "Effekt (kW)" },
                     DecimalsInFloat = 0,
+                    // Testrapport 2026-05-21 funn B: x-aksen rendret 5966 etiketter
+                    // (én per datapunkt) fordi ApexCharts defaulter til Category.
+                    // Numeric gir kontinuerlig akse med auto-skalering; TickAmount
+                    // kapper antall hakk så aksen blir lesbar uansett datatetthet.
+                    Type = XAxisType.Numeric,
+                    TickAmount = 10,
+                    Labels = new XAxisLabels
+                    {
+                        Formatter = "function(val){return Math.round(val).toString();}",
+                    },
                 },
                 Yaxis = new List<YAxis>
                 {
@@ -484,12 +674,74 @@ else if (_response is not null)
     // ApexChart-blokken. Tidligere metode-versjoner returnerte ny List per
     // render og forårsaket ApexCharts NRE (Testrapport 2026-05-21 funn #2).
 
+    /// <summary>Bakgrunnslast av episode-analysen — kjøres etter at LoadAsync har
+    /// satt _response så UI-en allerede viser KPI-er og scatter.</summary>
+    private async Task LoadEpisoderInBackgroundAsync(DateTimeOffset fromUtc, DateTimeOffset toUtc)
+    {
+        _episodeLoading = true;
+        try { await InvokeAsync(StateHasChanged); } catch { return; }
+        try
+        {
+            _episoder = await NedetidApi.GetEpisoderAsync(
+                Filter.PlantId, fromUtc, toUtc, terskelPp: _episodeTerskelPp);
+        }
+        catch (Exception ex)
+        {
+            // Episode-feil skal IKKE blokkere resten av siden — logg via konsoll og vis tom liste.
+            Console.Error.WriteLine($"Episode-analyse feilet: {ex.Message}");
+            _episoder = new EpisodeAnalysisResult(
+                Array.Empty<UnderytendeEpisode>(),
+                Array.Empty<EffektBaandAggregat>(),
+                0, 0, 0, 0, ManglerSpotpriser: true);
+        }
+        finally
+        {
+            _episodeLoading = false;
+            try { await InvokeAsync(StateHasChanged); } catch { /* disposed */ }
+        }
+    }
+
+    /// <summary>Åpner detalj-dialog for én underytelse-episode (Punkt 5).</summary>
+    private async Task OpenEpisodeDialogAsync(UnderytendeEpisode episode)
+    {
+        if (_response is null) return;
+        var parameters = new DialogParameters
+        {
+            ["Episode"] = episode,
+            ["PlantId"] = Filter.PlantId,
+            ["AllePunkter"] = (IReadOnlyList<EffektivitetPunkt>)_response.Punkter,
+        };
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Large,
+            FullWidth = true,
+            CloseButton = true,
+            BackdropClick = true,
+        };
+        await DialogService.ShowAsync<EpisodeDetailDialog>("Episode-detalj", parameters, options);
+    }
+
+    /// <summary>Når brukeren justerer Δη-terskel-slideren, kjør episode-analysen på nytt.</summary>
+    private async Task ReloadEpisoderAsync()
+    {
+        if (!Filter.ErKlar) return;
+        var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
+        var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
+        await LoadEpisoderInBackgroundAsync(fromUtc, toUtc);
+    }
+
     /// <summary>Søk på tidspunkt (yyyy-MM-dd HH:mm i lokal tid) eller klassifisering.</summary>
     private bool MatchesTimerSearch(EffektivitetPunkt p)
     {
         if (string.IsNullOrWhiteSpace(_timerSearch)) return true;
         var needle = _timerSearch.Trim();
+        // Match både norsk visnings-navn og engelsk enum-navn for bakover-
+        // kompatibilitet (test som ble skrevet før vi byttet til norske ord).
+        var displayName = p.Klassifisering == PunktKlassifisering.Genuine
+            ? "Normal drift"
+            : "Start/stopp";
         return FormatLocal(p.TimeUtc).Contains(needle, StringComparison.OrdinalIgnoreCase)
+            || displayName.Contains(needle, StringComparison.OrdinalIgnoreCase)
             || p.Klassifisering.ToString().Contains(needle, StringComparison.OrdinalIgnoreCase);
     }
 

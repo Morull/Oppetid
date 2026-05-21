@@ -1,0 +1,161 @@
+@*
+   Drill-down for én underytelse-episode (Spec FORBEDRINGSFORSLAG-EFFEKTIVITET.md Del 4.2).
+
+   Viser:
+     1. Sammendrag — start/slutt/varighet/tap.
+     2. Intervall-for-intervall-bryting: tidspunkt, P, η, vannføring, Δη mot baseline.
+        Datagrunnlag er allerede hentet i EffektivitetResponse (Punkter) — vi
+        filtrerer bare til episodens tidsvindu, så ingen ekstra API-kall.
+     3. Lenker for videre årsaksanalyse — Produksjon-siden (Hydrogrid plan vs
+        faktisk) og Nedetid-siden (hendelser i samme vindu). Begge åpnes med
+        forhåndsutfylt periode.
+
+   Magasinnivå/fallhøyde fra dam-tabellen kan tas inn senere — krever ny API-
+   endepunkt for time-vannstand. Holder dialogen lett for nå.
+*@
+
+@using KraftverkUptime.Web.Services
+@using KraftverkUptime.Web.Theming
+@inject NavigationManager Nav
+
+<MudDialog Class="dk-episode-dialog">
+    <TitleContent>
+        <div class="d-flex align-center" style="gap: 12px;">
+            <MudIcon Icon="@Icons.Material.Filled.TrendingDown" Color="MudBlazor.Color.Warning" />
+            <MudText Typo="Typo.h6">Underytelse — @FormatLocal(Episode.StartUtc)</MudText>
+        </div>
+    </TitleContent>
+
+    <DialogContent>
+        @* ---- Sammendrag ---- *@
+        <MudGrid Class="mb-3">
+            <MudItem xs="12" sm="6" md="3">
+                <KpiCard Label="Varighet"
+                         Value="@($"{Episode.VarighetTimer.ToString("F2", NumberFormat.Norsk)} t")"
+                         SubText="@($"{Episode.AntallIntervaller} × 15-min")"
+                         Accent="KpiAccent.Neutral" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiCard Label="Snitt Δη"
+                         Value="@($"{Episode.SnittDeltaEtaPp.ToString("F1", NumberFormat.Norsk)} pp")"
+                         SubText="under baseline for effekt-bin"
+                         Accent="KpiAccent.Negative" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiCard Label="Tapt energi"
+                         Value="@($"{Episode.TaptMwh.ToString("F3", NumberFormat.Norsk)} MWh")"
+                         SubText="@($"av {Episode.FaktiskProduksjonMwh.ToString("F2", NumberFormat.Norsk)} MWh produsert")"
+                         Accent="KpiAccent.Warning" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiCard Label="Tapt verdi"
+                         Value="@($"{FormatNok(Episode.TaptNok)} NOK")"
+                         SubText="@(Episode.TaptNokErEstimat ? "estimat — spotpris mangler" : "spotpris fra DB")"
+                         Accent="KpiAccent.Negative" />
+            </MudItem>
+        </MudGrid>
+
+        @* ---- Intervall-tabell — datapunktene som utgjør episoden ---- *@
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Intervall-for-intervall</MudText>
+        @if (_intervallerInnenfor.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-3">
+                Ingen datapunkter funnet for episodens tidsvindu i den lastede effektivitets-responsen.
+                Kan skyldes at perioden i visningen ikke inneholder episodens nøyaktige
+                15-min-stempler — last inn periode som dekker episode-vinduet.
+            </MudAlert>
+        }
+        else
+        {
+            <MudTable T="EffektivitetPunkt" Items="_intervallerInnenfor"
+                      Hover="true" Dense="true" Elevation="0"
+                      FixedHeader="true" Height="280px" Virtualize="true">
+                <HeaderContent>
+                    <MudTh>Tidspunkt</MudTh>
+                    <MudTh Style="text-align:right">Effekt (kW)</MudTh>
+                    <MudTh Style="text-align:right">η (%)</MudTh>
+                    <MudTh Style="text-align:right">Vannføring (m³/s)</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@FormatLocal(context.TimeUtc)</MudTd>
+                    <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
+                        @context.EffektKw.ToString("F0", NumberFormat.Norsk)
+                    </MudTd>
+                    <MudTd Style="text-align:right; font-variant-numeric: tabular-nums; color: var(--mud-palette-error);">
+                        @context.EtaPct.ToString("F1", NumberFormat.Norsk)
+                    </MudTd>
+                    <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
+                        @context.VannforingM3PerS.ToString("F2", NumberFormat.Norsk)
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+
+        @* ---- Effekt-område ---- *@
+        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mt-3">
+            <strong>Effekt:</strong> @Episode.EffektMinKw.ToString("F0", NumberFormat.Norsk) – @Episode.EffektMaksKw.ToString("F0", NumberFormat.Norsk) kW
+            · <strong>Periode:</strong> @FormatLocal(Episode.StartUtc) – @FormatLocal(Episode.SluttUtc)
+        </MudText>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="@(() => OpenProduksjon())"
+                   StartIcon="@Icons.Material.Filled.OpenInNew">
+            Åpne Produksjon (Hydrogrid)
+        </MudButton>
+        <MudButton Variant="Variant.Text" OnClick="@(() => OpenNedetid())"
+                   StartIcon="@Icons.Material.Filled.OpenInNew">
+            Åpne Nedetid
+        </MudButton>
+        <MudButton OnClick="Close" Color="MudBlazor.Color.Default">Lukk</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired] public UnderytendeEpisode Episode { get; set; } = default!;
+    [Parameter, EditorRequired] public string PlantId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Alle Genuine-punkter fra siden — vi filtrerer til episodens vindu i
+    /// OnParametersSet så tabellen får riktig snitt uten ekstra API-kall.
+    /// </summary>
+    [Parameter] public IReadOnlyList<EffektivitetPunkt> AllePunkter { get; set; } = Array.Empty<EffektivitetPunkt>();
+
+    private List<EffektivitetPunkt> _intervallerInnenfor = new();
+
+    protected override void OnParametersSet()
+    {
+        _intervallerInnenfor = AllePunkter
+            .Where(p => p.TimeUtc >= Episode.StartUtc && p.TimeUtc < Episode.SluttUtc
+                     && p.Klassifisering == PunktKlassifisering.Genuine)
+            .OrderBy(p => p.TimeUtc)
+            .ToList();
+    }
+
+    private void Close() => Dialog.Close(DialogResult.Ok(true));
+
+    private void OpenProduksjon()
+    {
+        // Naviger til Produksjon med periode forhåndsutfylt. FilterState lytter
+        // ikke til query-string her — alternativ ville være å bruke en route med
+        // periode, men det krever rute-endring. Foreløpig: bare gå til siden,
+        // brukeren stiller perioden manuelt.
+        Nav.NavigateTo($"/produksjon/{PlantId}");
+    }
+
+    private void OpenNedetid()
+    {
+        Nav.NavigateTo("/nedetid");
+    }
+
+    private static string FormatLocal(DateTimeOffset t) =>
+        t.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    private static string FormatNok(double v)
+    {
+        if (v == 0) return "–";
+        return v.ToString("N0", NumberFormat.Norsk);
+    }
+}

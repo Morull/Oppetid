@@ -55,6 +55,35 @@ public sealed class NedetidApi
         return resp ?? throw new InvalidOperationException("Tom respons fra /effektivitet.");
     }
 
+    /// <summary>
+    /// Episode-analyse — underytende intervaller gruppert og rangert.
+    /// Spec FORBEDRINGSFORSLAG-EFFEKTIVITET.md Del 3.
+    /// </summary>
+    public async Task<EpisodeAnalysisResult> GetEpisoderAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc,
+        double? terskelPp = null, int? gapIntervaller = null, CancellationToken ct = default)
+    {
+        var url = BuildUrl(plantId, "effektivitet/episoder", fromUtc, toUtc, format: null);
+        var extra = new List<string>();
+        if (terskelPp.HasValue) extra.Add($"terskelPp={terskelPp.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        if (gapIntervaller.HasValue) extra.Add($"gapIntervaller={gapIntervaller.Value}");
+        if (extra.Count > 0) url += (url.Contains('?') ? "&" : "?") + string.Join("&", extra);
+        var resp = await _http.GetFromJsonAsync<EpisodeAnalysisResult>(url, JsonOptions, ct).ConfigureAwait(false);
+        return resp ?? throw new InvalidOperationException("Tom respons fra /effektivitet/episoder.");
+    }
+
+    /// <summary>
+    /// Anleggssammenligning på effektivitet — én rad per anlegg.
+    /// Spec FORBEDRINGSFORSLAG-EFFEKTIVITET.md Del 4.1.
+    /// </summary>
+    public async Task<IReadOnlyList<EffektivitetPortfolioRad>> GetEffektivitetPortfolioAsync(
+        DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var url = $"api/v1/effektivitet/portefolje?from={Uri.EscapeDataString(fromUtc.ToString("o"))}&to={Uri.EscapeDataString(toUtc.ToString("o"))}";
+        var resp = await _http.GetFromJsonAsync<List<EffektivitetPortfolioRad>>(url, JsonOptions, ct).ConfigureAwait(false);
+        return resp ?? new List<EffektivitetPortfolioRad>();
+    }
+
     public async Task<PortfolioKpiResponse> GetPortfolioKpisAsync(
         DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
     {
@@ -571,6 +600,52 @@ public sealed record EffektivitetBin(
     double EffektKwMid,
     int Antall,
     double SnittEtaPct);
+
+// Episode-analyse-DTOer — speiler Modules.Reporting.Effektivitet.
+// Spec FORBEDRINGSFORSLAG-EFFEKTIVITET.md Del 3.
+
+public sealed record EpisodeAnalysisResult(
+    IReadOnlyList<UnderytendeEpisode> Episoder,
+    IReadOnlyList<EffektBaandAggregat> AggregatPerEffektBaand,
+    double TotalTaptMwh,
+    double TotalTaptNok,
+    int AntallGenuineIntervaller,
+    int AntallUnderytendeIntervaller,
+    bool ManglerSpotpriser);
+
+public sealed record UnderytendeEpisode(
+    DateTimeOffset StartUtc,
+    DateTimeOffset SluttUtc,
+    int AntallIntervaller,
+    double VarighetTimer,
+    double SnittDeltaEtaPp,
+    double EffektMinKw,
+    double EffektMaksKw,
+    double FaktiskProduksjonMwh,
+    double TaptMwh,
+    double TaptNok,
+    bool TaptNokErEstimat);
+
+public sealed record EffektBaandAggregat(
+    double EffektKwStart,
+    double EffektKwSlutt,
+    int AntallEpisoder,
+    double TotalVarighetTimer,
+    double SnittDeltaEtaPp,
+    double TaptMwh,
+    double TaptNok);
+
+public sealed record EffektivitetPortfolioRad(
+    string PlantId,
+    string PlantName,
+    bool DataMangler,
+    double SnittEtaPct,
+    double SweetSpotEffektKw,
+    double SvfM3PerKwh,
+    double TotalProduksjonMwh,
+    int AntallEpisoder,
+    double TotalTaptMwh,
+    double TotalTaptNok);
 
 public sealed record CaptureRateResultDto(
     double CapturePriceNokMwh,
