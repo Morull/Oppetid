@@ -43,7 +43,28 @@ public sealed record EffektivitetPunkt(
     DateTimeOffset TimeUtc,
     double EffektKw,
     double EtaPct,
-    double VannforingM3PerS);
+    double VannforingM3PerS,
+    PunktKlassifisering Klassifisering);
+
+/// <summary>
+/// Klassifisering av et 15-min-intervall basert på (P, η)-mønsteret. Spec
+/// NESTE-CHAT-EFFEKTIVITET-15MIN.md: vi vil skille mellom faktisk drift og
+/// start/stopp-ramper, fordi ramper ellers drar snitt-η ned med 5-10 prosent-
+/// poeng på et anlegg som ellers ligger stabilt på 90 % η.
+///
+///   <see cref="Genuine"/>   — produserende intervall der η er over gulvet.
+///                             Inngår i alle KPI-aggregat (snitt, sweet-spot,
+///                             SVF, bin-histogram).
+///   <see cref="Transition"/> — produserende intervall (P ≥ terskel) men der
+///                             η ligger UNDER <c>GenuineEtaFloorPct</c>. Tolkes
+///                             som ramp-up/ramp-down — synlig i Punkter med
+///                             egen farge, men IKKE i snitt-aggregat.
+/// </summary>
+public enum PunktKlassifisering
+{
+    Genuine = 0,
+    Transition = 1,
+}
 
 /// <summary>
 /// Bin i η(P)-histogrammet — én rad per <see cref="EffektivitetQueryService.PowerBinKw"/>-bredde

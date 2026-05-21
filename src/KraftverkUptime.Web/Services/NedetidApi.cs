@@ -553,7 +553,18 @@ public sealed record EffektivitetPunkt(
     DateTimeOffset TimeUtc,
     double EffektKw,
     double EtaPct,
-    double VannforingM3PerS);
+    double VannforingM3PerS,
+    PunktKlassifisering Klassifisering);
+
+/// <summary>
+/// Klassifisering av et 15-min-intervall — speiler server-side enum. Spec
+/// NESTE-CHAT-EFFEKTIVITET-15MIN.md.
+/// </summary>
+public enum PunktKlassifisering
+{
+    Genuine = 0,
+    Transition = 1,
+}
 
 public sealed record EffektivitetBin(
     double EffektKwStart,

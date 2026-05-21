@@ -9,7 +9,7 @@
 <PageTitle>Effektivitet</PageTitle>
 
 <PageHeader Title="Effektivitet"
-            Subtitle="η(P)-kurve, sweet-spot og spesifikt vannforbruk per anlegg. Algoritmen finner sweet-spot fra dataen — fungerer for alle anlegg som har SCADA-rollene generator-effekt, turbin-virkningsgrad og turbin-vannføring." />
+            Subtitle="η(P)-kurve, sweet-spot og spesifikt vannforbruk per anlegg. 15-min-oppløsning (Spec NESTE-CHAT-EFFEKTIVITET-15MIN). Start/stopp-ramper (Transition) vises i scatter men teller ikke i snitt-aggregat." />
 
 @* Anlegg + periode styres av global velger i AppBar (FilterState). *@
 
@@ -33,20 +33,28 @@ else if (_response is not null)
             samples er importert.
         </MudAlert>
     }
-    else if (_response.ProduksjonsTimer == 0)
+    else if (_response.ProduksjonsTimer == 0 && _response.Punkter.Count == 0)
     {
         <MudAlert Severity="Severity.Info" Class="mb-4">
-            Ingen produksjons-timer (P > 50 kW) i perioden.
+            Ingen produksjons-intervaller (P &gt; 50 kW) i perioden.
         </MudAlert>
     }
-    else
+    else if (_response.ProduksjonsTimer == 0 && _response.Punkter.Count > 0)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            Ingen Genuine-intervaller i perioden — kun start/stopp-ramper (Transition).
+            Aggregat-KPI-ene er derfor 0. Punktene vises i scatter for innsyn i ramp-mønster.
+        </MudAlert>
+    }
+
+    @if (_response.Punkter.Count > 0)
     {
         @* ---- KPI-kort ---- *@
         <MudGrid Class="mb-4">
             <MudItem xs="12" sm="6" md="3" lg="2">
                 <KpiCard Label="Snitt η"
                          Value="@($"{_response.SnittEtaPct:F1} %")"
-                         SubText="@($"over {_response.ProduksjonsTimer} produksjons-timer")"
+                         SubText="@($"over {_response.ProduksjonsTimer} Genuine-intervaller (15 min)")"
                          Accent="KpiAccent.Positive" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3" lg="2">
@@ -83,7 +91,7 @@ else if (_response is not null)
             }
         </MudGrid>
 
-        @* ---- η(P)-scatter ---- *@
+        @* ---- η(P)-scatter — Genuine + Transition splittet i to serier ---- *@
         <MudPaper Class="pa-4 mb-4" Elevation="1">
             <MudText Typo="Typo.h3" Class="mb-3">η(P)-kurve</MudText>
             @if (_response.Punkter.Count > 0)
@@ -91,8 +99,14 @@ else if (_response is not null)
                 <ApexChart @key="_chartVersion" TItem="EffektivitetPunkt"
                            Options="_scatterOptions" Height="380">
                     <ApexPointSeries TItem="EffektivitetPunkt"
-                                     Items="_response.Punkter"
-                                     Name="Time-snitt"
+                                     Items="GenuinePunkter()"
+                                     Name="Genuine drift"
+                                     SeriesType="SeriesType.Scatter"
+                                     XValue="p => (decimal)p.EffektKw"
+                                     YValue="p => (decimal)p.EtaPct" />
+                    <ApexPointSeries TItem="EffektivitetPunkt"
+                                     Items="TransitionPunkter()"
+                                     Name="Start/stopp-ramp"
                                      SeriesType="SeriesType.Scatter"
                                      XValue="p => (decimal)p.EffektKw"
                                      YValue="p => (decimal)p.EtaPct" />
@@ -103,6 +117,10 @@ else if (_response is not null)
                                      XValue="b => (decimal)b.EffektKwMid"
                                      YValue="b => (decimal)b.SnittEtaPct" />
                 </ApexChart>
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mt-2">
+                    Genuine = produksjons-intervall der η ≥ @GenuineEtaFloorPctDisplay %.
+                    Transition = start/stopp-ramp (P over terskel men η under gulvet); vises i scatter men teller ikke i snitt-aggregat.
+                </MudText>
             }
             else
             {
@@ -110,7 +128,7 @@ else if (_response is not null)
             }
         </MudPaper>
 
-        @* ---- Bin-tabell (klikkbar drilldown til Produksjons-timer) ---- *@
+        @* ---- Bin-tabell (klikkbar drilldown til Produksjons-intervaller) ---- *@
         <MudPaper Class="pa-4 mb-4" Elevation="1">
             <div class="d-flex align-center justify-space-between mb-3">
                 <MudText Typo="Typo.h3">Effekt-bins (bredde 200 kW)</MudText>
@@ -123,14 +141,15 @@ else if (_response is not null)
                 }
             </div>
             <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-2">
-                Klikk en rad for å filtrere produksjons-timene under til den effekt-bin'en.
+                Klikk en rad for å filtrere produksjons-intervaller under til den effekt-bin'en.
+                Bins er bygget kun fra Genuine-intervaller.
             </MudText>
             <MudTable Items="_response.Bins" Hover="true" Dense="true" Elevation="0"
                       OnRowClick="@((TableRowClickEventArgs<EffektivitetBin> args) => { if (args.Item is not null) _ = SelectBin(args.Item.EffektKwStart); })"
                       RowStyle="cursor: pointer;">
                 <HeaderContent>
                     <MudTh>Bin (kW)</MudTh>
-                    <MudTh Style="text-align:right">Antall timer</MudTh>
+                    <MudTh Style="text-align:right">Antall intervaller</MudTh>
                     <MudTh Style="text-align:right">Snitt η (%)</MudTh>
                 </HeaderContent>
                 <RowTemplate>
@@ -150,13 +169,13 @@ else if (_response is not null)
             </MudTable>
         </MudPaper>
 
-        @* ---- Produksjons-timer — alle timene som ligger bak KPI-ene + scatter ----
-           Drilldown fra bin-tabellen filtrerer denne. Drifts-leder kan slå opp
-           tidspunktene i SCADA for videre analyse. *@
+        @* ---- Produksjons-intervaller — alle 15-min-snittene som ligger bak KPI-ene + scatter.
+           Drilldown fra bin-tabellen filtrerer denne. Klassifisering-kolonnen viser om intervallet
+           teller i snitt-aggregat (Genuine) eller bare som synlig ramp (Transition). *@
         <MudPaper Class="pa-4" Elevation="1" id="produksjons-timer-tabell">
             <div class="d-flex justify-space-between align-center mb-3">
                 <MudText Typo="Typo.h3">
-                    Produksjons-timer (@FilteredPunkter().Count())
+                    Produksjons-intervaller (@FilteredPunkter().Count())
                 </MudText>
                 <MudButton Variant="Variant.Outlined"
                            StartIcon="@Icons.Material.Filled.Download"
@@ -170,7 +189,7 @@ else if (_response is not null)
                       FixedHeader="true" Height="500px" Virtualize="true"
                       Filter="MatchesTimerSearch">
                 <ToolBarContent>
-                    <MudTextField @bind-Value="_timerSearch" Placeholder="Søk tidspunkt…"
+                    <MudTextField @bind-Value="_timerSearch" Placeholder="Søk tidspunkt eller klassifisering…"
                                   Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
                                   Margin="Margin.Dense" Immediate="true" />
                 </ToolBarContent>
@@ -180,15 +199,28 @@ else if (_response is not null)
                     <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEffekt">Effekt (kW)</MudTableSortLabel></MudTh>
                     <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEta">Virkningsgrad (%)</MudTableSortLabel></MudTh>
                     <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVann">Vannføring (m³/s)</MudTableSortLabel></MudTh>
+                    <MudTh><MudTableSortLabel SortBy="@SortByKlass">Klassifisering</MudTableSortLabel></MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd DataLabel="Tidspunkt">@FormatLocal(context.TimeUtc)</MudTd>
                     <MudTd DataLabel="Effekt" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.EffektKw.ToString("F0")</MudTd>
                     <MudTd DataLabel="Virkningsgrad" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.EtaPct.ToString("F1")</MudTd>
                     <MudTd DataLabel="Vannføring" Style="text-align:right; font-variant-numeric: tabular-nums;">@context.VannforingM3PerS.ToString("F2")</MudTd>
+                    <MudTd DataLabel="Klassifisering">
+                        @if (context.Klassifisering == PunktKlassifisering.Genuine)
+                        {
+                            <MudChip T="string" Size="MudBlazor.Size.Small"
+                                     Color="MudBlazor.Color.Success" Variant="Variant.Text">Genuine</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="MudBlazor.Size.Small"
+                                     Color="MudBlazor.Color.Warning" Variant="Variant.Text">Transition</MudChip>
+                        }
+                    </MudTd>
                 </RowTemplate>
                 <NoRecordsContent>
-                    <MudText>Ingen produksjons-timer matcher filteret.</MudText>
+                    <MudText>Ingen produksjons-intervaller matcher filteret.</MudText>
                 </NoRecordsContent>
             </MudTable>
         </MudPaper>
@@ -215,6 +247,11 @@ else if (_response is not null)
     private static readonly Func<EffektivitetPunkt, object> SortByEffekt  = p => p.EffektKw;
     private static readonly Func<EffektivitetPunkt, object> SortByEta     = p => p.EtaPct;
     private static readonly Func<EffektivitetPunkt, object> SortByVann    = p => p.VannforingM3PerS;
+    private static readonly Func<EffektivitetPunkt, object> SortByKlass   = p => p.Klassifisering;
+
+    // η-gulv som vises i caption — speiler EffektivitetQueryService.GenuineEtaFloorPct.
+    // Holdt som konstant her så vi ikke trenger en ny API-roundtrip for å lese den.
+    private const double GenuineEtaFloorPctDisplay = 50;
 
     protected override async Task OnInitializedAsync()
     {
@@ -326,7 +363,9 @@ else if (_response is not null)
                             '</div>';
                     }",
                 },
-                Colors = new List<string> { "#1E5F8E", "#E76F51" },
+                // Farger: Genuine (blå) → solid hovedfarge, Transition (oransje)
+                // → varseltone, Bin-snitt-linje (grønn) → bin-aggregat-kurve.
+                Colors = new List<string> { "#1E5F8E", "#E76F51", "#2A9D8F" },
             };
         }
         catch (Exception ex)
@@ -377,12 +416,25 @@ else if (_response is not null)
         return _response.Punkter.Where(p => p.EffektKw >= start && p.EffektKw < end);
     }
 
-    /// <summary>Søk på tidspunkt (yyyy-MM-dd HH:mm i lokal tid).</summary>
+    /// <summary>Bare Genuine-intervaller — drift over η-gulv. Brukes til scatter-serien.</summary>
+    private List<EffektivitetPunkt> GenuinePunkter() =>
+        _response is null
+            ? new()
+            : _response.Punkter.Where(p => p.Klassifisering == PunktKlassifisering.Genuine).ToList();
+
+    /// <summary>Bare Transition-intervaller — start/stopp-ramper. Brukes til scatter-serien.</summary>
+    private List<EffektivitetPunkt> TransitionPunkter() =>
+        _response is null
+            ? new()
+            : _response.Punkter.Where(p => p.Klassifisering == PunktKlassifisering.Transition).ToList();
+
+    /// <summary>Søk på tidspunkt (yyyy-MM-dd HH:mm i lokal tid) eller klassifisering.</summary>
     private bool MatchesTimerSearch(EffektivitetPunkt p)
     {
         if (string.IsNullOrWhiteSpace(_timerSearch)) return true;
-        return FormatLocal(p.TimeUtc).Contains(_timerSearch.Trim(),
-            StringComparison.OrdinalIgnoreCase);
+        var needle = _timerSearch.Trim();
+        return FormatLocal(p.TimeUtc).Contains(needle, StringComparison.OrdinalIgnoreCase)
+            || p.Klassifisering.ToString().Contains(needle, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -409,14 +461,15 @@ else if (_response is not null)
         if (_response is null) return;
         var sb = new System.Text.StringBuilder();
         sb.Append('﻿'); // UTF-8 BOM for Excel
-        sb.AppendLine("Tidspunkt (lokal);Effekt (kW);Virkningsgrad (%);Vannforing (m3/s)");
+        sb.AppendLine("Tidspunkt (lokal);Effekt (kW);Virkningsgrad (%);Vannforing (m3/s);Klassifisering");
         foreach (var p in FilteredPunkter().OrderBy(p => p.TimeUtc))
         {
             // Semikolon-separert for norsk Excel; komma som desimal.
             sb.Append(FormatLocal(p.TimeUtc)).Append(';');
             sb.Append(p.EffektKw.ToString("F0", NorskTall)).Append(';');
             sb.Append(p.EtaPct.ToString("F1", NorskTall)).Append(';');
-            sb.AppendLine(p.VannforingM3PerS.ToString("F2", NorskTall));
+            sb.Append(p.VannforingM3PerS.ToString("F2", NorskTall)).Append(';');
+            sb.AppendLine(p.Klassifisering.ToString());
         }
         var bin = _selectedBinStart.HasValue
             ? $"-bin-{_selectedBinStart.Value:F0}-{_selectedBinStart.Value + 200:F0}kW"

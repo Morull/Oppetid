@@ -28,6 +28,9 @@ public sealed class KraftverkDbContext : DbContext
     public DbSet<VaktEventOverrideEntry> VaktEventOverrides => Set<VaktEventOverrideEntry>();
     public DbSet<SignalMapEntry> SignalMaps => Set<SignalMapEntry>();
     public DbSet<SampleFactEntry> SampleFacts => Set<SampleFactEntry>();
+    // 15-min SCADA-samples i EGEN tabell — speiler SampleFacts, men hindrer
+    // overskrivning av hourly pipelinen. Spec NESTE-CHAT-EFFEKTIVITET-15MIN.md.
+    public DbSet<SampleFactFineEntry> SampleFactsFine => Set<SampleFactFineEntry>();
     public DbSet<ClassifiedEventEntry> ClassifiedEvents => Set<ClassifiedEventEntry>();
     public DbSet<MarketPriceEntry> MarketPrices => Set<MarketPriceEntry>();
     public DbSet<DamEntry> Dams => Set<DamEntry>();
@@ -187,6 +190,19 @@ public sealed class KraftverkDbContext : DbContext
         modelBuilder.Entity<SampleFactEntry>(b =>
         {
             b.ToTable("sample_facts");
+            b.HasKey(x => new { x.AssetId, x.SignalId, x.TimeUtc });
+            b.Property(x => x.AssetId).HasMaxLength(64).IsRequired();
+            b.Property(x => x.SignalId).HasMaxLength(128).IsRequired();
+            b.HasIndex(x => new { x.AssetId, x.TimeUtc });
+        });
+
+        // 15-min SCADA-samples — speiler sample_facts men i EGEN tabell. Spec
+        // NESTE-CHAT-EFFEKTIVITET-15MIN.md: 15-min-eksporten inneholder samme
+        // 73 tags som hourly-master, så delt tabell ville overskrevet hverandre
+        // på :00-tidsstempler. Hypertable opprettes via DatabaseBootstrapper.
+        modelBuilder.Entity<SampleFactFineEntry>(b =>
+        {
+            b.ToTable("sample_facts_fine");
             b.HasKey(x => new { x.AssetId, x.SignalId, x.TimeUtc });
             b.Property(x => x.AssetId).HasMaxLength(64).IsRequired();
             b.Property(x => x.SignalId).HasMaxLength(128).IsRequired();

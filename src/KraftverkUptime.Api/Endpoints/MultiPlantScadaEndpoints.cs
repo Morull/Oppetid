@@ -37,9 +37,6 @@ public static class MultiPlantScadaEndpoints
             .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
             .AddEndpointFilter(async (ctx, next) =>
             {
-                // Multi-plant master-CSV kan være større enn single-plant (typisk
-                // 5-15 MB for kvartals-eksport av 70+ tags). 100 MB-grense
-                // matcher multi-plant operlog.
                 var feature = ctx.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
                 if (feature is not null && !feature.IsReadOnly)
                 {
@@ -51,15 +48,57 @@ public static class MultiPlantScadaEndpoints
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status413PayloadTooLarge);
 
+        // 15-min-variant: skriver til sample_facts_fine i stedet for sample_facts.
+        // Spec NESTE-CHAT-EFFEKTIVITET-15MIN.md.
+        group.MapPost("/multi-plant-fine", UploadMultiPlantMasterFineAsync)
+            .WithName("UploadMultiPlantScadaMasterFine")
+            .WithSummary("Tar imot én 15-min master-CSV med tags fra flere anlegg — sample_facts_fine.")
+            .DisableAntiforgery()
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
+            .AddEndpointFilter(async (ctx, next) =>
+            {
+                // 15-min er ~4× radmengde sammenlignet med hourly — gi 200 MB rom.
+                var feature = ctx.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
+                if (feature is not null && !feature.IsReadOnly)
+                {
+                    feature.MaxRequestBodySize = 200L * 1024 * 1024;
+                }
+                return await next(ctx).ConfigureAwait(false);
+            })
+            .Produces<MultiPlantScadaImportResult>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status413PayloadTooLarge);
+
         return endpoints;
     }
 
-    private static async Task<IResult> UploadMultiPlantMasterAsync(
+    private static Task<IResult> UploadMultiPlantMasterFineAsync(
         HttpRequest request,
         IScadaImportService import,
         ICurrentUser currentUser,
         IAuditLogger audit,
         IOptions<SettlementUploadOptions> uploadOptions,
+        CancellationToken ct)
+        => UploadMultiPlantMasterInternalAsync(
+            request, import, currentUser, audit, uploadOptions, isFine: true, ct);
+
+    private static Task<IResult> UploadMultiPlantMasterAsync(
+        HttpRequest request,
+        IScadaImportService import,
+        ICurrentUser currentUser,
+        IAuditLogger audit,
+        IOptions<SettlementUploadOptions> uploadOptions,
+        CancellationToken ct)
+        => UploadMultiPlantMasterInternalAsync(
+            request, import, currentUser, audit, uploadOptions, isFine: false, ct);
+
+    private static async Task<IResult> UploadMultiPlantMasterInternalAsync(
+        HttpRequest request,
+        IScadaImportService import,
+        ICurrentUser currentUser,
+        IAuditLogger audit,
+        IOptions<SettlementUploadOptions> uploadOptions,
+        bool isFine,
         CancellationToken ct)
     {
         if (!IsMultipart(request, out var boundary, out var problem))
@@ -94,17 +133,22 @@ public static class MultiPlantScadaEndpoints
 
                 try
                 {
-                    var result = await import.ImportMasterCsvMultiPlantAsync(
-                        ownerOrgId, section.Body, ct).ConfigureAwait(false);
+                    var result = isFine
+                        ? await import.ImportMasterCsvMultiPlantFineAsync(
+                            ownerOrgId, section.Body, ct).ConfigureAwait(false)
+                        : await import.ImportMasterCsvMultiPlantAsync(
+                            ownerOrgId, section.Body, ct).ConfigureAwait(false);
 
                     await audit.LogAsync(
-                        action: "scada.multi_plant_master_imported",
+                        action: isFine ? "scada.multi_plant_master_fine_imported"
+                                       : "scada.multi_plant_master_imported",
                         entityType: "ScadaImport",
                         entityId: $"{ownerOrgId}:{DateTimeOffset.UtcNow:o}",
                         payload: new
                         {
                             ownerOrgId,
                             FileName = fileName,
+                            IsFine = isFine,
                             result.TotalRowsParsed,
                             result.TotalRowsSkipped,
                             UnknownCount = result.UnknownSignals.Count,

@@ -109,6 +109,9 @@ public static class InfrastructureServiceCollectionExtensions
         // --- SCADA foundation (signal_map + sample_facts + classified_events) ---
         services.AddScoped<ISignalMapRepository, EfSignalMapRepository>();
         services.AddScoped<IScadaSampleRepository, EfScadaSampleRepository>();
+        // 15-min-pipelinen: separat tabell core.sample_facts_fine — Spec
+        // NESTE-CHAT-EFFEKTIVITET-15MIN.md.
+        services.AddScoped<IScadaSampleFineRepository, EfScadaSampleFineRepository>();
         services.AddScoped<IClassifiedEventRepository, EfClassifiedEventRepository>();
         services.AddScoped<KraftverkUptime.Modules.Scada.Import.IScadaImportService, KraftverkUptime.Infrastructure.Scada.ScadaImportService>();
 

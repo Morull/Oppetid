@@ -294,6 +294,15 @@ public sealed class HotFolderWatcher : BackgroundService
                     await scadaSvc.ImportMasterCsvAsync(plantId, ownerOrg, stream, ct);
                     break;
                 }
+            case SourceType.ScadaTrendsFine:
+                {
+                    // 15-min-eksport — separat pipeline mot sample_facts_fine. Spec
+                    // NESTE-CHAT-EFFEKTIVITET-15MIN.md.
+                    var scadaSvc = scope.ServiceProvider.GetRequiredService<IScadaImportService>();
+                    var ownerOrg = "dev-org";
+                    await scadaSvc.ImportMasterCsvFineAsync(plantId, ownerOrg, stream, ct);
+                    break;
+                }
             case SourceType.ScadaAlarms:
                 {
                     var scadaSvc = scope.ServiceProvider.GetRequiredService<IScadaImportService>();
@@ -330,6 +339,21 @@ public sealed class HotFolderWatcher : BackgroundService
                     fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
                     content.Add(fileContent, "file", file.Name);
                     var requestUri = new Uri("api/v1/scada/multi-plant", UriKind.Relative);
+                    var resp = await httpClient.PostAsync(requestUri, content, ct);
+                    resp.EnsureSuccessStatusCode();
+                    break;
+                }
+            case SourceType.ScadaTrendsFineMultiPlant:
+                {
+                    // 15-min multi-plant: samme prefiks-routing, men skriver til
+                    // sample_facts_fine. Spec NESTE-CHAT-EFFEKTIVITET-15MIN.md.
+                    var httpClient = scope.ServiceProvider.GetRequiredService<IHttpClientFactory>()
+                        .CreateClient("HotFolderUpload");
+                    using var content = new MultipartFormDataContent();
+                    using var fileContent = new StreamContent(stream);
+                    fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
+                    content.Add(fileContent, "file", file.Name);
+                    var requestUri = new Uri("api/v1/scada/multi-plant-fine", UriKind.Relative);
                     var resp = await httpClient.PostAsync(requestUri, content, ct);
                     resp.EnsureSuccessStatusCode();
                     break;

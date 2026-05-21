@@ -324,6 +324,21 @@ public static class DatabaseBootstrapper
             CREATE INDEX IF NOT EXISTS ix_sample_facts_asset_time
                 ON core.sample_facts (asset_id, time_utc);
 
+            -- 15-min SCADA-samples — speiler sample_facts men i EGEN tabell.
+            -- Spec NESTE-CHAT-EFFEKTIVITET-15MIN.md: hindrer kollisjon mellom
+            -- hourly og 15-min eksporter (begge har :00-tidsstempler).
+            CREATE TABLE IF NOT EXISTS core.sample_facts_fine (
+                asset_id varchar(64) NOT NULL,
+                signal_id varchar(128) NOT NULL,
+                time_utc timestamptz NOT NULL,
+                value double precision NULL,
+                quality smallint NOT NULL DEFAULT 0,
+                PRIMARY KEY (asset_id, signal_id, time_utc)
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_sample_facts_fine_asset_time
+                ON core.sample_facts_fine (asset_id, time_utc);
+
             CREATE TABLE IF NOT EXISTS core.classified_events (
                 id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 owner_org_id varchar(64) NOT NULL,
@@ -344,7 +359,7 @@ public static class DatabaseBootstrapper
         try
         {
             await db.Database.ExecuteSqlRawAsync(baseTablesSql, ct).ConfigureAwait(false);
-            logger.LogDebug("SCADA schema ensured (signal_map, sample_facts, classified_events).");
+            logger.LogDebug("SCADA schema ensured (signal_map, sample_facts, sample_facts_fine, classified_events).");
         }
         catch (Exception ex)
         {
@@ -367,6 +382,16 @@ public static class DatabaseBootstrapper
                 migrate_data => TRUE
             );
 
+            -- 15-min-pipelinen: kortere chunks (1 dag) gir bedre kompresjon
+            -- og raskere range-queries siden Effektivitet-siden typisk ber om
+            -- timesoppløsning eller mindre vinduer.
+            SELECT create_hypertable(
+                'core.sample_facts_fine', 'time_utc',
+                chunk_time_interval => INTERVAL '1 day',
+                if_not_exists => TRUE,
+                migrate_data => TRUE
+            );
+
             SELECT create_hypertable(
                 'core.classified_events', 'start_utc',
                 chunk_time_interval => INTERVAL '30 days',
@@ -378,7 +403,7 @@ public static class DatabaseBootstrapper
         try
         {
             await db.Database.ExecuteSqlRawAsync(hypertableSql, ct).ConfigureAwait(false);
-            logger.LogInformation("Hypertables konfigurert for sample_facts og classified_events.");
+            logger.LogInformation("Hypertables konfigurert for sample_facts, sample_facts_fine og classified_events.");
         }
         catch (Exception ex)
         {

@@ -14,6 +14,20 @@ public interface IScadaImportService
         Stream csvStream,
         CancellationToken ct);
 
+    /// <summary>
+    /// Import av 15-min SCADA-eksport. Identisk parse-pipeline som
+    /// <see cref="ImportMasterCsvAsync"/>, men skriver til
+    /// <c>core.sample_facts_fine</c> via
+    /// <see cref="KraftverkUptime.Modules.Scada.Repositories.IScadaSampleFineRepository"/>
+    /// slik at hourly-pipelinen ikke overskrives på :00-tidsstempler.
+    /// Spec NESTE-CHAT-EFFEKTIVITET-15MIN.md.
+    /// </summary>
+    Task<ScadaImportResult> ImportMasterCsvFineAsync(
+        string plantId,
+        string ownerOrgId,
+        Stream csvStream,
+        CancellationToken ct);
+
     Task<OperlogImportResult> ImportOperlogCsvAsync(
         string plantId,
         string ownerOrgId,
@@ -41,6 +55,16 @@ public interface IScadaImportService
     /// <see cref="MultiPlantScadaImportResult.UnknownSignals"/>.
     /// </summary>
     Task<MultiPlantScadaImportResult> ImportMasterCsvMultiPlantAsync(
+        string ownerOrgId,
+        Stream csvStream,
+        CancellationToken ct);
+
+    /// <summary>
+    /// 15-min-variant av <see cref="ImportMasterCsvMultiPlantAsync"/>. Samme
+    /// signal-prefiks-routing per plant, men skriver til
+    /// <c>core.sample_facts_fine</c>. Spec NESTE-CHAT-EFFEKTIVITET-15MIN.md.
+    /// </summary>
+    Task<MultiPlantScadaImportResult> ImportMasterCsvMultiPlantFineAsync(
         string ownerOrgId,
         Stream csvStream,
         CancellationToken ct);

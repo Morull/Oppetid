@@ -129,6 +129,18 @@ public sealed class HotFolderDetector
                 return DetectionResult.Ok("_multi_", SourceType.ScadaTrendsMultiPlant, diag);
             }
         }
+        else if (sourceType == SourceType.ScadaTrendsFine)
+        {
+            // 15-min har samme multi-plant-mulighet (Spec NESTE-CHAT-EFFEKTIVITET-15MIN.md).
+            // Bruker samme analyse-logikk men ruter til en egen kategori slik at
+            // importøren skriver til sample_facts_fine i stedet for sample_facts.
+            var (_, isMulti) = AnalyzeCsvContent(file, diag);
+            if (isMulti)
+            {
+                diag.Attempts.Add("Multi-plant SCADA-fine (innhold) — ruter til /scada/multi-plant-fine.");
+                return DetectionResult.Ok("_multi_", SourceType.ScadaTrendsFineMultiPlant, diag);
+            }
+        }
         else if (sourceType == SourceType.ScadaAlarms)
         {
             var stationResult = DetectPlantsFromOperlog(file, diag);
@@ -421,6 +433,13 @@ public sealed class HotFolderDetector
             return SourceType.ScadaAlarms;
         }
 
+        // 15-min-eksport: filnavn-markører "15min", "avg-15min" eller "fine".
+        // Spec NESTE-CHAT-EFFEKTIVITET-15MIN.md — separat tabell hindrer
+        // overskriving av hourly på :00-tidsstempler.
+        var isFineByName = fileName.Contains("15min", StringComparison.OrdinalIgnoreCase)
+            || fileName.Contains("avg-15min", StringComparison.OrdinalIgnoreCase)
+            || fileName.Contains("_fine", StringComparison.OrdinalIgnoreCase);
+
         try
         {
             using var reader = new StreamReader(file.FullName);
@@ -436,6 +455,11 @@ public sealed class HotFolderDetector
             if (firstLine.Contains("DateTime", StringComparison.OrdinalIgnoreCase)
                 || firstLine.Contains("Cluster1.", StringComparison.OrdinalIgnoreCase))
             {
+                if (isFineByName)
+                {
+                    diag.Attempts.Add("CSV header er DateTime/Cluster1 og filnavn markerer 15-min → ScadaTrendsFine.");
+                    return SourceType.ScadaTrendsFine;
+                }
                 diag.Attempts.Add("CSV header inneholder 'DateTime'/'Cluster1.' → ScadaTrends.");
                 return SourceType.ScadaTrends;
             }
@@ -445,6 +469,11 @@ public sealed class HotFolderDetector
             diag.Attempts.Add($"Klarte ikke lese CSV header: {ex.GetType().Name}: {ex.Message}");
         }
 
+        if (isFineByName)
+        {
+            diag.Attempts.Add("CSV header matchet ikke noe kjent, men filnavn markerer 15-min → ScadaTrendsFine.");
+            return SourceType.ScadaTrendsFine;
+        }
         diag.Attempts.Add("CSV header matchet ingen kjente mønstre → default ScadaTrends.");
         return SourceType.ScadaTrends;
     }
@@ -560,8 +589,10 @@ public enum SourceType
 {
     Settlement,
     SettlementMultiPlant,    // én xlsx med flere plant-faner — rutes til /settlements/multi-plant
-    ScadaTrends,             // master-CSV (tidsserier)
+    ScadaTrends,             // master-CSV (tidsserier, hourly)
     ScadaTrendsMultiPlant,   // master-CSV med tags fra flere anlegg — rutes til /scada/multi-plant
+    ScadaTrendsFine,         // 15-min master-CSV — rutes til sample_facts_fine. Spec NESTE-CHAT-EFFEKTIVITET-15MIN.md.
+    ScadaTrendsFineMultiPlant, // 15-min master-CSV med tags fra flere anlegg.
     ScadaAlarms,             // operlog (events) for ett anlegg
     ScadaAlarmsMultiPlant,   // operlog med events fra flere stations — rutes til /operlog/multi-plant
 }
@@ -574,6 +605,8 @@ public static class SourceTypeExtensions
         SourceType.SettlementMultiPlant => "settlement",
         SourceType.ScadaTrends => "scada",
         SourceType.ScadaTrendsMultiPlant => "scada",
+        SourceType.ScadaTrendsFine => "scada-fine",
+        SourceType.ScadaTrendsFineMultiPlant => "scada-fine",
         SourceType.ScadaAlarms => "operlog",
         SourceType.ScadaAlarmsMultiPlant => "operlog",
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
