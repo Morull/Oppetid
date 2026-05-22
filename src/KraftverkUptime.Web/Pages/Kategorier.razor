@@ -36,6 +36,12 @@
 else
 {
     <MudPaper Class="pa-4" Elevation="1">
+        <div class="d-flex align-center mb-2" style="gap: 8px;">
+            <MudText Typo="Typo.h4">Nedetid-kategorier</MudText>
+            <HjelpeIkon Tittel="Nedetid-kategorier"
+                        Beskrivelse="System-definerte og bruker-opprettede kategorier som klassifiserer hver nedetids-hendelse. «Mapping» bestemmer hvordan kategorien påvirker driftsstatus (Drift / Stille / Nedetid)."
+                        Begreper="@(new[] { "Mapping", "Drift", "Stille", "Nedetid" })" />
+        </div>
         <MudTable Items="_categories" Hover="true" Dense="true" Elevation="0"
                   Filter="MatchesCatSearch">
             <ToolBarContent>
@@ -44,11 +50,20 @@ else
                               Margin="Margin.Dense" Immediate="true" />
             </ToolBarContent>
             <HeaderContent>
-                <MudTh><MudTableSortLabel SortBy="@_catSortName">Navn / Beskrivelse</MudTableSortLabel></MudTh>
+                <KolonneHode TRow="AnnotationCategoryDto" Tittel="Navn / Beskrivelse"
+                             SortBy="@_catSortName" />
                 <MudTh Style="text-align:center">Farge</MudTh>
-                <MudTh><MudTableSortLabel SortBy="@_catSortMapping">Mapping</MudTableSortLabel></MudTh>
-                <MudTh Style="text-align:center"><MudTableSortLabel SortBy="@_catSortOrder">#</MudTableSortLabel></MudTh>
-                <MudTh Style="text-align:center"><MudTableSortLabel SortBy="@_catSortActive">Aktiv</MudTableSortLabel></MudTh>
+                <KolonneHode TRow="AnnotationCategoryDto" Tittel="Mapping"
+                             SortBy="@_catSortMapping"
+                             BegrepNoekkel="Mapping" />
+                <KolonneHode TRow="AnnotationCategoryDto" Tittel="#"
+                             SortBy="@_catSortOrder"
+                             Style="text-align:center"
+                             Beskrivelse="Sortér-rekkefølge. Lavere = lengre opp i listen." />
+                <KolonneHode TRow="AnnotationCategoryDto" Tittel="Aktiv"
+                             SortBy="@_catSortActive"
+                             Style="text-align:center"
+                             Beskrivelse="Inaktive kategorier vises ikke som valg i nedetid-annoteringen." />
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -145,6 +160,12 @@ else
 else
 {
     <MudPaper Class="pa-4 mb-8" Elevation="1">
+        <div class="d-flex align-center mb-2" style="gap: 8px;">
+            <MudText Typo="Typo.h4">Årsakskode-aliaser</MudText>
+            <HjelpeIkon Tittel="Årsakskode-aliaser"
+                        Beskrivelse="Mapper interne årsakskoder fra operlog/SCADA til bruker-vennlig tekst som vises i Nedetid-hendelser. Hjelp drifts-leder å forstå hva en kryptisk feilkode betyr."
+                        Begreper="@(new[] { "AarsaksKode", "SCADA" })" />
+        </div>
         <MudTable Items="_aliases" Hover="true" Dense="true" Elevation="0"
                   Filter="MatchesAliasSearch">
             <ToolBarContent>
@@ -153,9 +174,16 @@ else
                               Margin="Margin.Dense" Immediate="true" />
             </ToolBarContent>
             <HeaderContent>
-                <MudTh>Intern cause-kode</MudTh>
-                <MudTh>Visnings-tekst</MudTh>
-                <MudTh Style="text-align:right;">Sist oppdatert</MudTh>
+                <KolonneHode TRow="CauseAliasDto" Tittel="Intern årsakskode"
+                             SortBy="@(a => (object)a.CauseCode)"
+                             BegrepNoekkel="AarsaksKode" />
+                <KolonneHode TRow="CauseAliasDto" Tittel="Visnings-tekst"
+                             SortBy="@(a => (object)a.DisplayText)"
+                             Beskrivelse="Bruker-vennlig tekst som erstatter den interne koden i Nedetid-hendelses-tabellen." />
+                <KolonneHode TRow="CauseAliasDto" Tittel="Sist oppdatert"
+                             SortBy="@(a => (object)a.UpdatedAt)"
+                             InitialDirection="SortDirection.Descending"
+                             Style="text-align:right" />
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>

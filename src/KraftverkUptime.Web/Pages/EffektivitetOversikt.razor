@@ -65,25 +65,52 @@ else
     @* Hovedtabellen — én rad per anlegg, klikkbar til detaljvisning.
        Begge tap-referanser vises som separate kolonner. *@
     <MudPaper Class="pa-4 mb-4" Elevation="0">
-        <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-2">
-            Klikk en rad for å åpne detaljvisningen for det anlegget. «Tap mot baseline»
-            = operativt avvik fra det vanlige; «Tap mot sweet-spot» = strategisk
-            potensial om vannet kjørtes på toppunkt.
-        </MudText>
+        <div class="d-flex justify-space-between align-center mb-2">
+            <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">
+                Klikk en rad for å åpne detaljvisningen for det anlegget. «Tap mot baseline»
+                = operativt avvik fra det vanlige; «Tap mot sweet-spot» = strategisk
+                potensial om vannet kjørtes på toppunkt.
+            </MudText>
+            <HjelpeIkon Tittel="Anleggssammenligning"
+                        Beskrivelse="Én rad per anlegg med snitt-η, sweet-spot, vannforbruk, og tap mot to referanser. Sortér på «Tap mot baseline» for å se hvor det er operative problemer; sortér på «Tap mot sweet-spot» for strategisk potensial."
+                        Begreper="@(new[] { "η", "SweetSpot", "m³ per kWh", "Baseline", "TaptVerdi" })" />
+        </div>
         <MudTable T="EffektivitetPortfolioRad" Items="_response.Rader" Hover="true" Striped="true" Elevation="0"
                   Dense="true"
                   OnRowClick="@((TableRowClickEventArgs<EffektivitetPortfolioRad> args) => OnRowClick(args.Item))"
                   RowStyle="cursor: pointer;">
             <HeaderContent>
-                <MudTh><MudTableSortLabel SortBy="@SortByName">Anlegg</MudTableSortLabel></MudTh>
-                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEta">Snitt η</MudTableSortLabel></MudTh>
-                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortBySweet">Sweet-spot</MudTableSortLabel></MudTh>
-                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortBySvf">SVF</MudTableSortLabel></MudTh>
-                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByProd">Produksjon</MudTableSortLabel></MudTh>
-                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEpisoderBaseline">Episoder</MudTableSortLabel></MudTh>
-                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByTaptNokBaseline"
-                       InitialDirection="SortDirection.Descending">Tap mot baseline</MudTableSortLabel></MudTh>
-                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByTaptNokSweetSpot">Tap mot sweet-spot</MudTableSortLabel></MudTh>
+                <KolonneHode TRow="EffektivitetPortfolioRad" Tittel="Anlegg"
+                             SortBy="@SortByName" />
+                <KolonneHode TRow="EffektivitetPortfolioRad" Tittel="Snitt η"
+                             SortBy="@SortByEta"
+                             Style="text-align:right"
+                             BegrepNoekkel="η" />
+                <KolonneHode TRow="EffektivitetPortfolioRad" Tittel="Sweet-spot"
+                             SortBy="@SortBySweet"
+                             Style="text-align:right"
+                             BegrepNoekkel="SweetSpot" />
+                <KolonneHode TRow="EffektivitetPortfolioRad" Tittel="SVF"
+                             SortBy="@SortBySvf"
+                             Style="text-align:right"
+                             BegrepNoekkel="m³ per kWh" />
+                <KolonneHode TRow="EffektivitetPortfolioRad" Tittel="Produksjon"
+                             SortBy="@SortByProd"
+                             Style="text-align:right"
+                             Beskrivelse="Total levert energi i perioden, summert fra Elhub." />
+                <KolonneHode TRow="EffektivitetPortfolioRad" Tittel="Episoder"
+                             SortBy="@SortByEpisoderBaseline"
+                             Style="text-align:right"
+                             Beskrivelse="Antall sammenhengende underytelses-episoder mot baseline." />
+                <KolonneHode TRow="EffektivitetPortfolioRad" Tittel="Tap mot baseline"
+                             SortBy="@SortByTaptNokBaseline"
+                             InitialDirection="SortDirection.Descending"
+                             Style="text-align:right"
+                             Beskrivelse="Tapt verdi (NOK) målt mot bin-snitt-η. Operativt avvik — bør fikses." />
+                <KolonneHode TRow="EffektivitetPortfolioRad" Tittel="Tap mot sweet-spot"
+                             SortBy="@SortByTaptNokSweetSpot"
+                             Style="text-align:right"
+                             Beskrivelse="Tapt verdi (NOK) målt mot sweet-spot-η. Strategisk potensial — kan utnyttes ved vannsparing." />
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="Anlegg">
@@ -129,7 +156,12 @@ else
         <MudPaper Class="pa-4" Elevation="0">
             <div class="d-flex justify-space-between align-center mb-2" style="flex-wrap: wrap; gap: 8px;">
                 <div>
-                    <MudText Typo="Typo.h3">Topp @_response.TopBaselineEpisoder.Count å sjekke</MudText>
+                    <div class="d-flex align-center" style="gap: 8px;">
+                        <MudText Typo="Typo.h3">Topp @_response.TopBaselineEpisoder.Count å sjekke</MudText>
+                        <HjelpeIkon Tittel="Topp 10 å sjekke"
+                                    Beskrivelse="Verste underytelse-episoder mot baseline på tvers av alle anlegg i porteføljen, rangert på tapt verdi (NOK). Klikk en rad for detaljvisning."
+                                    Begreper="@(new[] { "Δη", "Baseline", "TaptEnergi", "TaptVerdi" })" />
+                    </div>
                     <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">
                         Verste baseline-episoder på tvers av porteføljen, rangert på tapt verdi.
                         Klikk en rad for detaljvisning.

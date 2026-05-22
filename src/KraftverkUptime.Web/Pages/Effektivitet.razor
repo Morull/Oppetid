@@ -118,11 +118,16 @@ else if (_response is not null)
         <MudPaper Class="pa-4 mb-4" Elevation="1">
             <div class="d-flex justify-space-between align-center mb-3" style="flex-wrap: wrap; gap: 12px;">
                 <div>
-                    <MudText Typo="Typo.h3">
-                        @(_episodeReferanse == EpisodeReferanseTyp.SweetSpot
-                            ? "Strategisk potensial mot sweet-spot"
-                            : "Underytelse — tapstoppliste")
-                    </MudText>
+                    <div class="d-flex align-center" style="gap: 8px;">
+                        <MudText Typo="Typo.h3">
+                            @(_episodeReferanse == EpisodeReferanseTyp.SweetSpot
+                                ? "Strategisk potensial mot sweet-spot"
+                                : "Underytelse — tapstoppliste")
+                        </MudText>
+                        <HjelpeIkon Tittel="Tapstoppliste"
+                                    Beskrivelse="Episoder der virkningsgraden ligger merkbart under referansen, gruppert til sammenhengende tidsblokker og rangert på tapt verdi (NOK)."
+                                    Begreper="@(new[] { "Δη", "η", "Baseline", "SweetSpot", "TaptEnergi", "TaptVerdi" })" />
+                    </div>
                     <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">
                         @if (_episodeReferanse == EpisodeReferanseTyp.SweetSpot)
                         {
@@ -207,14 +212,31 @@ else if (_response is not null)
                           OnRowClick="@((TableRowClickEventArgs<UnderytendeEpisode> args) => { if (args.Item is not null) _ = OpenEpisodeDialogAsync(args.Item); })"
                           RowStyle="cursor: pointer;">
                     <HeaderContent>
-                        <MudTh><MudTableSortLabel SortBy="@SortByEpisodeStart"
-                               InitialDirection="SortDirection.Descending">Start</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right">Varighet</MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEpisodeDelta">Snitt Δη</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right">Effektområde</MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEpisodeTaptMwh">Tapt energi</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEpisodeTaptNok"
-                               InitialDirection="SortDirection.Descending">Tapt verdi</MudTableSortLabel></MudTh>
+                        <KolonneHode TRow="UnderytendeEpisode" Tittel="Start"
+                                     SortBy="@SortByEpisodeStart"
+                                     InitialDirection="SortDirection.Descending"
+                                     Beskrivelse="Tidspunkt episoden begynner (lokal tid)." />
+                        <KolonneHode TRow="UnderytendeEpisode" Tittel="Varighet"
+                                     SortBy="@SortByEpisodeVarighet"
+                                     Style="text-align:right"
+                                     Beskrivelse="Antall 15-min-intervaller i episoden, totalt i timer." />
+                        <KolonneHode TRow="UnderytendeEpisode" Tittel="Snitt Δη"
+                                     SortBy="@SortByEpisodeDelta"
+                                     Style="text-align:right"
+                                     BegrepNoekkel="Δη" />
+                        <KolonneHode TRow="UnderytendeEpisode" Tittel="Effektområde"
+                                     SortBy="@SortByEpisodeEffektMaks"
+                                     Style="text-align:right"
+                                     Beskrivelse="Min–maks effekt over alle intervaller i episoden (kW). Sorterer på maks." />
+                        <KolonneHode TRow="UnderytendeEpisode" Tittel="Tapt energi"
+                                     SortBy="@SortByEpisodeTaptMwh"
+                                     Style="text-align:right"
+                                     BegrepNoekkel="TaptEnergi" />
+                        <KolonneHode TRow="UnderytendeEpisode" Tittel="Tapt verdi"
+                                     SortBy="@SortByEpisodeTaptNok"
+                                     InitialDirection="SortDirection.Descending"
+                                     Style="text-align:right"
+                                     BegrepNoekkel="TaptVerdi" />
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd>@FormatLocal(context.StartUtc)</MudTd>
@@ -254,16 +276,39 @@ else if (_response is not null)
                 @* Aggregat per effekt-bånd — gjentakende mønster-tabell *@
                 @if (_episoder.AggregatPerEffektBaand.Count > 0)
                 {
-                    <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Gjentakende mønster per effekt-bånd</MudText>
+                    <div class="d-flex align-center mt-4 mb-2" style="gap: 6px;">
+                        <MudText Typo="Typo.subtitle2">Gjentakende mønster per effekt-bånd</MudText>
+                        <HjelpeIkon Tittel="Gjentakende mønster per effekt-bånd"
+                                    Beskrivelse="Aggregat over alle underytende intervaller, gruppert på effekt-bin'en de falt i. Avdekker faste driftspunkt-problemer (samme effekt-bånd har stadig tap)."
+                                    Begreper="@(new[] { "EffektBin", "Δη", "TaptEnergi", "TaptVerdi" })" />
+                    </div>
                     <MudTable T="EffektBaandAggregat" Items="_episoder.AggregatPerEffektBaand"
                               Hover="true" Dense="true" Elevation="0">
                         <HeaderContent>
-                            <MudTh>Bånd (kW)</MudTh>
-                            <MudTh Style="text-align:right">Episoder</MudTh>
-                            <MudTh Style="text-align:right">Total varighet</MudTh>
-                            <MudTh Style="text-align:right">Snitt Δη</MudTh>
-                            <MudTh Style="text-align:right">Tapt energi</MudTh>
-                            <MudTh Style="text-align:right">Tapt verdi</MudTh>
+                            <KolonneHode TRow="EffektBaandAggregat" Tittel="Bånd (kW)"
+                                         SortBy="@(b => (object)b.EffektKwStart)"
+                                         BegrepNoekkel="EffektBin" />
+                            <KolonneHode TRow="EffektBaandAggregat" Tittel="Episoder"
+                                         SortBy="@(b => (object)b.AntallEpisoder)"
+                                         Style="text-align:right"
+                                         Beskrivelse="Antall sammenhengende episoder som dekker dette effekt-båndet." />
+                            <KolonneHode TRow="EffektBaandAggregat" Tittel="Total varighet"
+                                         SortBy="@(b => (object)b.TotalVarighetTimer)"
+                                         Style="text-align:right"
+                                         Beskrivelse="Summert tid (timer) der intervallene var underytende i dette båndet." />
+                            <KolonneHode TRow="EffektBaandAggregat" Tittel="Snitt Δη"
+                                         SortBy="@(b => (object)b.SnittDeltaEtaPp)"
+                                         Style="text-align:right"
+                                         BegrepNoekkel="Δη" />
+                            <KolonneHode TRow="EffektBaandAggregat" Tittel="Tapt energi"
+                                         SortBy="@(b => (object)b.TaptMwh)"
+                                         Style="text-align:right"
+                                         BegrepNoekkel="TaptEnergi" />
+                            <KolonneHode TRow="EffektBaandAggregat" Tittel="Tapt verdi"
+                                         SortBy="@(b => (object)b.TaptNok)"
+                                         InitialDirection="SortDirection.Descending"
+                                         Style="text-align:right"
+                                         BegrepNoekkel="TaptVerdi" />
                         </HeaderContent>
                         <RowTemplate>
                             <MudTd>@context.EffektKwStart.ToString("F0", NumberFormat.Norsk) – @context.EffektKwSlutt.ToString("F0", NumberFormat.Norsk)</MudTd>
@@ -289,7 +334,12 @@ else if (_response is not null)
            — Ytre @if-guard krever at MINST én serie har data før vi rendrer
              selve ApexChart-en (ellers er chartet meningsløst). *@
         <MudPaper Class="pa-4 mb-4" Elevation="1">
-            <MudText Typo="Typo.h3" Class="mb-3">η(P)-kurve</MudText>
+            <div class="d-flex align-center mb-3" style="gap: 8px;">
+                <MudText Typo="Typo.h3">η(P)-kurve</MudText>
+                <HjelpeIkon Tittel="η(P)-kurve"
+                            Beskrivelse="Spredningsplott av virkningsgrad mot effekt. Hvert punkt er ett 15-min-snitt. Grønn linje er bin-snitt (baseline). Sweet-spot er toppen av kurven."
+                            Begreper="@(new[] { "η", "P", "Bin", "NormalDrift", "StartStopp", "SweetSpot" })" />
+            </div>
             @if (_genuinePunkter.Count > 0 || _transitionPunkter.Count > 0)
             {
                 <ApexChart @key="_chartVersion" TItem="EffektivitetPunkt"
@@ -340,7 +390,12 @@ else if (_response is not null)
         @* ---- Bin-tabell (klikkbar drilldown til Produksjons-intervaller) ---- *@
         <MudPaper Class="pa-4 mb-4" Elevation="1">
             <div class="d-flex align-center justify-space-between mb-3">
-                <MudText Typo="Typo.h3">Effekt-bins (bredde 200 kW)</MudText>
+                <div class="d-flex align-center" style="gap: 8px;">
+                    <MudText Typo="Typo.h3">Effekt-bins (bredde 200 kW)</MudText>
+                    <HjelpeIkon Tittel="Effekt-bins"
+                                Beskrivelse="η-snitt per 200 kW effekt-bånd. Brukes som baseline i underytelse-analysen — sammenligningen er mot bin-snitt, ikke globalt snitt, så et lav-effekt-intervall blir ikke straffet for å være lav-effekt."
+                                Begreper="@(new[] { "EffektBin", "η" })" />
+                </div>
                 @if (_selectedBinStart.HasValue)
                 {
                     <MudChip T="string" Color="MudBlazor.Color.Primary"
@@ -357,9 +412,17 @@ else if (_response is not null)
                       OnRowClick="@((TableRowClickEventArgs<EffektivitetBin> args) => { if (args.Item is not null) _ = SelectBin(args.Item.EffektKwStart); })"
                       RowStyle="cursor: pointer;">
                 <HeaderContent>
-                    <MudTh>Bin (kW)</MudTh>
-                    <MudTh Style="text-align:right">Antall intervaller</MudTh>
-                    <MudTh Style="text-align:right">Snitt η (%)</MudTh>
+                    <KolonneHode TRow="EffektivitetBin" Tittel="Bin (kW)"
+                                 SortBy="@(b => (object)b.EffektKwStart)"
+                                 BegrepNoekkel="EffektBin" />
+                    <KolonneHode TRow="EffektivitetBin" Tittel="Antall intervaller"
+                                 SortBy="@(b => (object)b.Antall)"
+                                 Style="text-align:right"
+                                 Beskrivelse="Antall 15-min-intervaller med data i denne effekt-bin'en." />
+                    <KolonneHode TRow="EffektivitetBin" Tittel="Snitt η (%)"
+                                 SortBy="@(b => (object)b.SnittEtaPct)"
+                                 Style="text-align:right"
+                                 BegrepNoekkel="η" />
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>
@@ -383,9 +446,14 @@ else if (_response is not null)
            teller i snitt-aggregat (Genuine) eller bare som synlig ramp (Transition). *@
         <MudPaper Class="pa-4" Elevation="1" id="produksjons-timer-tabell">
             <div class="d-flex justify-space-between align-center mb-3">
-                <MudText Typo="Typo.h3">
-                    Produksjons-intervaller (@FilteredPunkter().Count())
-                </MudText>
+                <div class="d-flex align-center" style="gap: 8px;">
+                    <MudText Typo="Typo.h3">
+                        Produksjons-intervaller (@FilteredPunkter().Count())
+                    </MudText>
+                    <HjelpeIkon Tittel="Produksjons-intervaller"
+                                Beskrivelse="Rå 15-min-snitt som ligger bak KPI-ene og scatter-en. Klassifisering skiller normal drift (η ≥ 50 %) fra start/stopp-ramper (η under gulv)."
+                                Begreper="@(new[] { "η", "kW", "m³/s", "NormalDrift", "StartStopp" })" />
+                </div>
                 <MudButton Variant="Variant.Outlined"
                            StartIcon="@Icons.Material.Filled.Download"
                            OnClick="DownloadCsvAsync"
@@ -403,12 +471,25 @@ else if (_response is not null)
                                   Margin="Margin.Dense" Immediate="true" />
                 </ToolBarContent>
                 <HeaderContent>
-                    <MudTh><MudTableSortLabel SortBy="@SortByTimeUtc"
-                           InitialDirection="SortDirection.Descending">Tidspunkt</MudTableSortLabel></MudTh>
-                    <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEffekt">Effekt (kW)</MudTableSortLabel></MudTh>
-                    <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEta">Virkningsgrad (%)</MudTableSortLabel></MudTh>
-                    <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVann">Vannføring (m³/s)</MudTableSortLabel></MudTh>
-                    <MudTh><MudTableSortLabel SortBy="@SortByKlass">Klassifisering</MudTableSortLabel></MudTh>
+                    <KolonneHode TRow="EffektivitetPunkt" Tittel="Tidspunkt"
+                                 SortBy="@SortByTimeUtc"
+                                 InitialDirection="SortDirection.Descending"
+                                 Beskrivelse="Start på 15-min-intervallet (lokal tid)." />
+                    <KolonneHode TRow="EffektivitetPunkt" Tittel="Effekt (kW)"
+                                 SortBy="@SortByEffekt"
+                                 Style="text-align:right"
+                                 BegrepNoekkel="P" />
+                    <KolonneHode TRow="EffektivitetPunkt" Tittel="Virkningsgrad (%)"
+                                 SortBy="@SortByEta"
+                                 Style="text-align:right"
+                                 BegrepNoekkel="η" />
+                    <KolonneHode TRow="EffektivitetPunkt" Tittel="Vannføring (m³/s)"
+                                 SortBy="@SortByVann"
+                                 Style="text-align:right"
+                                 BegrepNoekkel="m³/s" />
+                    <KolonneHode TRow="EffektivitetPunkt" Tittel="Klassifisering"
+                                 SortBy="@SortByKlass"
+                                 Beskrivelse="Normal drift = η ≥ 50 %. Start/stopp = ramp-intervall under gulvet; vises men teller ikke i snitt." />
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd DataLabel="Tidspunkt">@FormatLocal(context.TimeUtc)</MudTd>
@@ -484,10 +565,12 @@ else if (_response is not null)
     private static readonly Func<EffektivitetPunkt, object> SortByKlass   = p => p.Klassifisering;
 
     // Sort-felt for episode-tabellen (Punkt 4-visningen).
-    private static readonly Func<UnderytendeEpisode, object> SortByEpisodeStart    = e => e.StartUtc;
-    private static readonly Func<UnderytendeEpisode, object> SortByEpisodeDelta    = e => e.SnittDeltaEtaPp;
-    private static readonly Func<UnderytendeEpisode, object> SortByEpisodeTaptMwh  = e => e.TaptMwh;
-    private static readonly Func<UnderytendeEpisode, object> SortByEpisodeTaptNok  = e => e.TaptNok;
+    private static readonly Func<UnderytendeEpisode, object> SortByEpisodeStart       = e => e.StartUtc;
+    private static readonly Func<UnderytendeEpisode, object> SortByEpisodeVarighet    = e => e.VarighetTimer;
+    private static readonly Func<UnderytendeEpisode, object> SortByEpisodeDelta       = e => e.SnittDeltaEtaPp;
+    private static readonly Func<UnderytendeEpisode, object> SortByEpisodeEffektMaks  = e => e.EffektMaksKw;
+    private static readonly Func<UnderytendeEpisode, object> SortByEpisodeTaptMwh     = e => e.TaptMwh;
+    private static readonly Func<UnderytendeEpisode, object> SortByEpisodeTaptNok    = e => e.TaptNok;
 
     // η-gulv som vises i caption — speiler EffektivitetQueryService.GenuineEtaFloorPct.
     // Holdt som konstant her så vi ikke trenger en ny API-roundtrip for å lese den.

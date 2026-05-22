@@ -87,7 +87,12 @@ else if (_response is not null)
     <MudGrid Class="mb-4">
         <MudItem xs="12" md="5">
             <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.h3" Class="mb-3">Tap per kategori</MudText>
+                <div class="d-flex align-center mb-3" style="gap: 8px;">
+                    <MudText Typo="Typo.h3">Tap per kategori</MudText>
+                    <HjelpeIkon Tittel="Tap per kategori"
+                                Beskrivelse="Donut over total tapt verdi (NOK) per nedetid-kategori i perioden. Viser hvor problemene koster mest."
+                                Begreper="@(new[] { "NOK" })" />
+                </div>
                 @if (_response.KategoriSummaries.Count > 0)
                 {
                     <ApexChart @key="_chartVersion" TItem="NedetidKategoriSummary"
@@ -108,7 +113,12 @@ else if (_response is not null)
         </MudItem>
         <MudItem xs="12" md="7">
             <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.h3" Class="mb-3">Nedetid per uke</MudText>
+                <div class="d-flex align-center mb-3" style="gap: 8px;">
+                    <MudText Typo="Typo.h3">Nedetid per uke</MudText>
+                    <HjelpeIkon Tittel="Nedetid per uke"
+                                Beskrivelse="Søyle-diagram av nedetid (timer) per uke. Avdekker trender — har du gjentakende problemer i visse uker?"
+                                Begreper="@(new[] { "t" })" />
+                </div>
                 @if (_weeklyTrend.Count > 0)
                 {
                     <ApexChart @key="_chartVersion" TItem="WeeklyPoint"
@@ -132,7 +142,12 @@ else if (_response is not null)
     @* ---- Hendelses-tabell + CSV ---- *@
     <MudPaper Class="pa-4 mb-4" Elevation="1">
         <div class="d-flex justify-space-between align-center mb-3">
-            <MudText Typo="Typo.h3">Hendelser (@_response.AntallEvents)</MudText>
+            <div class="d-flex align-center" style="gap: 8px;">
+                <MudText Typo="Typo.h3">Hendelser (@_response.AntallEvents)</MudText>
+                <HjelpeIkon Tittel="Nedetids-hendelser"
+                            Beskrivelse="Detaljliste over alle klassifiserte nedetids-events i perioden. Klikk «Detaljer» for å se varighet, tap og tilhørende operlog-events. Sortering på alle data-kolonner."
+                            Begreper="@(new[] { "t", "MWh", "NOK" })" />
+            </div>
             <MudButton Variant="Variant.Outlined"
                        StartIcon="@Icons.Material.Filled.Download"
                        Href="@_csvUrl"
@@ -150,18 +165,32 @@ else if (_response is not null)
                               Margin="Margin.Dense" Immediate="true" />
             </ToolBarContent>
             <HeaderContent>
-                <MudTh><MudTableSortLabel SortBy="@SortByEventStart"
-                       InitialDirection="SortDirection.Descending">Start</MudTableSortLabel></MudTh>
-                <MudTh><MudTableSortLabel SortBy="@SortByEventEnd">Slutt</MudTableSortLabel></MudTh>
-                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEventDuration">Varighet (t)</MudTableSortLabel></MudTh>
-                <MudTh><MudTableSortLabel SortBy="@SortByEventCategory">Kategori</MudTableSortLabel></MudTh>
-                <MudTh>
-                    <MudTooltip Text="Årsak = HVORFOR enheten er i tilstanden (operlog/SCADA-cause-kode). Drifts-leder kan gi koden brukervennlig tekst på /admin/kategorier.">
-                        Årsak
-                    </MudTooltip>
-                </MudTh>
-                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEventTapMwh">Tap (MWh)</MudTableSortLabel></MudTh>
-                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEventTapNok">Tap (NOK)</MudTableSortLabel></MudTh>
+                <KolonneHode TRow="NedetidEventDto" Tittel="Start"
+                             SortBy="@SortByEventStart"
+                             InitialDirection="SortDirection.Descending"
+                             Beskrivelse="Tidspunkt nedetiden begynner (lokal tid)." />
+                <KolonneHode TRow="NedetidEventDto" Tittel="Slutt"
+                             SortBy="@SortByEventEnd"
+                             Beskrivelse="Tidspunkt nedetiden slutter (lokal tid)." />
+                <KolonneHode TRow="NedetidEventDto" Tittel="Varighet (t)"
+                             SortBy="@SortByEventDuration"
+                             Style="text-align:right"
+                             BegrepNoekkel="t" />
+                <KolonneHode TRow="NedetidEventDto" Tittel="Kategori"
+                             SortBy="@SortByEventCategory"
+                             Beskrivelse="Klassifisert kategori (Trip/feil, Tett inntaksrist, osv). Settes automatisk fra årsakskode + drifts-leder-mapping." />
+                <KolonneHode TRow="NedetidEventDto" Tittel="Årsak"
+                             SortBy="@SortByEventCause"
+                             Beskrivelse="Årsak = HVORFOR enheten er i tilstanden (operlog/SCADA-årsakskode). Drifts-leder kan gi koden brukervennlig tekst på /admin/kategorier."
+                             BegrepNoekkel="AarsaksKode" />
+                <KolonneHode TRow="NedetidEventDto" Tittel="Tap (MWh)"
+                             SortBy="@SortByEventTapMwh"
+                             Style="text-align:right"
+                             BegrepNoekkel="MWh" />
+                <KolonneHode TRow="NedetidEventDto" Tittel="Tap (NOK)"
+                             SortBy="@SortByEventTapNok"
+                             Style="text-align:right"
+                             BegrepNoekkel="NOK" />
                 <MudTh>Operlog</MudTh>
                 <MudTh Style="text-align:center; width:56px;">Detaljer</MudTh>
             </HeaderContent>
@@ -204,13 +233,30 @@ else if (_response is not null)
 
     @* ---- Kategori-summary-tabell ---- *@
     <MudPaper Class="pa-4" Elevation="1">
-        <MudText Typo="Typo.h3" Class="mb-3">Per kategori</MudText>
+        <div class="d-flex align-center mb-3" style="gap: 8px;">
+            <MudText Typo="Typo.h3">Per kategori</MudText>
+            <HjelpeIkon Tittel="Per kategori"
+                        Beskrivelse="Aggregat over nedetids-events gruppert på kategori. Sortér på «Total tap» for å se hvor det koster mest."
+                        Begreper="@(new[] { "t", "NOK" })" />
+        </div>
         <MudTable Items="_response.KategoriSummaries" Hover="true" Dense="true" Elevation="0">
             <HeaderContent>
-                <MudTh>Kategori</MudTh>
-                <MudTh Style="text-align:right">Antall</MudTh>
-                <MudTh Style="text-align:right">Total timer</MudTh>
-                <MudTh Style="text-align:right">Total tap (NOK)</MudTh>
+                <KolonneHode TRow="NedetidKategoriSummary" Tittel="Kategori"
+                             SortBy="@(s => (object)s.Kategori)"
+                             Beskrivelse="Nedetid-kategori (Trip/feil, Tett inntaksrist, osv)." />
+                <KolonneHode TRow="NedetidKategoriSummary" Tittel="Antall"
+                             SortBy="@(s => (object)s.Antall)"
+                             Style="text-align:right"
+                             Beskrivelse="Antall events i kategorien." />
+                <KolonneHode TRow="NedetidKategoriSummary" Tittel="Total timer"
+                             SortBy="@(s => (object)s.TotalTimer)"
+                             Style="text-align:right"
+                             BegrepNoekkel="t" />
+                <KolonneHode TRow="NedetidKategoriSummary" Tittel="Total tap (NOK)"
+                             SortBy="@(s => (object)s.TotalTapNok)"
+                             InitialDirection="SortDirection.Descending"
+                             Style="text-align:right"
+                             BegrepNoekkel="NOK" />
             </HeaderContent>
             <RowTemplate>
                 <MudTd>@DisplayKategori(context.Kategori)</MudTd>
@@ -238,6 +284,7 @@ else if (_response is not null)
     private static readonly Func<NedetidEventDto, object> SortByEventEnd      = e => e.EndUtc;
     private static readonly Func<NedetidEventDto, object> SortByEventDuration = e => e.VarighetTimer;
     private static readonly Func<NedetidEventDto, object> SortByEventCategory = e => e.Kategori;
+    private static readonly Func<NedetidEventDto, object> SortByEventCause    = e => e.CauseCode ?? string.Empty;
     private static readonly Func<NedetidEventDto, object> SortByEventTapMwh   = e => e.TapMwh;
     private static readonly Func<NedetidEventDto, object> SortByEventTapNok   = e => e.TapNok;
 
@@ -467,6 +514,20 @@ else if (_response is not null)
             Colors = r.KategoriSummaries.Select(s => KategoriHex(s.Kategori)).ToList(),
             Legend = new Legend { Position = LegendPosition.Bottom },
             PlotOptions = new PlotOptions { Pie = new PlotOptionsPie { Donut = new PlotOptionsDonut { Size = "65%" } } },
+            // UI-rapport 2026-05-22: donut hadde ingen tap-format → bare rå tall
+            // ble vist. Formater Y-verdien som NOK + tusenskille i tooltip og data-labels.
+            Tooltip = new Tooltip
+            {
+                Y = new TooltipY
+                {
+                    Formatter = @"function(v){return new Intl.NumberFormat('nb-NO',{maximumFractionDigits:0}).format(v) + ' NOK';}",
+                },
+            },
+            DataLabels = new DataLabels
+            {
+                Formatter = @"function(val, opts){var v = opts.w.config.series[opts.seriesIndex];
+                    return new Intl.NumberFormat('nb-NO',{maximumFractionDigits:0}).format(v) + ' NOK';}",
+            },
         };
 
         // Weekly trend

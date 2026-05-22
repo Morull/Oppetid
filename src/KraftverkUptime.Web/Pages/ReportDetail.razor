@@ -114,11 +114,12 @@ else
     <MudGrid Class="mb-6">
         <MudItem xs="12" md="5">
             <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.h3" Class="mb-3">
-                    <MudTooltip Text="Driftstilstand = HVA enheten er i akkurat nå (InService, ForcedOutage, Vedlikehold osv.). Årsaken (HVORFOR) vises som cause-kode i tabellen under.">
-                        <span>Driftstilstand-fordeling</span>
-                    </MudTooltip>
-                </MudText>
+                <div class="d-flex align-center mb-3" style="gap: 8px;">
+                    <MudText Typo="Typo.h3">Driftstilstand-fordeling</MudText>
+                    <HjelpeIkon Tittel="Driftstilstand-fordeling"
+                                Beskrivelse="Donut som viser hvor mange timer i perioden anlegget var i hver driftstilstand. Driftstilstand = HVA enheten er i; årsaken (HVORFOR) finnes i tabellen under."
+                                Begreper="@(new[] { "Drift", "Stille", "Nedetid", "TvangsDerating" })" />
+                </div>
                 @if (_stateSlices.Count > 0)
                 {
                     <ApexChart @key="_chartVersion" TItem="StateSlice" Options="_donutOptions" Height="320">
@@ -136,7 +137,12 @@ else
         @* ---------- Graf 2: 3-veis – plan / spotbud / faktisk ------------- *@
         <MudItem xs="12" md="7">
             <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.h3" Class="mb-3">Plan / Spotbud / Faktisk</MudText>
+                <div class="d-flex align-center mb-3" style="gap: 8px;">
+                    <MudText Typo="Typo.h3">Plan / Spotbud / Faktisk</MudText>
+                    <HjelpeIkon Tittel="Plan / Spotbud / Faktisk"
+                                Beskrivelse="Tre linjer per time: Hydrogrid-plan, meldt spotbud, og faktisk levert til Elhub. Avvik mellom Spotbud og Faktisk koster i ubalanse."
+                                Begreper="@(new[] { "MWh", "Elhub", "Spotbud", "Hydrogrid" })" />
+                </div>
                 @if (_report.Classified.Count > 0)
                 {
                     <ApexChart @key="_chartVersion" TItem="ClassifiedHourDto" Options="_lineOptions" Height="320">
@@ -167,7 +173,12 @@ else
     @* ---------- Graf 3: Avvik fra forpliktelse ---------------------------- *@
     <MudPaper Class="pa-4 mb-6" Elevation="1">
         <div class="d-flex justify-space-between align-center mb-3">
-            <MudText Typo="Typo.h3">Avvik fra forpliktelse</MudText>
+            <div class="d-flex align-center" style="gap: 8px;">
+                <MudText Typo="Typo.h3">Avvik fra forpliktelse</MudText>
+                <HjelpeIkon Tittel="Avvik fra forpliktelse"
+                            Beskrivelse="Forskjellen mellom faktisk levert og forpliktet — både mot meldt spotbud og mot Hydrogrid-plan. 0 = perfekt leveranse. Avvik fra Spotbud koster i ubalanse-gebyr."
+                            Begreper="@(new[] { "MWh", "Spotbud", "Hydrogrid", "Elhub" })" />
+            </div>
             <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">
                 Faktisk minus Spotbud / Plan. 0 = perfekt leveranse. Lys grønn = drift, rød = nedetid.
             </MudText>
@@ -203,7 +214,12 @@ else
     @* ---------- KPI-katalog (gruppert etter kategori) --------------------- *@
     <MudPaper Class="pa-4 mb-6" Elevation="1">
         <div class="d-flex justify-space-between align-center mb-3">
-            <MudText Typo="Typo.h3">KPI-katalog (@_report.Kpis.Count)</MudText>
+            <div class="d-flex align-center" style="gap: 8px;">
+                <MudText Typo="Typo.h3">KPI-katalog (@_report.Kpis.Count)</MudText>
+                <HjelpeIkon Tittel="KPI-katalog"
+                            Beskrivelse="Komplett nøkkeltall-rapport for perioden, gruppert etter kategori. Hold musepekeren over et KPI-navn for å se definisjonen. «Confidence» = datakonfidens (kvalitetsmål)."
+                            Begreper="@(new[] { "KPI", "AF", "FOR", "Confidence", "MWh", "NOK" })" />
+            </div>
             <MudTextField @bind-Value="_kpiFilter" Immediate="true"
                           Placeholder="Søk KPI…"
                           Adornment="Adornment.Start"
@@ -242,11 +258,24 @@ else
                         {
                             <MudTable Items="@group.Items" Hover="true" Dense="true" Elevation="0">
                                 <HeaderContent>
-                                    <MudTh>KPI</MudTh>
-                                    <MudTh Style="text-align:right">Verdi</MudTh>
-                                    <MudTh>Enhet</MudTh>
-                                    <MudTh Style="text-align:right">Timer-basis</MudTh>
-                                    <MudTh Style="text-align:right">Confidence</MudTh>
+                                    <KolonneHode TRow="KpiDto" Tittel="KPI"
+                                                 SortBy="@(k => (object)k.Name)"
+                                                 BegrepNoekkel="KPI" />
+                                    <KolonneHode TRow="KpiDto" Tittel="Verdi"
+                                                 SortBy="@(k => (object)(k.Value ?? 0))"
+                                                 Style="text-align:right"
+                                                 Beskrivelse="Beregnet verdi for KPI-en i perioden." />
+                                    <KolonneHode TRow="KpiDto" Tittel="Enhet"
+                                                 SortBy="@(k => (object)k.Unit)"
+                                                 Beskrivelse="Måleenhet (ratio, MWh, NOK, hours, events osv)." />
+                                    <KolonneHode TRow="KpiDto" Tittel="Timer-basis"
+                                                 SortBy="@(k => (object)k.HoursBasis)"
+                                                 Style="text-align:right"
+                                                 Beskrivelse="Antall timer KPI-en er beregnet over." />
+                                    <KolonneHode TRow="KpiDto" Tittel="Confidence"
+                                                 SortBy="@(k => (object)k.Confidence)"
+                                                 Style="text-align:right"
+                                                 BegrepNoekkel="Confidence" />
                                 </HeaderContent>
                                 <RowTemplate>
                                     <MudTd DataLabel="KPI">
@@ -272,9 +301,14 @@ else
         <MudExpansionPanels Elevation="0">
             <MudExpansionPanel Expanded="true">
                 <TitleContent>
-                    <MudText Typo="Typo.h3">
-                        Klassifiserte timer (@FilteredHours().Count() / @_report.Classified.Count)
-                    </MudText>
+                    <div class="d-flex align-center" style="gap: 8px;">
+                        <MudText Typo="Typo.h3">
+                            Klassifiserte timer (@FilteredHours().Count() / @_report.Classified.Count)
+                        </MudText>
+                        <HjelpeIkon Tittel="Klassifiserte timer"
+                                    Beskrivelse="Hver rad er én klokke-time med driftstilstand, faktisk produksjon (Elhub) og avvik mot plan/spotbud. Tabellen er sortert/filtrert via knappene over og kan brukes til å spore enkelt-timer."
+                                    Begreper="@(new[] { "UTC", "MWh", "Elhub", "Spotbud", "Drift", "Nedetid", "Stille" })" />
+                    </div>
                 </TitleContent>
                 <ChildContent>
                     @* Filter-rad: hurtigvalg + per-tilstand-sjekkbokser *@
@@ -332,18 +366,46 @@ else
                               Virtualize="true" FixedHeader="true" Height="480px"
                               SortLabel="Sortér">
                         <HeaderContent>
-                            <MudTh>Tid (UTC)</MudTh>
                             <MudTh>
-                                <MudTooltip Text="Driftstilstand (HVA): UnitState fra klassifikator. Hover over chip-en for å se cause-kode (HVORFOR).">
-                                    Driftstilstand
+                                <MudTooltip Text="@Begreper.Forklar("UTC")">
+                                    <span>Tid (UTC)</span>
                                 </MudTooltip>
                             </MudTh>
-                            <MudTh Style="text-align:right">MWh Elhub</MudTh>
-                            <MudTh Style="text-align:right">Plan</MudTh>
-                            <MudTh Style="text-align:right">Avvik</MudTh>
-                            <MudTh Style="text-align:right">Spotbud</MudTh>
-                            <MudTh Style="text-align:right">Spotpris</MudTh>
-                            <MudTh>Begrunnelse</MudTh>
+                            <MudTh>
+                                <MudTooltip Text="Driftstilstand (HVA): UnitState fra klassifikator. Hover over chip-en for å se cause-kode (HVORFOR).">
+                                    <span>Driftstilstand</span>
+                                </MudTooltip>
+                            </MudTh>
+                            <MudTh Style="text-align:right">
+                                <MudTooltip Text="@Begreper.Forklar("Elhub")">
+                                    <span>MWh Elhub</span>
+                                </MudTooltip>
+                            </MudTh>
+                            <MudTh Style="text-align:right">
+                                <MudTooltip Text="Hydrogrid-planlagt produksjon for timen (MWh).">
+                                    <span>Plan</span>
+                                </MudTooltip>
+                            </MudTh>
+                            <MudTh Style="text-align:right">
+                                <MudTooltip Text="Faktisk (Elhub) minus Plan — positivt = produserte over planen.">
+                                    <span>Avvik</span>
+                                </MudTooltip>
+                            </MudTh>
+                            <MudTh Style="text-align:right">
+                                <MudTooltip Text="@Begreper.Forklar("Spotbud")">
+                                    <span>Spotbud</span>
+                                </MudTooltip>
+                            </MudTh>
+                            <MudTh Style="text-align:right">
+                                <MudTooltip Text="Day-ahead spotpris (NOK/MWh) for timen i prisområdet.">
+                                    <span>Spotpris</span>
+                                </MudTooltip>
+                            </MudTh>
+                            <MudTh>
+                                <MudTooltip Text="Klassifikatorens forklaring på driftstilstand-valget for timen.">
+                                    <span>Begrunnelse</span>
+                                </MudTooltip>
+                            </MudTh>
                         </HeaderContent>
                         <RowTemplate>
                             <MudTd DataLabel="Tid">@context.TimeUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</MudTd>

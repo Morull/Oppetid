@@ -135,9 +135,14 @@ else if (_rows is not null)
            detaljside med alle KPI-er. *@
         <MudPaper Class="pa-4 mb-4" Elevation="1">
             <div class="d-flex justify-space-between align-center mb-2">
-                <MudText Typo="Typo.h4">
-                    Per-anleggs detaljer (@_rows.Count anlegg)
-                </MudText>
+                <div class="d-flex align-center" style="gap: 8px;">
+                    <MudText Typo="Typo.h4">
+                        Per-anleggs detaljer (@_rows.Count anlegg)
+                    </MudText>
+                    <HjelpeIkon Tittel="Per-anleggs detaljer"
+                                Beskrivelse="Én rad per anlegg med drift- og økonomi-KPI for valgt periode. Klikk en rad for å åpne anleggets rapport-detalj. Hold musepekeren over kolonneoverskriftene for forklaringer."
+                                Begreper="@(new[] { "MW", "AF", "FOR", "MWh", "NOK", "CR", "Merverdi" })" />
+                </div>
                 <MudSwitch T="bool" @bind-Value="_showAllColumns"
                            Color="MudBlazor.Color.Primary"
                            Size="MudBlazor.Size.Small">

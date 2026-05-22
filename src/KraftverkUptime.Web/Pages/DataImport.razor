@@ -632,16 +632,39 @@
             }
             else
             {
+                <div class="d-flex align-center mb-2" style="gap: 8px;">
+                    <MudText Typo="Typo.subtitle2">Siste importer</MudText>
+                    <HjelpeIkon Tittel="Import-historikk"
+                                Beskrivelse="Alle importer i valgt tidsvindu — fra hot-folder, manuell opplasting, eller systemkilder. Dekning = andel av forventet data som faktisk ble importert."
+                                Begreper="@(new[] { "A", "T", "S" })" />
+                </div>
                 <MudTable Items="_recent" Dense="true" Hover="true" Elevation="0">
                     <HeaderContent>
-                        <MudTh>Tidspunkt</MudTh>
-                        <MudTh>Anlegg</MudTh>
-                        <MudTh>Kilde</MudTh>
-                        <MudTh>Periode</MudTh>
-                        <MudTh>Filnavn</MudTh>
-                        <MudTh Style="text-align:right">Rader</MudTh>
-                        <MudTh Style="text-align:right">Dekning</MudTh>
-                        <MudTh>Bruker</MudTh>
+                        <KolonneHode TRow="RecentImportDto" Tittel="Tidspunkt"
+                                     SortBy="@(r => (object)r.ImportedAtUtc)"
+                                     InitialDirection="SortDirection.Descending"
+                                     Beskrivelse="Når importen ble fullført (lokal tid)." />
+                        <KolonneHode TRow="RecentImportDto" Tittel="Anlegg"
+                                     SortBy="@(r => (object)(r.PlantId ?? string.Empty))" />
+                        <KolonneHode TRow="RecentImportDto" Tittel="Kilde"
+                                     SortBy="@(r => (object)r.SourceType)"
+                                     Beskrivelse="Datakilden — settlement (KAIA), SCADA, operlog, osv." />
+                        <KolonneHode TRow="RecentImportDto" Tittel="Periode"
+                                     SortBy="@(r => (object)r.PeriodFromUtc)"
+                                     Beskrivelse="Hvilken kalendermåned dataene gjelder for." />
+                        <KolonneHode TRow="RecentImportDto" Tittel="Filnavn"
+                                     SortBy="@(r => (object)(r.FileName ?? string.Empty))" />
+                        <KolonneHode TRow="RecentImportDto" Tittel="Rader"
+                                     SortBy="@(r => (object)(r.RowsImported ?? 0))"
+                                     Style="text-align:right"
+                                     Beskrivelse="Antall rader importert fra fila." />
+                        <KolonneHode TRow="RecentImportDto" Tittel="Dekning"
+                                     SortBy="@(r => (object)(r.CoveragePct ?? 0))"
+                                     Style="text-align:right"
+                                     Beskrivelse="Andel av forventet data som ble importert. < 95 % flagges som delvis." />
+                        <KolonneHode TRow="RecentImportDto" Tittel="Bruker"
+                                     SortBy="@(r => (object)(r.UserId ?? "system"))"
+                                     Beskrivelse="Hvem som lastet opp — 'system' for hot-folder/auto-import." />
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd>@context.ImportedAtUtc.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss")</MudTd>

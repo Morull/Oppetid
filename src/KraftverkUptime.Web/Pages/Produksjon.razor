@@ -168,7 +168,12 @@ else if (_data is not null)
         @if (_dailyPoints.Count > 0)
         {
             <MudPaper Class="pa-4 mb-4" Elevation="1">
-                <MudText Typo="Typo.h3" Class="mb-2">Plan vs. Spotbud vs. Faktisk (MWh)</MudText>
+                <div class="d-flex align-center mb-2" style="gap: 8px;">
+                    <MudText Typo="Typo.h3">Plan vs. Spotbud vs. Faktisk (MWh)</MudText>
+                    <HjelpeIkon Tittel="Plan vs. Spotbud vs. Faktisk"
+                                Beskrivelse="Tre linjer per dag: Hydrogrid-planen, faktisk meldt spotbud (forpliktelse), og levert til Elhub. Avvik mellom Spotbud og Faktisk koster i ubalanse-gebyr."
+                                Begreper="@(new[] { "MWh", "Hydrogrid", "Spotbud", "Elhub" })" />
+                </div>
                 <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-2">
                     @_grafForklaring <strong>Plan</strong> = Hydrogrid-anbefaling.
                     <strong>Spotbud</strong> = faktisk meldt bud til NordPool (= forpliktelse).
@@ -200,7 +205,12 @@ else if (_data is not null)
             </MudPaper>
 
             <MudPaper Class="pa-4 mb-4" Elevation="1">
-                <MudText Typo="Typo.h3" Class="mb-2">Spotpris-utvikling (NOK/MWh)</MudText>
+                <div class="d-flex align-center mb-2" style="gap: 8px;">
+                    <MudText Typo="Typo.h3">Spotpris-utvikling (NOK/MWh)</MudText>
+                    <HjelpeIkon Tittel="Spotpris-utvikling"
+                                Beskrivelse="Daglig snitt-spotpris i samme periode. Sammenligne mot produksjonsgrafen over for å se om produksjonen er konsentrert til høyprisdager."
+                                Begreper="@(new[] { "NOK/MWh" })" />
+                </div>
                 <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-2">
                     Daglig snitt-spotpris i samme periode. Sammenlign med grafen over —
                     ønsker du å produsere høyt når spotprisen topper.
@@ -229,7 +239,12 @@ else if (_data is not null)
         @if (_data.Monthly.Count > 0)
         {
             <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.h3" Class="mb-3">Måneds-trend</MudText>
+                <div class="d-flex align-center mb-3" style="gap: 8px;">
+                    <MudText Typo="Typo.h3">Måneds-trend</MudText>
+                    <HjelpeIkon Tittel="Måneds-trend"
+                                Beskrivelse="Produksjon, kapasitetsutnyttelse, plan-treff og Hydrogrid-merverdi måned-for-måned. Klikk en rad for å åpne måneden i timeline-detalj."
+                                Begreper="@(new[] { "MWh", "KapUtn", "Elhub", "PlanTreff", "HydrogridMerverdi" })" />
+                </div>
                 <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-3">
                     Hydrogrid-merverdi måned-for-måned. Ser man en stigende trend i timing-
                     merverdi, blir Hydrogrid bedre. Plan-treff bør holde seg stabilt høy.
@@ -245,24 +260,55 @@ else if (_data is not null)
                           OnRowClick="@((TableRowClickEventArgs<ProduksjonMonthlyDto> args) => OnMonthRowClick(args.Item))"
                           RowStyle="cursor: pointer;">
                     <HeaderContent>
-                        <MudTh><MudTableSortLabel SortBy="@_sortMonth">Måned</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right">
-                            <MudTooltip Text="Antall hele timer med produksjon (Elhub MWh > 0) / totalt antall timer i måneden">
-                                <MudTableSortLabel SortBy="@_sortTimer">Timer prod.</MudTableSortLabel>
-                            </MudTooltip>
-                        </MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortKap">Kap.utn.</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortOverlop">Overløp (t)</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortElhub">Elhub (MWh)</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortPlanTreff">Plan-treff</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortHgMerverdi">Hydrogrid-merverdi</MudTableSortLabel></MudTh>
+                        <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Måned"
+                                     SortBy="@_sortMonth"
+                                     Beskrivelse="Måned i ISO-format YYYY-MM." />
+                        <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Timer prod."
+                                     SortBy="@_sortTimer"
+                                     Style="text-align:right"
+                                     Beskrivelse="Antall hele timer med produksjon (Elhub MWh > 0) / totalt antall timer i måneden." />
+                        <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Kap.utn."
+                                     SortBy="@_sortKap"
+                                     Style="text-align:right"
+                                     BegrepNoekkel="KapUtn" />
+                        <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Overløp (t)"
+                                     SortBy="@_sortOverlop"
+                                     Style="text-align:right"
+                                     Beskrivelse="Timer i måneden der dam-nivå var fullt og vann gikk over uten å produsere — tapt potensial." />
+                        <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Elhub (MWh)"
+                                     SortBy="@_sortElhub"
+                                     Style="text-align:right"
+                                     BegrepNoekkel="Elhub" />
+                        <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Plan-treff"
+                                     SortBy="@_sortPlanTreff"
+                                     Style="text-align:right"
+                                     BegrepNoekkel="PlanTreff" />
+                        <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Hydrogrid-merverdi"
+                                     SortBy="@_sortHgMerverdi"
+                                     Style="text-align:right"
+                                     BegrepNoekkel="HydrogridMerverdi" />
                         @if (_showAllColumns)
                         {
-                            <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortPlan">Plan (MWh)</MudTableSortLabel></MudTh>
-                            <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortToppPris">Topp-pris-andel</MudTableSortLabel></MudTh>
-                            <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortBunnPris">Bunn-pris-andel</MudTableSortLabel></MudTh>
-                            <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortFaktiskMerverdi">Faktisk merverdi</MudTableSortLabel></MudTh>
-                            <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@_sortSnittSpot">Snitt-spot</MudTableSortLabel></MudTh>
+                            <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Plan (MWh)"
+                                         SortBy="@_sortPlan"
+                                         Style="text-align:right"
+                                         Beskrivelse="Hydrogrids planlagte produksjon i måneden, summert." />
+                            <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Topp-pris-andel"
+                                         SortBy="@_sortToppPris"
+                                         Style="text-align:right"
+                                         Beskrivelse="Andel av produksjonen som falt i topp 25 % av spotprisene den måneden." />
+                            <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Bunn-pris-andel"
+                                         SortBy="@_sortBunnPris"
+                                         Style="text-align:right"
+                                         Beskrivelse="Andel av produksjonen som falt i bunn 25 % av spotprisene den måneden." />
+                            <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Faktisk merverdi"
+                                         SortBy="@_sortFaktiskMerverdi"
+                                         Style="text-align:right"
+                                         Beskrivelse="Merverdi over snitt-spot, beregnet på faktisk produksjon (ikke plan)." />
+                            <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Snitt-spot"
+                                         SortBy="@_sortSnittSpot"
+                                         Style="text-align:right"
+                                         BegrepNoekkel="NOK/MWh" />
                         }
                     </HeaderContent>
                     <RowTemplate>
