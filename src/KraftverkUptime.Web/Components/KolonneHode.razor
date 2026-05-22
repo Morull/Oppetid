@@ -1,0 +1,77 @@
+@*
+   Sorterbar tabell-overskrift med tooltip-forklaring. Pakker
+   MudTh + MudTableSortLabel + MudTooltip i ett — så sortering og
+   forklaring alltid følges ad.
+
+   Spec FORBEDRINGSFORSLAG-INFOPOPUP-OG-SORTERING.md Del 3.2.
+
+   Bruk:
+       <KolonneHode TRow="EpisodeRad" Tittel="Snitt Δη"
+                    SortBy="r => r.SnittDeltaEtaPp"
+                    BegrepNoekkel="Δη" />
+
+   Tittel rendres med "ℹ"-decoration så bruker ser at det er noe å holde
+   musepekeren over. Hvis verken Beskrivelse eller BegrepNoekkel er satt
+   droppes tooltip-en — kolonnen blir bare sortebar uten forklaring.
+
+   For en kolonne uten sortering (rene handlings-kolonner), bruk en vanlig
+   MudTh i stedet for denne komponenten.
+*@
+
+@typeparam TRow
+
+@using KraftverkUptime.Web.Services
+
+<MudTh Style="@Style">
+    @if (HarForklaring)
+    {
+        <MudTooltip Text="@EffektivForklaring" Placement="Placement.Top" Arrow="true">
+            <MudTableSortLabel SortBy="SortBy" InitialDirection="InitialDirection">
+                @Tittel<MudIcon Icon="@Icons.Material.Outlined.HelpOutline"
+                                Size="MudBlazor.Size.Small"
+                                Style="opacity: 0.45; margin-left: 4px; font-size: 0.85rem;"
+                                aria-hidden="true" />
+            </MudTableSortLabel>
+        </MudTooltip>
+    }
+    else
+    {
+        <MudTableSortLabel SortBy="SortBy" InitialDirection="InitialDirection">
+            @Tittel
+        </MudTableSortLabel>
+    }
+</MudTh>
+
+@code {
+    /// <summary>Synlig kolonnetittel.</summary>
+    [Parameter, EditorRequired] public string Tittel { get; set; } = string.Empty;
+
+    /// <summary>Sort-funksjon — typisk <c>r =&gt; r.MittFelt</c>.</summary>
+    [Parameter] public Func<TRow, object>? SortBy { get; set; }
+
+    /// <summary>
+    /// Nøkkel i <see cref="Begreper"/>-ordlisten. Hvis satt, brukes som
+    /// forklaring i tooltip. Foretrukket fremfor inline-tekst for å unngå
+    /// kopi-lim av samme forklaring i mange filer.
+    /// </summary>
+    [Parameter] public string? BegrepNoekkel { get; set; }
+
+    /// <summary>
+    /// Eksplisitt tooltip-tekst. Overstyrer <see cref="BegrepNoekkel"/> hvis
+    /// begge er satt. Brukes for kolonner som ikke matcher en standard-nøkkel.
+    /// </summary>
+    [Parameter] public string? Beskrivelse { get; set; }
+
+    /// <summary>Default sort-retning når kolonnen klikkes første gang.</summary>
+    [Parameter] public SortDirection InitialDirection { get; set; } = SortDirection.None;
+
+    /// <summary>Stilbar via Style for høyre-stilt eller bredde-overstyring.</summary>
+    [Parameter] public string? Style { get; set; }
+
+    private string? EffektivForklaring =>
+        !string.IsNullOrWhiteSpace(Beskrivelse)
+            ? Beskrivelse
+            : (BegrepNoekkel is { } k ? Services.Begreper.Forklar(k) : null);
+
+    private bool HarForklaring => !string.IsNullOrWhiteSpace(EffektivForklaring);
+}

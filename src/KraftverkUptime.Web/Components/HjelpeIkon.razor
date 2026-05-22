@@ -1,0 +1,73 @@
+@*
+   Liten ℹ-knapp som åpner en popover med forklaring av tabellen/grafen og
+   en kort ordliste over forkortelsene som brukes. Plasseres typisk øverst
+   til høyre i kort-hodet til en tabell eller graf.
+
+   Spec FORBEDRINGSFORSLAG-INFOPOPUP-OG-SORTERING.md Del 3.1.
+
+   Bruk:
+       <HjelpeIkon Tittel="η(P)-kurve"
+                   Beskrivelse="Viser virkningsgraden mot effekt …"
+                   Begreper="@(new[]{ "η", "P", "kW", "Bin" })" />
+
+   Hvis bare en kort tooltip trengs, dropp Begreper:
+       <HjelpeIkon Tittel="Forklaring" Beskrivelse="…" />
+*@
+
+@using KraftverkUptime.Web.Services
+
+<MudTooltip Placement="Placement.Left" Arrow="true">
+    <TooltipContent>
+        <div style="max-width: 360px; padding: 6px 4px;">
+            @if (!string.IsNullOrWhiteSpace(Tittel))
+            {
+                <MudText Typo="Typo.body2" Style="font-weight: 600; margin-bottom: 4px;">
+                    @Tittel
+                </MudText>
+            }
+            @if (!string.IsNullOrWhiteSpace(Beskrivelse))
+            {
+                <MudText Typo="Typo.body2" Style="margin-bottom: 6px;">@Beskrivelse</MudText>
+            }
+            @if (Begreper is { Length: > 0 })
+            {
+                var ordliste = Services.Begreper.Ordliste(Begreper);
+                @if (!string.IsNullOrWhiteSpace(ordliste))
+                {
+                    <MudDivider Class="my-1" />
+                    <MudText Typo="Typo.caption" Style="font-weight: 600; opacity: 0.8;">Forkortelser</MudText>
+                    @foreach (var noekkel in Begreper)
+                    {
+                        var forklaring = Services.Begreper.Forklar(noekkel);
+                        if (forklaring is null) continue;
+                        <div style="margin-top: 2px;">
+                            <MudText Typo="Typo.caption">
+                                <strong>@noekkel</strong>: @forklaring
+                            </MudText>
+                        </div>
+                    }
+                }
+            }
+        </div>
+    </TooltipContent>
+    <ChildContent>
+        <MudIcon Icon="@Icons.Material.Outlined.Info"
+                 Size="MudBlazor.Size.Small"
+                 Style="cursor: help; color: var(--mud-palette-text-secondary); opacity: 0.55;"
+                 aria-label="@($"Forklaring for {Tittel}")" />
+    </ChildContent>
+</MudTooltip>
+
+@code {
+    /// <summary>Kort-tittel (typisk visningens navn — "η(P)-kurve", "Tapstoppliste").</summary>
+    [Parameter] public string? Tittel { get; set; }
+
+    /// <summary>Én setning som forklarer hva visningen viser.</summary>
+    [Parameter] public string? Beskrivelse { get; set; }
+
+    /// <summary>
+    /// Nøkler i <see cref="Begreper"/>-ordlisten som skal forklares. Ukjente
+    /// nøkler hoppes over stille slik at vi ikke får tomme forklaringer.
+    /// </summary>
+    [Parameter] public string[]? Begreper { get; set; }
+}
