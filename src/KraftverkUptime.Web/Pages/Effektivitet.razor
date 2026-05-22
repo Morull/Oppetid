@@ -745,7 +745,9 @@ else if (_response is not null)
         }
     }
 
-    /// <summary>Åpner detalj-dialog for én underytelse-episode (Punkt 5).</summary>
+    /// <summary>Åpner detalj-dialog for én underytelse-episode (Punkt 5).
+    /// Episoden inneholder selv sin egen liste av underytende intervaller
+    /// (Episode.Intervaller), så vi trenger ikke sende AllePunkter inn.</summary>
     private async Task OpenEpisodeDialogAsync(UnderytendeEpisode episode)
     {
         if (_response is null) return;
@@ -753,7 +755,6 @@ else if (_response is not null)
         {
             ["Episode"] = episode,
             ["PlantId"] = Filter.PlantId,
-            ["AllePunkter"] = (IReadOnlyList<EffektivitetPunkt>)_response.Punkter,
         };
         var options = new DialogOptions
         {

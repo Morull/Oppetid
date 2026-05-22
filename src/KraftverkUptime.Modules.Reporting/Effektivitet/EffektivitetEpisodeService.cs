@@ -195,6 +195,19 @@ public sealed class EffektivitetEpisodeService : IEffektivitetEpisodeService
         var first = intervaller[0].Punkt.TimeUtc;
         var last = intervaller[^1].Punkt.TimeUtc;
 
+        // Eksponer KUN de underytende intervallene som "Intervaller" — andre
+        // Genuine-punkter (som tilfeldigvis ligger i samme tidsvindu) skal
+        // ikke støye i detalj-visningen.
+        var intervallDtoer = intervaller
+            .Select(iv => new EpisodeIntervall(
+                TimeUtc: iv.Punkt.TimeUtc,
+                EffektKw: iv.Punkt.EffektKw,
+                EtaPct: iv.Punkt.EtaPct,
+                VannforingM3PerS: iv.Punkt.VannforingM3PerS,
+                ReferanseEtaPct: iv.ReferanseEtaPct,
+                DeltaEtaPp: iv.DeltaEtaPp))
+            .ToList();
+
         return new UnderytendeEpisode(
             StartUtc: first,
             SluttUtc: last.AddMinutes(15), // siste intervall slutter 15 min etter sitt time-stempel
@@ -206,7 +219,8 @@ public sealed class EffektivitetEpisodeService : IEffektivitetEpisodeService
             FaktiskProduksjonMwh: faktiskMwh,
             TaptMwh: taptMwh,
             TaptNok: taptNok,
-            TaptNokErEstimat: priser is null || taptNokErEstimat);
+            TaptNokErEstimat: priser is null || taptNokErEstimat,
+            Intervaller: intervallDtoer);
     }
 
     /// <summary>

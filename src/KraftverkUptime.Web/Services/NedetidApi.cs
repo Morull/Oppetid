@@ -627,7 +627,16 @@ public sealed record UnderytendeEpisode(
     double FaktiskProduksjonMwh,
     double TaptMwh,
     double TaptNok,
-    bool TaptNokErEstimat);
+    bool TaptNokErEstimat,
+    IReadOnlyList<EpisodeIntervall> Intervaller);
+
+public sealed record EpisodeIntervall(
+    DateTimeOffset TimeUtc,
+    double EffektKw,
+    double EtaPct,
+    double VannforingM3PerS,
+    double ReferanseEtaPct,
+    double DeltaEtaPp);
 
 public sealed record EffektBaandAggregat(
     double EffektKwStart,

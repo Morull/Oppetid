@@ -266,6 +266,35 @@ public class EffektivitetEpisodeServiceTests
     // ----- Sweet-spot-referanse --------------------------------------------
 
     [Fact]
+    public void Analyse_EpisodeInneholderKunUnderytendeIntervaller()
+    {
+        // Bruker-feedback 2026-05-22: dialog-en viste støy fra høy-effekt/høy-η-
+        // intervaller som tilfeldigvis lå i tidsvinduet. Episoden skal eksplisitt
+        // eksponere KUN sine egne underytende intervaller — ikke noe annet.
+        var bins = new[] { new EffektivitetBin(1600, 1700, Antall: 10, SnittEtaPct: 90.0) };
+        var punkter = new[]
+        {
+            Genuine(0, 1700, 85.0),  // -5 pp (underytende)
+            Genuine(1, 1700, 85.0),  // -5 pp
+            Genuine(2, 1700, 85.0),  // -5 pp
+        };
+
+        var result = new EffektivitetEpisodeService().Analyse(ResponseMed(punkter, bins), null);
+
+        result.Episoder.Should().HaveCount(1);
+        var ep = result.Episoder[0];
+        ep.Intervaller.Should().HaveCount(3);
+        ep.Intervaller.Should().OnlyContain(iv => iv.DeltaEtaPp <= -2.0);
+
+        // Δη skal være ferdig-beregnet og lik per intervall (alle 1700 kW @ 85 % vs 90 %).
+        ep.Intervaller.Should().OnlyContain(iv => Math.Abs(iv.DeltaEtaPp - (-5.0)) < 0.001);
+        ep.Intervaller.Should().OnlyContain(iv => Math.Abs(iv.ReferanseEtaPct - 90.0) < 0.001);
+
+        // Intervallene skal være tidssortert.
+        ep.Intervaller.Select(iv => iv.TimeUtc).Should().BeInAscendingOrder();
+    }
+
+    [Fact]
     public void Analyse_SweetSpotModus_BrukerSweetSpotIstedenforBaseline()
     {
         // Baseline (bin-snitt) er 90 %, sweet-spot er 93 %.

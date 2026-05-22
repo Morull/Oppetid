@@ -55,25 +55,27 @@
             </MudItem>
         </MudGrid>
 
-        @* ---- Intervall-tabell — datapunktene som utgjør episoden ---- *@
-        <MudText Typo="Typo.subtitle2" Class="mb-2">Intervall-for-intervall</MudText>
-        @if (_intervallerInnenfor.Count == 0)
+        @* ---- Intervall-tabell — KUN de underytende intervallene som utgjør episoden ----
+           Bruker Episode.Intervaller direkte fra serveren. Hopper over filtrering
+           av AllePunkter — den ga støy fra eventuelle høy-effekt/høy-η-stunder
+           i samme tidsvindu (jf. bruker-feedback 2026-05-22). *@
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Intervall-for-intervall (underytende)</MudText>
+        @if (Episode.Intervaller.Count == 0)
         {
             <MudAlert Severity="Severity.Info" Class="mb-3">
-                Ingen datapunkter funnet for episodens tidsvindu i den lastede effektivitets-responsen.
-                Kan skyldes at perioden i visningen ikke inneholder episodens nøyaktige
-                15-min-stempler — last inn periode som dekker episode-vinduet.
+                Episode har ingen detaljerte intervaller (eldre serverversjon).
             </MudAlert>
         }
         else
         {
-            <MudTable T="EffektivitetPunkt" Items="_intervallerInnenfor"
+            <MudTable T="EpisodeIntervall" Items="Episode.Intervaller"
                       Hover="true" Dense="true" Elevation="0"
                       FixedHeader="true" Height="280px" Virtualize="true">
                 <HeaderContent>
                     <MudTh>Tidspunkt</MudTh>
                     <MudTh Style="text-align:right">Effekt (kW)</MudTh>
                     <MudTh Style="text-align:right">η (%)</MudTh>
+                    <MudTh Style="text-align:right">Δη (pp)</MudTh>
                     <MudTh Style="text-align:right">Vannføring (m³/s)</MudTh>
                 </HeaderContent>
                 <RowTemplate>
@@ -81,8 +83,11 @@
                     <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
                         @context.EffektKw.ToString("F0", NumberFormat.Norsk)
                     </MudTd>
-                    <MudTd Style="text-align:right; font-variant-numeric: tabular-nums; color: var(--mud-palette-error);">
+                    <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
                         @context.EtaPct.ToString("F1", NumberFormat.Norsk)
+                    </MudTd>
+                    <MudTd Style="text-align:right; font-variant-numeric: tabular-nums; color: var(--mud-palette-error);">
+                        @context.DeltaEtaPp.ToString("F1", NumberFormat.Norsk)
                     </MudTd>
                     <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
                         @context.VannforingM3PerS.ToString("F2", NumberFormat.Norsk)
@@ -116,23 +121,6 @@
 
     [Parameter, EditorRequired] public UnderytendeEpisode Episode { get; set; } = default!;
     [Parameter, EditorRequired] public string PlantId { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Alle Genuine-punkter fra siden — vi filtrerer til episodens vindu i
-    /// OnParametersSet så tabellen får riktig snitt uten ekstra API-kall.
-    /// </summary>
-    [Parameter] public IReadOnlyList<EffektivitetPunkt> AllePunkter { get; set; } = Array.Empty<EffektivitetPunkt>();
-
-    private List<EffektivitetPunkt> _intervallerInnenfor = new();
-
-    protected override void OnParametersSet()
-    {
-        _intervallerInnenfor = AllePunkter
-            .Where(p => p.TimeUtc >= Episode.StartUtc && p.TimeUtc < Episode.SluttUtc
-                     && p.Klassifisering == PunktKlassifisering.Genuine)
-            .OrderBy(p => p.TimeUtc)
-            .ToList();
-    }
 
     private void Close() => Dialog.Close(DialogResult.Ok(true));
 

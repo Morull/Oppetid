@@ -66,6 +66,12 @@ public sealed record EpisodeAnalysisResult(
 /// Én episode = sammenhengende underytende intervaller (kan ha ett normalt
 /// intervall midt i hvis <see cref="EpisodeAnalyseOpsjoner.TillattGapIntervaller"/>
 /// tillater det). Sorteres typisk synkende på <see cref="TaptNok"/>.
+///
+/// <see cref="Intervaller"/> inneholder kun de underytende intervallene (de
+/// som ble brukt til å definere episoden). Andre Genuine-intervaller som
+/// måtte falle i [<see cref="StartUtc"/>, <see cref="SluttUtc"/>) er IKKE
+/// med — slik at dialog-/detalj-visningen viser den faktiske "story-en"
+/// uten støy fra korte topp-ytelse-stunder i samme tidsvindu.
 /// </summary>
 public sealed record UnderytendeEpisode(
     DateTimeOffset StartUtc,
@@ -78,7 +84,21 @@ public sealed record UnderytendeEpisode(
     double FaktiskProduksjonMwh,
     double TaptMwh,
     double TaptNok,
-    bool TaptNokErEstimat);
+    bool TaptNokErEstimat,
+    IReadOnlyList<EpisodeIntervall> Intervaller);
+
+/// <summary>
+/// Ett 15-min-intervall i en episode. Inneholder ferdig-beregnet
+/// <see cref="DeltaEtaPp"/> mot referanse-η (baseline eller sweet-spot) slik
+/// at klienten kan rendre Δη-kolonnen uten å regne på nytt.
+/// </summary>
+public sealed record EpisodeIntervall(
+    DateTimeOffset TimeUtc,
+    double EffektKw,
+    double EtaPct,
+    double VannforingM3PerS,
+    double ReferanseEtaPct,
+    double DeltaEtaPp);
 
 /// <summary>
 /// Aggregat per effekt-bånd (samme bin som <see cref="EffektivitetBin"/>) —
