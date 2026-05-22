@@ -36,7 +36,7 @@ public static class EffektivitetEndpoints
             .WithName("GetEffektivitetPortefolje")
             .WithSummary("Anleggssammenligning: én rad per anlegg med snitt-η, sweet-spot, tapt verdi.")
             .RequireAuthorization(AuthorizationPolicies.PlantReader)
-            .Produces<IReadOnlyList<EffektivitetPortfolioRad>>(StatusCodes.Status200OK)
+            .Produces<EffektivitetPortfolioResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
         group.MapGet("/", GetAsync)

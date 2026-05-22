@@ -76,15 +76,18 @@ public sealed class NedetidApi
     }
 
     /// <summary>
-    /// Anleggssammenligning på effektivitet — én rad per anlegg.
+    /// Anleggssammenligning på effektivitet — én rad per anlegg + topp 10
+    /// baseline-episoder på tvers av alle anlegg.
     /// Spec FORBEDRINGSFORSLAG-EFFEKTIVITET.md Del 4.1.
     /// </summary>
-    public async Task<IReadOnlyList<EffektivitetPortfolioRad>> GetEffektivitetPortfolioAsync(
+    public async Task<EffektivitetPortfolioResponse> GetEffektivitetPortfolioAsync(
         DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
     {
         var url = $"api/v1/effektivitet/portefolje?from={Uri.EscapeDataString(fromUtc.ToString("o"))}&to={Uri.EscapeDataString(toUtc.ToString("o"))}";
-        var resp = await _http.GetFromJsonAsync<List<EffektivitetPortfolioRad>>(url, JsonOptions, ct).ConfigureAwait(false);
-        return resp ?? new List<EffektivitetPortfolioRad>();
+        var resp = await _http.GetFromJsonAsync<EffektivitetPortfolioResponse>(url, JsonOptions, ct).ConfigureAwait(false);
+        return resp ?? new EffektivitetPortfolioResponse(
+            Array.Empty<EffektivitetPortfolioRad>(),
+            Array.Empty<TopPortfolioEpisode>());
     }
 
     public async Task<PortfolioKpiResponse> GetPortfolioKpisAsync(
@@ -653,6 +656,15 @@ public enum EpisodeReferanseTyp
     SweetSpot = 1,
 }
 
+public sealed record EffektivitetPortfolioResponse(
+    IReadOnlyList<EffektivitetPortfolioRad> Rader,
+    IReadOnlyList<TopPortfolioEpisode> TopBaselineEpisoder);
+
+public sealed record TopPortfolioEpisode(
+    string PlantId,
+    string PlantName,
+    UnderytendeEpisode Episode);
+
 public sealed record EffektivitetPortfolioRad(
     string PlantId,
     string PlantName,
@@ -661,9 +673,12 @@ public sealed record EffektivitetPortfolioRad(
     double SweetSpotEffektKw,
     double SvfM3PerKwh,
     double TotalProduksjonMwh,
-    int AntallEpisoder,
-    double TotalTaptMwh,
-    double TotalTaptNok);
+    int AntallEpisoderBaseline,
+    double TotalTaptMwhBaseline,
+    double TotalTaptNokBaseline,
+    int AntallEpisoderSweetSpot,
+    double TotalTaptMwhSweetSpot,
+    double TotalTaptNokSweetSpot);
 
 public sealed record CaptureRateResultDto(
     double CapturePriceNokMwh,

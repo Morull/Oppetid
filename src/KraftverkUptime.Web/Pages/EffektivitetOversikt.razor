@@ -3,6 +3,7 @@
 @inject NedetidApi NedetidApi
 @inject FilterState Filter
 @inject NavigationManager Nav
+@inject IDialogService DialogService
 
 <PageTitle>Effektivitet — anleggssammenligning</PageTitle>
 
@@ -26,24 +27,25 @@ else if (_loading)
     <MudProgressLinear Indeterminate="true" Color="MudBlazor.Color.Primary" />
     <MudText Class="ml-2 d-inline">Henter data for alle anlegg…</MudText>
 }
-else if (_rader is null || _rader.Count == 0)
+else if (_response is null || _response.Rader.Count == 0)
 {
     <MudAlert Severity="Severity.Info">Ingen data tilgjengelig for valgt periode.</MudAlert>
 }
 else
 {
-    @* KPI-strip øverst — portefølje-totals *@
+    @* KPI-strip øverst — portefølje-totals (begge referanser så drifts-leder
+       ser umiddelbart størrelsesforholdet mellom operativt tap og strategisk potensial). *@
     <MudGrid Class="mb-3">
         <MudItem xs="12" sm="6" md="3">
-            <KpiCard Label="Total tapt verdi"
-                     Value="@($"{FormatNok(_rader.Sum(r => r.TotalTaptNok))} NOK")"
-                     SubText="@($"summert over {_rader.Count(r => !r.DataMangler)} anlegg")"
+            <KpiCard Label="Tap mot baseline (total)"
+                     Value="@FormatTapNok(_response.Rader.Sum(r => r.TotalTaptNokBaseline))"
+                     SubText="@($"{_response.Rader.Sum(r => r.TotalTaptMwhBaseline).ToString("F2", NumberFormat.Norsk)} MWh · operative avvik")"
                      Accent="KpiAccent.Negative" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <KpiCard Label="Total tapt energi"
-                     Value="@($"{_rader.Sum(r => r.TotalTaptMwh).ToString("F2", NumberFormat.Norsk)} MWh")"
-                     SubText="i perioden"
+            <KpiCard Label="Tap mot sweet-spot (total)"
+                     Value="@FormatTapNok(_response.Rader.Sum(r => r.TotalTaptNokSweetSpot))"
+                     SubText="@($"{_response.Rader.Sum(r => r.TotalTaptMwhSweetSpot).ToString("F2", NumberFormat.Norsk)} MWh · strategisk potensial")"
                      Accent="KpiAccent.Warning" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
@@ -54,18 +56,21 @@ else
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
             <KpiCard Label="Anlegg med data"
-                     Value="@($"{_rader.Count(r => !r.DataMangler)} / {_rader.Count}")"
-                     SubText="@($"{_rader.Count(r => r.DataMangler)} mangler SCADA-data i perioden")"
+                     Value="@($"{_response.Rader.Count(r => !r.DataMangler)} / {_response.Rader.Count}")"
+                     SubText="@($"{_response.Rader.Count(r => r.DataMangler)} mangler SCADA-data i perioden")"
                      Accent="KpiAccent.Neutral" />
         </MudItem>
     </MudGrid>
 
-    @* Hovedtabellen — én rad per anlegg, klikkbar til detaljvisning *@
-    <MudPaper Class="pa-4" Elevation="0">
+    @* Hovedtabellen — én rad per anlegg, klikkbar til detaljvisning.
+       Begge tap-referanser vises som separate kolonner. *@
+    <MudPaper Class="pa-4 mb-4" Elevation="0">
         <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mb-2">
-            Klikk en rad for å åpne detaljvisningen for det anlegget. Sortér på «Tapt verdi» for å se hvor det er mest å hente.
+            Klikk en rad for å åpne detaljvisningen for det anlegget. «Tap mot baseline»
+            = operativt avvik fra det vanlige; «Tap mot sweet-spot» = strategisk
+            potensial om vannet kjørtes på toppunkt.
         </MudText>
-        <MudTable T="EffektivitetPortfolioRad" Items="_rader" Hover="true" Striped="true" Elevation="0"
+        <MudTable T="EffektivitetPortfolioRad" Items="_response.Rader" Hover="true" Striped="true" Elevation="0"
                   Dense="true"
                   OnRowClick="@((TableRowClickEventArgs<EffektivitetPortfolioRad> args) => OnRowClick(args.Item))"
                   RowStyle="cursor: pointer;">
@@ -75,10 +80,10 @@ else
                 <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortBySweet">Sweet-spot</MudTableSortLabel></MudTh>
                 <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortBySvf">SVF</MudTableSortLabel></MudTh>
                 <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByProd">Produksjon</MudTableSortLabel></MudTh>
-                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEpisoder">Episoder</MudTableSortLabel></MudTh>
-                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByTaptMwh">Tapt energi</MudTableSortLabel></MudTh>
-                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByTaptNok"
-                       InitialDirection="SortDirection.Descending">Tapt verdi</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByEpisoderBaseline">Episoder</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByTaptNokBaseline"
+                       InitialDirection="SortDirection.Descending">Tap mot baseline</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByTaptNokSweetSpot">Tap mot sweet-spot</MudTableSortLabel></MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="Anlegg">
@@ -106,39 +111,85 @@ else
                     @(context.DataMangler ? "–" : $"{context.TotalProduksjonMwh.ToString("F1", NumberFormat.Norsk)} MWh")
                 </MudTd>
                 <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
-                    @(context.DataMangler ? "–" : context.AntallEpisoder.ToString())
-                </MudTd>
-                <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
-                    @(context.DataMangler ? "–" : $"{context.TotalTaptMwh.ToString("F2", NumberFormat.Norsk)} MWh")
+                    @(context.DataMangler ? "–" : context.AntallEpisoderBaseline.ToString())
                 </MudTd>
                 <MudTd Style="text-align:right; font-variant-numeric: tabular-nums; font-weight: 600;">
-                    @if (context.DataMangler || context.TotalTaptNok == 0)
-                    {
-                        <span style="opacity: 0.5;">–</span>
-                    }
-                    else
-                    {
-                        @($"{FormatNok(context.TotalTaptNok)} NOK")
-                    }
+                    @(context.DataMangler ? "–" : FormatTapNok(context.TotalTaptNokBaseline))
+                </MudTd>
+                <MudTd Style="text-align:right; font-variant-numeric: tabular-nums; font-weight: 600; opacity: 0.85;">
+                    @(context.DataMangler ? "–" : FormatTapNok(context.TotalTaptNokSweetSpot))
                 </MudTd>
             </RowTemplate>
         </MudTable>
     </MudPaper>
+
+    @* Topp 10 baseline-episoder på tvers av alle anlegg — handle-listen. *@
+    @if (_response.TopBaselineEpisoder.Count > 0)
+    {
+        <MudPaper Class="pa-4" Elevation="0">
+            <div class="d-flex justify-space-between align-center mb-2" style="flex-wrap: wrap; gap: 8px;">
+                <div>
+                    <MudText Typo="Typo.h3">Topp @_response.TopBaselineEpisoder.Count å sjekke</MudText>
+                    <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">
+                        Verste baseline-episoder på tvers av porteføljen, rangert på tapt verdi.
+                        Klikk en rad for detaljvisning.
+                    </MudText>
+                </div>
+            </div>
+            <MudTable T="TopPortfolioEpisode" Items="_topEpisoderIndeksert" Hover="true"
+                      Dense="true" Elevation="0"
+                      OnRowClick="@((TableRowClickEventArgs<TopPortfolioEpisode> args) => { if (args.Item is not null) _ = OpenTopEpisodeDialogAsync(args.Item); })"
+                      RowStyle="cursor: pointer;">
+                <HeaderContent>
+                    <MudTh>#</MudTh>
+                    <MudTh>Anlegg</MudTh>
+                    <MudTh>Start</MudTh>
+                    <MudTh Style="text-align:right">Varighet</MudTh>
+                    <MudTh Style="text-align:right">Snitt Δη</MudTh>
+                    <MudTh Style="text-align:right">Effekt-område</MudTh>
+                    <MudTh Style="text-align:right">Tapt energi</MudTh>
+                    <MudTh Style="text-align:right">Tapt verdi</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@(_topEpisoderIndeksert.IndexOf(context) + 1)</MudTd>
+                    <MudTd><strong>@context.PlantName</strong></MudTd>
+                    <MudTd>@FormatLocal(context.Episode.StartUtc)</MudTd>
+                    <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
+                        @context.Episode.VarighetTimer.ToString("F2", NumberFormat.Norsk) t
+                    </MudTd>
+                    <MudTd Style="text-align:right; font-variant-numeric: tabular-nums; color: var(--mud-palette-error);">
+                        @context.Episode.SnittDeltaEtaPp.ToString("F1", NumberFormat.Norsk) pp
+                    </MudTd>
+                    <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
+                        @context.Episode.EffektMinKw.ToString("F0", NumberFormat.Norsk) – @context.Episode.EffektMaksKw.ToString("F0", NumberFormat.Norsk) kW
+                    </MudTd>
+                    <MudTd Style="text-align:right; font-variant-numeric: tabular-nums;">
+                        @context.Episode.TaptMwh.ToString("F3", NumberFormat.Norsk) MWh
+                    </MudTd>
+                    <MudTd Style="text-align:right; font-variant-numeric: tabular-nums; font-weight: 600;">
+                        @FormatTapNok(context.Episode.TaptNok)
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
 }
 
 @code {
-    private List<EffektivitetPortfolioRad>? _rader;
+    private EffektivitetPortfolioResponse? _response;
     private bool _loading;
     private string? _error;
+    // Indeksert kopi som List<> så vi får IndexOf for radnummerering.
+    private List<TopPortfolioEpisode> _topEpisoderIndeksert = new();
 
-    private static readonly Func<EffektivitetPortfolioRad, object> SortByName     = r => r.PlantName;
-    private static readonly Func<EffektivitetPortfolioRad, object> SortByEta      = r => r.SnittEtaPct;
-    private static readonly Func<EffektivitetPortfolioRad, object> SortBySweet    = r => r.SweetSpotEffektKw;
-    private static readonly Func<EffektivitetPortfolioRad, object> SortBySvf      = r => r.SvfM3PerKwh;
-    private static readonly Func<EffektivitetPortfolioRad, object> SortByProd     = r => r.TotalProduksjonMwh;
-    private static readonly Func<EffektivitetPortfolioRad, object> SortByEpisoder = r => r.AntallEpisoder;
-    private static readonly Func<EffektivitetPortfolioRad, object> SortByTaptMwh  = r => r.TotalTaptMwh;
-    private static readonly Func<EffektivitetPortfolioRad, object> SortByTaptNok  = r => r.TotalTaptNok;
+    private static readonly Func<EffektivitetPortfolioRad, object> SortByName              = r => r.PlantName;
+    private static readonly Func<EffektivitetPortfolioRad, object> SortByEta               = r => r.SnittEtaPct;
+    private static readonly Func<EffektivitetPortfolioRad, object> SortBySweet             = r => r.SweetSpotEffektKw;
+    private static readonly Func<EffektivitetPortfolioRad, object> SortBySvf               = r => r.SvfM3PerKwh;
+    private static readonly Func<EffektivitetPortfolioRad, object> SortByProd              = r => r.TotalProduksjonMwh;
+    private static readonly Func<EffektivitetPortfolioRad, object> SortByEpisoderBaseline  = r => r.AntallEpisoderBaseline;
+    private static readonly Func<EffektivitetPortfolioRad, object> SortByTaptNokBaseline   = r => r.TotalTaptNokBaseline;
+    private static readonly Func<EffektivitetPortfolioRad, object> SortByTaptNokSweetSpot  = r => r.TotalTaptNokSweetSpot;
 
     protected override async Task OnInitializedAsync()
     {
@@ -167,19 +218,22 @@ else
         if (!Filter.ErKlar) return;
         _loading = true;
         _error = null;
-        _rader = null;
+        _response = null;
         await InvokeAsync(StateHasChanged);
         try
         {
             var fromUtc = Filter.FromDate!.Value.ToUtcOffsetSafe();
             var toUtc = Filter.ToDate!.Value.ToUtcOffsetSafe();
-            var data = await NedetidApi.GetEffektivitetPortfolioAsync(fromUtc, toUtc);
-            _rader = data.ToList();
+            _response = await NedetidApi.GetEffektivitetPortfolioAsync(fromUtc, toUtc);
+            _topEpisoderIndeksert = _response.TopBaselineEpisoder.ToList();
         }
         catch (Exception ex)
         {
             _error = $"Kunne ikke hente portefølje: {ex.Message}";
-            _rader = new List<EffektivitetPortfolioRad>();
+            _response = new EffektivitetPortfolioResponse(
+                Array.Empty<EffektivitetPortfolioRad>(),
+                Array.Empty<TopPortfolioEpisode>());
+            _topEpisoderIndeksert = new();
         }
         finally
         {
@@ -191,26 +245,48 @@ else
     private void OnRowClick(EffektivitetPortfolioRad? row)
     {
         if (row is null || row.DataMangler) return;
-        // Sett plant i FilterState og naviger til Effektivitet-detaljvisningen.
-        // Periodevelgeren beholdes på tvers av sider.
         Filter.PlantId = row.PlantId;
         Nav.NavigateTo("/effektivitet");
+    }
+
+    /// <summary>
+    /// Åpner samme detalj-dialog som detaljvisningen, for en topp-episode fra
+    /// porteføljen. Setter også FilterState så hvis bruker lukker dialogen og
+    /// klikker til detaljvisning, har den allerede riktig anlegg valgt.
+    /// </summary>
+    private async Task OpenTopEpisodeDialogAsync(TopPortfolioEpisode top)
+    {
+        Filter.PlantId = top.PlantId;
+        var parameters = new DialogParameters
+        {
+            ["Episode"] = top.Episode,
+            ["PlantId"] = top.PlantId,
+        };
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Large,
+            FullWidth = true,
+            CloseButton = true,
+            BackdropClick = true,
+        };
+        await DialogService.ShowAsync<EpisodeDetailDialog>($"{top.PlantName} — {FormatLocal(top.Episode.StartUtc)}", parameters, options);
     }
 
     /// <summary>Produksjon-vektet snitt η over alle anlegg som har data.</summary>
     private double VektetSnittEta()
     {
-        if (_rader is null) return 0;
-        var medData = _rader.Where(r => !r.DataMangler && r.TotalProduksjonMwh > 0).ToList();
+        if (_response is null) return 0;
+        var medData = _response.Rader.Where(r => !r.DataMangler && r.TotalProduksjonMwh > 0).ToList();
         if (medData.Count == 0) return 0;
         var totalProd = medData.Sum(r => r.TotalProduksjonMwh);
         if (totalProd <= 0) return 0;
         return medData.Sum(r => r.SnittEtaPct * r.TotalProduksjonMwh) / totalProd;
     }
 
-    private static string FormatNok(double v)
-    {
-        if (v == 0) return "0";
-        return v.ToString("N0", NumberFormat.Norsk);
-    }
+    /// <summary>Tap-format: "651 NOK" eller "–" for null. Usignert.</summary>
+    private static string FormatTapNok(double v) =>
+        v <= 0 ? "–" : v.ToString("N0", NumberFormat.Norsk) + " NOK";
+
+    private static string FormatLocal(DateTimeOffset t) =>
+        t.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
 }

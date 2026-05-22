@@ -40,6 +40,22 @@ public sealed class EffektivitetEpisodeQueryService
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc,
         EpisodeAnalyseOpsjoner? opsjoner, CancellationToken ct)
     {
+        var (effektivitet, priser) = await LoadRawDataAsync(plantId, fromUtc, toUtc, ct)
+            .ConfigureAwait(false);
+        return _episode.Analyse(effektivitet, priser, opsjoner);
+    }
+
+    /// <summary>
+    /// Henter rådata (effektivitets-respons + time-spotpriser) for ett anlegg.
+    /// Eksponert separat så portefølje-tjenesten kan kjøre analyseren flere
+    /// ganger med ulike opsjoner (baseline vs sweet-spot) uten å re-fetche.
+    ///
+    /// Returnerer null som priser hvis spotpris-tabellen er tom for perioden —
+    /// analyseren håndterer det og flagger TaptNokErEstimat.
+    /// </summary>
+    public async Task<(EffektivitetResponse Effektivitet, IReadOnlyDictionary<DateTimeOffset, double>? Priser)>
+        LoadRawDataAsync(string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
 
         var effektivitet = await _effektivitet
@@ -47,14 +63,10 @@ public sealed class EffektivitetEpisodeQueryService
 
         if (effektivitet.DataMissing || effektivitet.Punkter.Count == 0)
         {
-            // Ingen data → ingen episoder. Returner tomt-resultat med
-            // ManglerSpotpriser=true så UI kan vise rett melding.
-            return _episode.Analyse(effektivitet, spotPrisNokMwhPerTime: null, opsjoner);
+            return (effektivitet, null);
         }
 
-        // Hent spotpriser for time-buckets i perioden. ToHourBucket-logikken er
-        // duplisert inne i analyseren — sørger her bare for at vi henter litt
-        // bredt nok så ingen "manglende pris"-flagg slår inn pga grense-tilfeller.
+        // Hent spotpriser for time-buckets i perioden.
         var fromHour = new DateTimeOffset(fromUtc.Year, fromUtc.Month, fromUtc.Day,
             fromUtc.Hour, 0, 0, TimeSpan.Zero);
         var toHour = new DateTimeOffset(toUtc.Year, toUtc.Month, toUtc.Day,
@@ -68,12 +80,9 @@ public sealed class EffektivitetEpisodeQueryService
             .ConfigureAwait(false);
 
         _log.LogDebug(
-            "Episode-analyse for {PlantId}: {Punkter} punkter, {Bins} bins, {Priser} time-spotpriser.",
+            "LoadRawData for {PlantId}: {Punkter} punkter, {Bins} bins, {Priser} time-spotpriser.",
             plantId, effektivitet.Punkter.Count, effektivitet.Bins.Count, priser.Count);
 
-        return _episode.Analyse(
-            effektivitet,
-            spotPrisNokMwhPerTime: priser.Count > 0 ? priser : null,
-            opsjoner);
+        return (effektivitet, priser.Count > 0 ? priser : null);
     }
 }
