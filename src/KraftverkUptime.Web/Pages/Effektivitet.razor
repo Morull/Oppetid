@@ -84,9 +84,9 @@ else if (_response is not null)
                          Accent="KpiAccent.Warning" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3" lg="3">
-                <KpiCard Label="Total produksjon"
+                <KpiCard Label="Produksjon i perioden"
                          Value="@($"{(_response.TotalProduksjonKwh / 1000).ToString("F1", NumberFormat.Norsk)} MWh")"
-                         SubText="i perioden"
+                         SubText="akkumulert fra Genuine-intervaller"
                          Accent="KpiAccent.Accent" />
             </MudItem>
         </MudGrid>

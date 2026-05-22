@@ -74,41 +74,59 @@ else
         </Actions>
     </PageHeader>
 
-    @* ---------- KPI-kort --------------------------------------------------- *@
-    <MudGrid Class="mb-6">
-        @foreach (var card in HighlightCards(_report))
-        {
-            <MudItem xs="12" sm="6" md="4" lg="3">
-                <KpiCard Label="@card.Label"
-                         Value="@card.Value"
-                         SubText="@card.Sub"
-                         Accent="@card.Accent" />
-            </MudItem>
-        }
+    @* ---------- KPI-kort — gruppert i seksjoner -----------------------------
+       Spec FORBEDRINGSFORSLAG-KPI-KORT-INTEGRITET.md: KPI-kort som står sammen
+       inviterer til avstemming. Tidligere 9-kort-flat-blokk blandet timer, %,
+       MWh og NOK uten seksjons-titler — særlig var "Oppgjør" et avstemmings-
+       brudd siden den IKKE er Spotomsetning + Ubalansekost (inkluderer flere
+       poster). Speiler nå Drift/Marked/Økonomi-inndelingen fra KPI-katalog-
+       tabellen lenger ned. *@
+    @foreach (var seksjon in HighlightSections(_report))
+    {
+        <MudText Typo="Typo.subtitle2" Color="MudBlazor.Color.Secondary" Class="mb-2 mt-2">@seksjon.Tittel</MudText>
+        <MudGrid Class="mb-3">
+            @foreach (var card in seksjon.Cards)
+            {
+                <MudItem xs="12" sm="6" md="4" lg="3">
+                    <KpiCard Label="@card.Label"
+                             Value="@card.Value"
+                             SubText="@card.Sub"
+                             Accent="@card.Accent"
+                             InfoText="@card.Info" />
+                </MudItem>
+            }
+        </MudGrid>
+    }
 
-        @* KAIA-kostnad (Spec KAIA-KOSTNAD): meglerprovisjon + fast årsavgift
-           pro-rata på rapportperioden. Lastes som egen HTTP-call etter
-           rapporten — vises som "Laster…" inntil den er klar. *@
-        @if (_kaiaCost is not null)
-        {
-            <MudItem xs="12" sm="6" md="4" lg="3">
-                <KpiCard Label="KAIA-kostnad"
-                         Value="@FormatKaiaTotal(_kaiaCost)"
-                         SubText="@($"Megler {FormatNok(_kaiaCost.MeglerprovisjonNok)} · Fast {FormatNok(_kaiaCost.FastAvgiftNok)}")"
-                         Accent="KpiAccent.Warning"
-                         InfoText="@KaiaTooltip(_kaiaCost)" />
-            </MudItem>
-        }
-        else if (_kaiaCostLoading)
-        {
-            <MudItem xs="12" sm="6" md="4" lg="3">
-                <KpiCard Label="KAIA-kostnad"
-                         Value="—"
-                         Accent="KpiAccent.Warning"
-                         State="KpiState.Loading" />
-            </MudItem>
-        }
-    </MudGrid>
+    @* KAIA-kostnad (Spec KAIA-KOSTNAD): meglerprovisjon + fast årsavgift
+       pro-rata på rapportperioden. Lastes som egen HTTP-call etter
+       rapporten — vises som "Laster…" inntil den er klar. Egen seksjon fordi
+       den lastes asynkront og inngår ikke i Oppgjør-summen. *@
+    @if (_kaiaCost is not null || _kaiaCostLoading)
+    {
+        <MudText Typo="Typo.subtitle2" Color="MudBlazor.Color.Secondary" Class="mb-2 mt-2">Megler &amp; avgifter</MudText>
+        <MudGrid Class="mb-6">
+            @if (_kaiaCost is not null)
+            {
+                <MudItem xs="12" sm="6" md="4" lg="3">
+                    <KpiCard Label="KAIA-kostnad"
+                             Value="@FormatKaiaTotal(_kaiaCost)"
+                             SubText="@($"Megler {FormatNok(_kaiaCost.MeglerprovisjonNok)} · Fast {FormatNok(_kaiaCost.FastAvgiftNok)}")"
+                             Accent="KpiAccent.Warning"
+                             InfoText="@KaiaTooltip(_kaiaCost)" />
+                </MudItem>
+            }
+            else if (_kaiaCostLoading)
+            {
+                <MudItem xs="12" sm="6" md="4" lg="3">
+                    <KpiCard Label="KAIA-kostnad"
+                             Value="—"
+                             Accent="KpiAccent.Warning"
+                             State="KpiState.Loading" />
+                </MudItem>
+            }
+        </MudGrid>
+    }
 
     @* ---------- Graf 1: Driftstilstand-fordeling (donut) ------------------ *@
     <MudGrid Class="mb-6">
@@ -1013,20 +1031,85 @@ async Task GoToReport(string idempotencyKey)
 
     private sealed record KpiGroup(string Category, IReadOnlyList<KpiDto> Items);
 
-    private static IEnumerable<HighlightCard> HighlightCards(UptimeReportSummary r)
+    /// <summary>
+    /// KPI-kort gruppert i seksjoner (Drift / Volum / Marked / Resultat).
+    /// Spec FORBEDRINGSFORSLAG-KPI-KORT-INTEGRITET.md Del 1: kort som står sammen
+    /// må enten avstemmes som komponenter, eller markeres som selvstendige
+    /// indikatorer via seksjons-tittel. Vi velger sistnevnte og speiler
+    /// kategoriene fra KPI-katalog-tabellen lenger ned.
+    /// </summary>
+    private static IEnumerable<HighlightSection> HighlightSections(UptimeReportSummary r)
     {
         double? Get(string name) => r.Kpis.FirstOrDefault(k => k.Name == name)?.Value;
 
-        // Drift
-        yield return new("Drift-timer", FormatNumber(Get("ServiceHours_SH"), "F0") + " t", "Timer i drift (Elhub > 0)", KpiAccent.Positive);
-        yield return new("Nedetid", FormatNumber(Get("ForcedOutageHours_FOH"), "F0") + " t", "Forpliktet, men ikke produsert", KpiAccent.Negative);
-        yield return new("Tilgjengelighet", FormatRatio(Get("AvailabilityFactor_AF")), "Drift-timer / (Drift + Nedetid)", KpiAccent.Neutral);
-        yield return new("Bud-leveranse", FormatRatio(Get("BidDelivery")), "Σ Elhub / Σ Spotbud", KpiAccent.Accent);
-        // Økonomi
-        yield return new("Total produksjon", FormatNumber(Get("TotalProduction_MWh"), "F2") + " MWh", "Akkumulert Elhub", KpiAccent.Neutral);
-        yield return new("Spotomsetning", FormatNumber(Get("Spotomsetning_NOK"), "N0") + " NOK", "Day-ahead-bruttoinntekt", KpiAccent.Positive);
-        yield return new("Ubalansekost", FormatNumber(Get("Ubalansekost_NOK"), "N0") + " NOK", "Total kostnad ved å avvike fra Spotbud", KpiAccent.Accent);
-        yield return new("Oppgjør", FormatNumber(Get("Oppgjor_NOK"), "N0") + " NOK", "Sum oppgjør i perioden", KpiAccent.Warning);
+        // Drift — timer + andel-KPI-er.
+        yield return new HighlightSection("Drift", new[]
+        {
+            new HighlightCard("Drift-timer", FormatNumber(Get("ServiceHours_SH"), "F0") + " t",
+                "Timer i drift (Elhub > 0)", KpiAccent.Positive, null),
+            new HighlightCard("Nedetid", FormatNumber(Get("ForcedOutageHours_FOH"), "F0") + " t",
+                "Forpliktet, men ikke produsert", KpiAccent.Negative, null),
+            new HighlightCard("Tilgjengelighet", FormatRatio(Get("AvailabilityFactor_AF")),
+                "Drift-timer / (Drift + Nedetid)", KpiAccent.Neutral, null),
+            new HighlightCard("Bud-leveranse", FormatRatio(Get("BidDelivery")),
+                "Σ Elhub / Σ Spotbud", KpiAccent.Accent, null),
+        });
+
+        // Volum — egen seksjon så det ikke ser ut som naborkortene summerer til det.
+        // "Produksjon i perioden" (ikke "Total produksjon") — Spec Del 4: ordet
+        // "Total" antyder sum av nabokortene som ikke er komponenter.
+        yield return new HighlightSection("Volum", new[]
+        {
+            new HighlightCard("Produksjon i perioden",
+                FormatNumber(Get("TotalProduction_MWh"), "F2") + " MWh",
+                "Akkumulert Elhub", KpiAccent.Neutral, null),
+        });
+
+        // Marked — bruttoinntekter og -kostnader fra spot/ubalanse.
+        yield return new HighlightSection("Marked", new[]
+        {
+            new HighlightCard("Spotomsetning",
+                FormatNumber(Get("Spotomsetning_NOK"), "N0") + " NOK",
+                "Day-ahead-bruttoinntekt", KpiAccent.Positive, null),
+            new HighlightCard("Ubalansekost",
+                FormatNumber(Get("Ubalansekost_NOK"), "N0") + " NOK",
+                "Total kostnad ved å avvike fra Spotbud", KpiAccent.Accent, null),
+        });
+
+        // Resultat — Oppgjør står for seg selv som SAMLET resultat. Tidligere
+        // sto Oppgjør inntil Spotoms + Ubalanse i samme rad og inviterte til
+        // avstemming som IKKE går opp (Spec Del 2: 55 273 NOK uforklart avvik).
+        // Vi viser nå komponentene EKSPLISITT i undertittelen så regnestykket
+        // kan etterprøves, og legger eventuell rest i en "andre poster"-linje.
+        yield return new HighlightSection("Resultat", new[]
+        {
+            new HighlightCard("Oppgjør",
+                FormatNumber(Get("Oppgjor_NOK"), "N0") + " NOK",
+                OppgjorUndertekst(Get("Spotomsetning_NOK"), Get("Ubalansekost_NOK"), Get("Oppgjor_NOK")),
+                KpiAccent.Warning,
+                "Oppgjøret kan inneholde flere poster enn de synlige nabokortene (eks. ubalanse-tillegg per MWh, andre justeringer). Undertittelen viser komponentene som GÅR OPP til vist oppgjør."),
+        });
+    }
+
+    /// <summary>
+    /// Bygger undertekst for Oppgjør-kortet slik at brukeren ser eksplisitt
+    /// at Spot + Ubalanse ALENE ikke er hele oppgjøret. Hvis det er en
+    /// «andre poster»-rest, vises den med fortegn.
+    /// </summary>
+    private static string OppgjorUndertekst(double? spotoms, double? ubalanse, double? oppgjor)
+    {
+        if (!spotoms.HasValue || !ubalanse.HasValue || !oppgjor.HasValue)
+        {
+            return "Sum oppgjør i perioden";
+        }
+        var komponenter = spotoms.Value + ubalanse.Value;
+        var rest = oppgjor.Value - komponenter;
+        if (Math.Abs(rest) < 1.0) // innenfor avrunding
+        {
+            return $"Spot {FormatNumber(spotoms, "N0")} + ubalanse {FormatNumber(ubalanse, "N0")} NOK";
+        }
+        var restTegn = rest >= 0 ? "+" : "−";
+        return $"Spot + ubalanse + andre poster ({restTegn}{Math.Abs(rest).ToString("N0", NumberFormat.Norsk)} NOK)";
     }
 
     // Tall-helpere delegerer til Services/NumberFormat (kultur-uavhengig, bygd
@@ -1154,7 +1237,10 @@ async Task GoToReport(string idempotencyKey)
     /// navnekollisjon med den nye unified KpiCard-komponenten (UI-gjennomgang
     /// 2026-05-20). Color er semantisk navn (Positive/Negative/Neutral...) ikke hex.
     /// </summary>
-    private sealed record HighlightCard(string Label, string Value, string Sub, KpiAccent Accent);
+    private sealed record HighlightCard(string Label, string Value, string Sub, KpiAccent Accent, string? Info);
+
+    /// <summary>Gruppert KPI-kort-seksjon med tittel og kort-liste.</summary>
+    private sealed record HighlightSection(string Tittel, IReadOnlyList<HighlightCard> Cards);
 
     /// <summary>
     /// Synkroniserer FilterState med rapportens plant + periode slik at /nedetid
