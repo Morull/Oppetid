@@ -772,4 +772,125 @@ public class VaktRoiCalculatorTests
         var diff = roiOverridden[0].ReddetNok - roiOriginal[0].ReddetNok;
         diff.Should().BeApproximately(2.2 * 0.5 * 850, 1.0);
     }
+
+    /// <summary>
+    /// Spec NESTE-CHAT-VAKTROI-OG-UI-FIKS.md Del A — monoton-invariant:
+    /// For samme periode og samme oppmøte, og to vakt-vindu der A ⊆ B,
+    /// må TotalReddet(A) ≤ TotalReddet(B).
+    ///
+    /// Konkret scenario fra dokumentasjonen: brukerens 15:00-23:00 må aldri
+    /// redde mer enn døgnvakt 15:00-07:00 (sistnevnte er superset).
+    ///
+    /// Rot-årsaken som testen fanger: hvis et event utenfor brukerens
+    /// kortere vindu (eks. natt 02:00) faktisk skjedde inne i et annet leder-
+    /// events counterfactual-vindu, må den outage-tiden fortsatt trekkes fra
+    /// savedHours — ellers gir det smalere vinduet kunstig høyere ROI.
+    /// </summary>
+    [Fact]
+    public void Monoton_Invariant_KortereVinduRedderAldriMer()
+    {
+        // Mandag 2026-02-02 — to events samme natt:
+        //   A: 22:00 mandag, varighet 1 t  → 22:00-23:00
+        //   B: 02:00 tirsdag, varighet 1 t → 02:00-03:00
+        // Begge har counterfactual = tirsdag 08:00.
+        var events = new[]
+        {
+            MakeEvent(OsloLokal(2026, 2, 2, 22), OsloLokal(2026, 2, 2, 23)),
+            MakeEvent(OsloLokal(2026, 2, 3, 2),  OsloLokal(2026, 2, 3, 3)),
+        };
+        var from = OsloLokal(2026, 2, 2, 22);
+        var to = OsloLokal(2026, 2, 3, 8);
+        var plan = PlanFlat(from, to, mwhPerHour: 1.0);
+        var overflow = OverflowAlleTimer(from, to);
+
+        var calc = new VaktRoiCalculator();
+
+        // Vindu B = døgnvakt 15-07 (default — fanger begge events)
+        var roiB = calc.Calculate(events,
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true);
+
+        // Vindu A = brukerens 15-23 (kun event A er innenfor)
+        var custom = new VaktTidsmodellOptions(
+            EttermiddagStart: new TimeSpan(15, 0, 0),
+            MorgenCutoff: new TimeSpan(23, 0, 0),
+            OppmoteTidspunkt: new TimeSpan(8, 0, 0),
+            VaktResponstid: TimeSpan.FromHours(1));
+        var roiA = calc.Calculate(events,
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true,
+            vaktOptions: custom);
+
+        var totalA = roiA.Sum(r => r.ReddetNok);
+        var totalB = roiB.Sum(r => r.ReddetNok);
+        var reddbareA = roiA.Count(r => r.ErReddbar && r.ReddetNok > 0);
+        var reddbareB = roiB.Count(r => r.ReddetNok > 0);
+
+        totalA.Should().BeLessThanOrEqualTo(totalB,
+            "monoton-invariant: A ⊆ B → TotalReddet(A) ≤ TotalReddet(B).");
+        reddbareA.Should().BeLessThanOrEqualTo(reddbareB,
+            "antall events med ROI skal også være monoton: A ⊆ B → tellingen i A ≤ B.");
+    }
+
+    [Fact]
+    public void Monoton_Invariant_HoldesAvUtenforVaktBidragTilOutageSet()
+    {
+        // Verifiserer spesifikt at outage-set inkluderer events som er
+        // UTENFOR brukerens vindu, så savedHours ikke kunstig blir høyere
+        // når brukerens vindu smalere.
+        //
+        // Setup: Event A 22:00 mandag (innenfor BÅDE 15-07 OG 15-23).
+        //        Event B 02:00 tirsdag (innenfor 15-07, UTENFOR 15-23).
+        // Begge gruppes på counterfactual tirsdag 08:00.
+        //
+        // Window = 22:00 → 08:00 = 10 t.
+        // Outage = 1 t (A) + 1 t (B) = 2 t.
+        // savedHours = 10 - 2 = 8 t (FOR BEGGE).
+        //
+        // Bug: før fiksen ble savedHours for custom 15-23 beregnet til 9 t
+        // (kun A i merged-listen → totalOutageHours=1), som ga A høyere ROI
+        // i custom-modus enn default-modus.
+        var events = new[]
+        {
+            MakeEvent(OsloLokal(2026, 2, 2, 22), OsloLokal(2026, 2, 2, 23)),
+            MakeEvent(OsloLokal(2026, 2, 3, 2),  OsloLokal(2026, 2, 3, 3)),
+        };
+        var from = OsloLokal(2026, 2, 2, 22);
+        var to = OsloLokal(2026, 2, 3, 8);
+        var plan = PlanFlat(from, to, mwhPerHour: 1.0);
+        var overflow = OverflowAlleTimer(from, to);
+
+        var calc = new VaktRoiCalculator();
+
+        var roiDefault = calc.Calculate(events,
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true);
+
+        var custom = new VaktTidsmodellOptions(
+            EttermiddagStart: new TimeSpan(15, 0, 0),
+            MorgenCutoff: new TimeSpan(23, 0, 0),
+            OppmoteTidspunkt: new TimeSpan(8, 0, 0),
+            VaktResponstid: TimeSpan.FromHours(1));
+        var roiCustom = calc.Calculate(events,
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true,
+            vaktOptions: custom);
+
+        // Event A er leder i begge tilfeller. SavedHours skal være IDENTISK
+        // siden outage-tidslinjen for plantet i [22:00, 08:00) er den samme.
+        var aDefault = roiDefault.First(r => r.Event.StartUtc == events[0].StartUtc);
+        var aCustom = roiCustom.First(r => r.Event.StartUtc == events[0].StartUtc);
+        aCustom.EkstraTimerSpart.Should().BeApproximately(aDefault.EkstraTimerSpart, 0.001,
+            "samme leder-event skal ha samme savedHours uavhengig av om B er innenfor eller utenfor brukerens vindu.");
+        aCustom.ReddetMwh.Should().BeApproximately(aDefault.ReddetMwh, 0.001,
+            "plan-sum for leder skal ikke vokse når B faller ut av gruppen.");
+    }
 }

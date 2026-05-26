@@ -76,6 +76,30 @@ public sealed class NedetidApi
     }
 
     /// <summary>
+    /// Portefølje-vakt-kost — globalt lagret innstilling (NOK/år).
+    /// Spec NESTE-CHAT-VAKTROI-OG-UI-FIKS.md Del B.
+    /// </summary>
+    public async Task<double> GetPortfolioVaktKostAsync(CancellationToken ct = default)
+    {
+        var resp = await _http.GetFromJsonAsync<PortfolioVaktKostDto>(
+            "api/v1/portfolio/vakt-kost", JsonOptions, ct).ConfigureAwait(false);
+        return resp?.NokPerAar ?? 360_000;
+    }
+
+    public async Task<double> SetPortfolioVaktKostAsync(
+        double nokPerAar, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Put, "api/v1/portfolio/vakt-kost")
+        {
+            Content = System.Net.Http.Json.JsonContent.Create(new { NokPerAar = nokPerAar }),
+        };
+        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<PortfolioVaktKostDto>(JsonOptions, ct).ConfigureAwait(false);
+        return body?.NokPerAar ?? nokPerAar;
+    }
+
+    /// <summary>
     /// Anleggssammenligning på effektivitet — én rad per anlegg + topp 10
     /// baseline-episoder på tvers av alle anlegg.
     /// Spec FORBEDRINGSFORSLAG-EFFEKTIVITET.md Del 4.1.
@@ -655,6 +679,8 @@ public enum EpisodeReferanseTyp
     Baseline = 0,
     SweetSpot = 1,
 }
+
+public sealed record PortfolioVaktKostDto(double NokPerAar);
 
 public sealed record EffektivitetPortfolioResponse(
     IReadOnlyList<EffektivitetPortfolioRad> Rader,

@@ -1,6 +1,7 @@
 using System.Globalization;
 using Asp.Versioning;
 using Asp.Versioning.Builder;
+using KraftverkUptime.Core.Configuration;
 using KraftverkUptime.Core.Security;
 using KraftverkUptime.Core.Time;
 using KraftverkUptime.Modules.Reporting.Portefolje;
@@ -38,8 +39,56 @@ public static class PortfolioEndpoints
             .Produces<PortfolioVaktRoiResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
+        // Portefølje-vakt-kost — global innstilling lagret i plant_configuration
+        // med plant_id="_portfolio_". Spec NESTE-CHAT-VAKTROI-OG-UI-FIKS.md Del B:
+        // verdien skal persisteres i DB så den er felles for alle brukere og
+        // overlever reload.
+        group.MapGet("/vakt-kost", GetVaktKostAsync)
+            .WithName("GetPortfolioVaktKost")
+            .WithSummary("Lagret portefølje-vakt-kost (NOK/år).")
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
+            .Produces<PortfolioVaktKostResponse>(StatusCodes.Status200OK);
+
+        group.MapPut("/vakt-kost", SetVaktKostAsync)
+            .WithName("SetPortfolioVaktKost")
+            .WithSummary("Setter portefølje-vakt-kost (NOK/år). Krever PlantAdmin.")
+            .RequireAuthorization(AuthorizationPolicies.PlantAdmin)
+            .Produces<PortfolioVaktKostResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest);
+
         return endpoints;
     }
+
+    private const string VaktKostPlantId = "_portfolio_";
+    private const string VaktKostKey = "vakt_kost_nok_per_aar";
+    private const double VaktKostDefault = 360_000;
+
+    private static async Task<IResult> GetVaktKostAsync(
+        IPlantConfiguration config, CancellationToken ct)
+    {
+        var stored = await config.GetAsync<double?>(VaktKostPlantId, VaktKostKey, ct)
+            .ConfigureAwait(false);
+        return Results.Ok(new PortfolioVaktKostResponse(stored ?? VaktKostDefault));
+    }
+
+    private static async Task<IResult> SetVaktKostAsync(
+        PortfolioVaktKostRequest body,
+        IPlantConfiguration config,
+        CancellationToken ct)
+    {
+        if (body is null || body.NokPerAar < 0)
+        {
+            return Results.Problem(
+                title: "Ugyldig vakt-kost",
+                detail: "NokPerAar må være ≥ 0.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+        await config.SetAsync(VaktKostPlantId, VaktKostKey, body.NokPerAar, ct).ConfigureAwait(false);
+        return Results.Ok(new PortfolioVaktKostResponse(body.NokPerAar));
+    }
+
+    public sealed record PortfolioVaktKostResponse(double NokPerAar);
+    public sealed record PortfolioVaktKostRequest(double NokPerAar);
 
     private static async Task<IResult> GetVaktRoiAsync(
         DateTimeOffset? from,

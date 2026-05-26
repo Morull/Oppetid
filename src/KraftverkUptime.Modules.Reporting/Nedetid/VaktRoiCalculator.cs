@@ -177,6 +177,18 @@ public sealed class VaktRoiCalculator
             .GroupBy(c => (c.Event.PlantId, c.CounterfactualEnd!.Value))
             .ToDictionary(g => g.Key, g => g.OrderBy(c => c.Event.StartUtc).Select(c => c.Event).ToList());
 
+        // Bygg plant-spesifikt event-arkiv så outage-beregningen kan se ALLE
+        // events i counterfactual-vinduet — ikke bare gruppe-medlemmer.
+        // Spec NESTE-CHAT-VAKTROI-OG-UI-FIKS.md Del A: monoton-invarianten
+        // brytes når et event er UtenforVakt (eller IkkeReddbar) men faktisk
+        // skjedde inne i en leder-gruppes counterfactual-vindu. Hvis vi ikke
+        // teller den outage-tiden, undervurderes totalOutageHours og
+        // savedHours blir kunstig høyere → custom-vindu kan ende opp med å
+        // "redde mer" enn et bredere vindu som inneholder samme tidsrom.
+        var allEventsByPlant = events
+            .GroupBy(e => e.PlantId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(e => e.StartUtc).ToList());
+
         // Pass 3: for hver gruppe, beregn felles ROI én gang og avgjør
         // hvilket event er "leder" (først i tid).
         //
@@ -190,9 +202,14 @@ public sealed class VaktRoiCalculator
             var leaderStart = members[0].StartUtc;
             var counterfactualEnd = key.Item2;
 
-            // Slå sammen overlappende/back-to-back events til disjoinkte intervaller
-            // innenfor [leaderStart, counterfactualEnd). Trim hver event til vinduet.
-            var rawIntervals = members
+            // Bygg outage-intervaller fra ALLE events for samme plant som
+            // overlapper [leaderStart, counterfactualEnd) — ikke bare gruppe-
+            // medlemmer. Hvis et IkkeReddbar/UtenforVakt-event faktisk skjedde
+            // i vinduet, var anlegget nede de timene uansett, og vakta kunne
+            // ikke ha reddet de.
+            var allForPlant = allEventsByPlant.TryGetValue(key.Item1, out var allP)
+                ? allP : new List<DowntimeEvent>();
+            var rawIntervals = allForPlant
                 .Select(ev =>
                 {
                     var s = ev.StartUtc < leaderStart ? leaderStart : ev.StartUtc;

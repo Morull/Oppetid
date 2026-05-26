@@ -74,11 +74,12 @@
     <MudPaper Class="pa-4 mb-4" Elevation="1">
         <MudGrid>
             <MudItem xs="12" sm="6">
-                <MudNumericField T="double" @bind-Value="_aarligVaktKost"
+                <MudNumericField T="double" Value="_aarligVaktKost"
+                                 ValueChanged="OnVaktKostChangedAsync"
                                  Label="Samlet portefølje-vaktkost (NOK/år)"
                                  Step="50000" Format="N0"
                                  Variant="Variant.Outlined" Margin="Margin.Dense"
-                                 HelperText="Hele porteføljens årlige vaktkost. Anleggets andel beregnes ut fra normal GWh-produksjon (se admin)." />
+                                 HelperText="Hele porteføljens årlige vaktkost — felles for alle brukere, lagret i DB. Anleggets andel beregnes ut fra normal GWh-produksjon (se admin)." />
             </MudItem>
             <MudItem xs="12" sm="6">
                 @{
@@ -135,10 +136,11 @@ else if (IsPortfolioMode && _portfolio is not null)
         <MudGrid>
             <MudItem xs="12" md="3">
                 <MudText Typo="Typo.h3" Class="mb-2">Vurdering av vaktordningen</MudText>
-                <MudNumericField T="double" @bind-Value="_aarligVaktKost"
+                <MudNumericField T="double" Value="_aarligVaktKost"
+                                 ValueChanged="OnVaktKostChangedAsync"
                                  Label="Årlig vakt-kost (NOK)"
                                  Step="50000" Format="N0"
-                                 HelperText="Drifts-leders estimat"
+                                 HelperText="Felles for alle brukere — lagres i DB"
                                  Variant="Variant.Outlined" Margin="Margin.Dense" />
             </MudItem>
             <MudItem xs="6" sm="3" md="2">
@@ -828,7 +830,36 @@ else if (!IsPortfolioMode && _response is not null)
         try { _allPlants = await ReportsApi.ListPlantsAsync(); }
         catch { _allPlants = Array.Empty<PlantDto>(); }
 
+        // Last lagret portefølje-vakt-kost (Spec NESTE-CHAT-VAKTROI-OG-UI-FIKS Del B):
+        // global innstilling i DB, felles for alle brukere. Fallback til
+        // default 360 000 hvis endepunktet feiler.
+        try { _aarligVaktKost = await NedetidApi.GetPortfolioVaktKostAsync(); }
+        catch { /* default 360 000 beholdt */ }
+
         await LoadFromFilterAsync();
+    }
+
+    /// <summary>
+    /// Bruker endret vaktkost-feltet — persistere via API og oppdater UI.
+    /// Async void er trygt her siden NumericField allerede serialiserer
+    /// ValueChanged-kall.
+    /// </summary>
+    private async Task OnVaktKostChangedAsync(double nyVerdi)
+    {
+        if (nyVerdi < 0) return;
+        var forrige = _aarligVaktKost;
+        _aarligVaktKost = nyVerdi;
+        try
+        {
+            await NedetidApi.SetPortfolioVaktKostAsync(nyVerdi);
+        }
+        catch (Exception ex)
+        {
+            // Persistens-feil — rull tilbake feltet og vis melding.
+            _aarligVaktKost = forrige;
+            _error = $"Kunne ikke lagre vakt-kost: {ex.Message}";
+            try { await InvokeAsync(StateHasChanged); } catch { /* disposed */ }
+        }
     }
 
     public void Dispose()

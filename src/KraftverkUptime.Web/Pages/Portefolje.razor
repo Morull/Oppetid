@@ -39,6 +39,23 @@
     .dk-portfolio-table thead th {
         padding: 10px 12px !important;
     }
+    /* Spec NESTE-CHAT-VAKTROI-OG-UI-FIKS.md Del C: høyrejustering på
+       numeriske kolonner. MudBlazor sin default sett text-align:start
+       på alle celler, så vi MÅ bruke !important her for å overstyre. */
+    .dk-portfolio-table .num,
+    .dk-portfolio-table th.num,
+    .dk-portfolio-table td.num {
+        text-align: right !important;
+        font-variant-numeric: tabular-nums;
+    }
+    /* Anlegg-kolonnen: gi en rimelig min/max så residual-bredde fordeles
+       til de andre kolonnene istedenfor å samle seg i Anlegg på ultrawide. */
+    .dk-portfolio-table thead th:first-child,
+    .dk-portfolio-table tbody td:first-child,
+    .dk-portfolio-table tfoot td:first-child {
+        min-width: 140px;
+        max-width: 220px;
+    }
 </style>
 
 <PageHeader Title="Portefølje-rapport"
@@ -156,32 +173,32 @@ else if (_rows is not null)
                           Class="dk-portfolio-table">
                     <HeaderContent>
                         <MudTh Style="min-width: 110px;"><MudTableSortLabel SortBy="@SortByName">Anlegg</MudTableSortLabel></MudTh>
-                        <MudTh Style="text-align:right">
+                        <MudTh Class="num">
                             <MudTooltip Text="Installert effekt på generatoren(e) i megawatt. Brukes som baseline-kapasitet i KPI-ene.">
                                 <MudTableSortLabel SortBy="@SortByCapacity">Effekt (MW)</MudTableSortLabel>
                             </MudTooltip>
                         </MudTh>
-                        <MudTh Style="text-align:right">
+                        <MudTh Class="num">
                             <MudTooltip Text="Availability Factor — andel av perioden anlegget var tilgjengelig for produksjon (uten planlagt/uplanlagt nedetid). Høyt tall = bra.">
                                 <MudTableSortLabel SortBy="@SortByAf">AF</MudTableSortLabel>
                             </MudTooltip>
                         </MudTh>
-                        <MudTh Style="text-align:right">
+                        <MudTh Class="num">
                             <MudTooltip Text="Forced Outage Rate — andel av perioden anlegget var nede på grunn av uplanlagte feil (trip, alarm). Lavt tall = bra.">
                                 <MudTableSortLabel SortBy="@SortByFor">FOR</MudTableSortLabel>
                             </MudTooltip>
                         </MudTh>
-                        <MudTh Style="text-align:right">
+                        <MudTh Class="num">
                             <MudTooltip Text="Total levert energi til Elhub i perioden (MWh).">
                                 <MudTableSortLabel SortBy="@SortByMwh">Produksjon (MWh)</MudTableSortLabel>
                             </MudTooltip>
                         </MudTh>
-                        <MudTh Style="text-align:right">
+                        <MudTh Class="num">
                             <MudTooltip Text="Faktisk produksjon som andel av normalåret pro-rata på perioden. 100 % = på snitt; > 100 % over et normalår; < 100 % under. Krever at normal årsproduksjon er satt på anlegget (PlantAdmin).">
                                 <MudTableSortLabel SortBy="@SortByNormalAar">Normalår %</MudTableSortLabel>
                             </MudTooltip>
                         </MudTh>
-                        <MudTh Style="text-align:right">
+                        <MudTh Class="num">
                             <MudTooltip Text="Spotomsetning — produksjon × spotpris time-for-time. Det du teoretisk ville fått hvis du solgte alt på spot.">
                                 <MudTableSortLabel SortBy="@SortByNok"
                                     InitialDirection="SortDirection.Descending">Spotoms (NOK)</MudTableSortLabel>
@@ -189,38 +206,38 @@ else if (_rows is not null)
                         </MudTh>
                         @if (_showAllColumns)
                         {
-                            <MudTh Style="text-align:right">
+                            <MudTh Class="num">
                                 <MudTooltip Text="Capture Rate — gjennomsnittlig oppnådd pris ÷ snitt-spotpris. Over 1.0× = du traff bedre tider; under 1.0× = du solgte når prisen var lav.">
                                     <MudTableSortLabel SortBy="@SortByCr">CR</MudTableSortLabel>
                                 </MudTooltip>
                             </MudTh>
-                            <MudTh Style="text-align:right">
+                            <MudTh Class="num">
                                 <MudTooltip Text="Merverdi over flat spotomsetning. Positiv = Hydrogrid/planen ga ekstra inntekter ved smart timing. Negativ = motsatt.">
                                     <MudTableSortLabel SortBy="@SortByMerverdi">Merverdi</MudTableSortLabel>
                                 </MudTooltip>
                             </MudTh>
-                            <MudTh Style="text-align:right">
+                            <MudTh Class="num">
                                 <MudTooltip Text="Sum nedetidstimer fra klassifisert settlement-data. Inkluderer både planlagt og uplanlagt.">
                                     <MudTableSortLabel SortBy="@SortByNedetid">Nedetid (t)</MudTableSortLabel>
                                 </MudTooltip>
                             </MudTh>
-                            <MudTh Style="text-align:right">
+                            <MudTh Class="num">
                                 <MudTooltip Text="Estimert tap i nedetid: nedetid-timer × forventet produksjon × spotpris.">
                                     <MudTableSortLabel SortBy="@SortByTapNok">Tap (NOK)</MudTableSortLabel>
                                 </MudTooltip>
                             </MudTh>
-                            <MudTh Style="text-align:right">
+                            <MudTh Class="num">
                                 <MudTooltip Text="Sum NOK vakten reddet ved å fikse nedetid utenom arbeidstid. Sammenlign mot vakt-kost på /vakt-roi.">
                                     <MudTableSortLabel SortBy="@SortByReddetNok">Reddet vakt (NOK)</MudTableSortLabel>
                                 </MudTooltip>
                             </MudTh>
-                            <MudTh Style="text-align:right">
+                            <MudTh Class="num">
                                 <MudTooltip Text="Antall reddbare events (innenfor vakt-vindu og av rett kategori) / totalt antall events i perioden.">
                                     <span>Reddbare</span>
                                 </MudTooltip>
                             </MudTh>
                         }
-                        <MudTh Style="text-align:right">
+                        <MudTh Class="num">
                             <MudTooltip Text="Andel timer med god data (alle kilder + Elhub stemmer overens med plan). Lavt tall flagges som varsel.">
                                 <MudTableSortLabel SortBy="@SortByDq">Datakvalitet</MudTableSortLabel>
                             </MudTooltip>
@@ -240,7 +257,7 @@ else if (_rows is not null)
                                 }
                             </div>
                         </MudTd>
-                        <MudTd Style="text-align:right">
+                        <MudTd Class="num">
                             @if (context.InstalledCapacityMw <= 0)
                             {
                                 <MudIcon Icon="@Icons.Material.Filled.PriorityHigh"
@@ -248,23 +265,23 @@ else if (_rows is not null)
                             }
                             else { @context.InstalledCapacityMw.ToString("F1", NumberFormat.Norsk) }
                         </MudTd>
-                        <MudTd Style="text-align:right">@FormatRatio(context.AvailabilityFactor)</MudTd>
-                        <MudTd Style="text-align:right">@FormatRatio(context.ForcedOutageRate)</MudTd>
-                        <MudTd Style="text-align:right">@FormatMwh(context.TotalProductionMwh)</MudTd>
-                        <MudTd Style="text-align:right">@FormatNormalAarsAndel(NormalAarsAndel(context))</MudTd>
-                        <MudTd Style="text-align:right">@FormatNok(context.SpotomsetningNok)</MudTd>
+                        <MudTd Class="num">@FormatRatio(context.AvailabilityFactor)</MudTd>
+                        <MudTd Class="num">@FormatRatio(context.ForcedOutageRate)</MudTd>
+                        <MudTd Class="num">@FormatMwh(context.TotalProductionMwh)</MudTd>
+                        <MudTd Class="num">@FormatNormalAarsAndel(NormalAarsAndel(context))</MudTd>
+                        <MudTd Class="num">@FormatNok(context.SpotomsetningNok)</MudTd>
                         @if (_showAllColumns)
                         {
-                            <MudTd Style="text-align:right">@FormatCr(context.CaptureRateTimes)</MudTd>
-                            <MudTd Style="text-align:right">@FormatMerverdi(context.MerverdiNok)</MudTd>
-                            <MudTd Style="text-align:right">@FormatHours(context.NedetidTimer)</MudTd>
-                            <MudTd Style="text-align:right">@FormatNok(context.TapNok)</MudTd>
-                            <MudTd Style="text-align:right">
+                            <MudTd Class="num">@FormatCr(context.CaptureRateTimes)</MudTd>
+                            <MudTd Class="num">@FormatMerverdi(context.MerverdiNok)</MudTd>
+                            <MudTd Class="num">@FormatHours(context.NedetidTimer)</MudTd>
+                            <MudTd Class="num">@FormatNok(context.TapNok)</MudTd>
+                            <MudTd Class="num">
                                 <span style="color: @(context.ReddetNok > 0 ? "var(--mud-palette-success)" : "inherit"); font-weight: @(context.ReddetNok > 0 ? "600" : "400");">
                                     @FormatNok(context.ReddetNok)
                                 </span>
                             </MudTd>
-                            <MudTd Style="text-align:right">
+                            <MudTd Class="num">
                                 @if (context.AntallEvents > 0)
                                 {
                                     <span>@context.AntallReddbare / @context.AntallEvents</span>
@@ -272,31 +289,31 @@ else if (_rows is not null)
                                 else { <span>–</span> }
                             </MudTd>
                         }
-                        <MudTd Style="text-align:right">
+                        <MudTd Class="num">
                             <DataQualityBadge Summary="@context.DataQuality" />
                         </MudTd>
                     </RowTemplate>
                     <FooterContent>
                         <MudTFootRow Style="background: rgba(46,157,143,0.08); font-weight: 600;">
                             <MudTd><strong>SUM</strong></MudTd>
-                            <MudTd Style="text-align:right; white-space: nowrap;">@_rows.Sum(r => r.InstalledCapacityMw).ToString("F1", NumberFormat.Norsk)</MudTd>
-                            <MudTd Style="text-align:right; color: var(--mud-palette-text-secondary);">—</MudTd>
-                            <MudTd Style="text-align:right; color: var(--mud-palette-text-secondary);">—</MudTd>
-                            <MudTd Style="text-align:right; white-space: nowrap;">@FormatMwh(_rows.Sum(r => r.TotalProductionMwh))</MudTd>
-                            <MudTd Style="text-align:right; white-space: nowrap;">@FormatNormalAarsAndel(NormalAarsAndelTotal())</MudTd>
-                            <MudTd Style="text-align:right; white-space: nowrap;">@FormatNok(_rows.Sum(r => r.SpotomsetningNok))</MudTd>
+                            <MudTd Class="num" Style="white-space: nowrap;">@_rows.Sum(r => r.InstalledCapacityMw).ToString("F1", NumberFormat.Norsk)</MudTd>
+                            <MudTd Class="num" Style="color: var(--mud-palette-text-secondary);">—</MudTd>
+                            <MudTd Class="num" Style="color: var(--mud-palette-text-secondary);">—</MudTd>
+                            <MudTd Class="num" Style="white-space: nowrap;">@FormatMwh(_rows.Sum(r => r.TotalProductionMwh))</MudTd>
+                            <MudTd Class="num" Style="white-space: nowrap;">@FormatNormalAarsAndel(NormalAarsAndelTotal())</MudTd>
+                            <MudTd Class="num" Style="white-space: nowrap;">@FormatNok(_rows.Sum(r => r.SpotomsetningNok))</MudTd>
                             @if (_showAllColumns)
                             {
-                                <MudTd Style="text-align:right; color: var(--mud-palette-text-secondary);">—</MudTd>
-                                <MudTd Style="text-align:right; white-space: nowrap;">@FormatNokSigned(_rows.Sum(r => r.MerverdiNok))</MudTd>
-                                <MudTd Style="text-align:right; white-space: nowrap;">@FormatHours(_rows.Sum(r => r.NedetidTimer))</MudTd>
-                                <MudTd Style="text-align:right; white-space: nowrap;">@FormatNok(_rows.Sum(r => r.TapNok))</MudTd>
-                                <MudTd Style="text-align:right; white-space: nowrap;">@FormatNok(_totalReddetNok)</MudTd>
-                                <MudTd Style="text-align:right; white-space: nowrap;">
+                                <MudTd Class="num" Style="color: var(--mud-palette-text-secondary);">—</MudTd>
+                                <MudTd Class="num" Style="white-space: nowrap;">@FormatNokSigned(_rows.Sum(r => r.MerverdiNok))</MudTd>
+                                <MudTd Class="num" Style="white-space: nowrap;">@FormatHours(_rows.Sum(r => r.NedetidTimer))</MudTd>
+                                <MudTd Class="num" Style="white-space: nowrap;">@FormatNok(_rows.Sum(r => r.TapNok))</MudTd>
+                                <MudTd Class="num" Style="white-space: nowrap;">@FormatNok(_totalReddetNok)</MudTd>
+                                <MudTd Class="num" Style="white-space: nowrap;">
                                     @_rows.Sum(r => r.AntallReddbare) / @_rows.Sum(r => r.AntallEvents)
                                 </MudTd>
                             }
-                            <MudTd Style="text-align:right; white-space: nowrap;">@FormatPortfolioGoodPct()</MudTd>
+                            <MudTd Class="num" Style="white-space: nowrap;">@FormatPortfolioGoodPct()</MudTd>
                         </MudTFootRow>
                     </FooterContent>
                 </MudTable>
