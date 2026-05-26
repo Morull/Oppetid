@@ -95,12 +95,65 @@ else if (_data is not null)
                          HigherIsBetter="true" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <KpiCard Label="Hydrogrid timing-merverdi"
+                <KpiCard Label="Hydrogrid plan-merverdi"
                          Value="@FormatNokSigned(_data.HydrogridMerverdiNok)"
-                         SubText="vs. flat baseline"
+                         SubText="måler planens timing — ikke faktisk inntekt"
                          TrendCurrent="_data.HydrogridMerverdiNok"
                          TrendPrevious="_previous?.HydrogridMerverdiNok"
-                         HigherIsBetter="true" />
+                         HigherIsBetter="true"
+                         InfoText="Hva planens timing isolert sett ga i merverdi over flat baseline. Plan-kvalitetsmål — beslektet med, men IKKE samme som, faktisk Timing-merverdi (som måles på Capture rate-fanen)." />
+            </MudItem>
+        </MudGrid>
+
+        @* ---- Resultat mot plan (Spec ANBEFALING-TAPSREGNSKAP.md punkt 1) ----
+           4 ekte addender som går opp: Realisert − Planens = Timing-gap;
+           Timing-gap − Ubalanse-kost = Netto mot plan.
+           Positiv Netto = avviket fra planen var lønnsomt; negativ = avviket kostet oss. *@
+        <div class="d-flex align-center mb-2 mt-2" style="gap: 8px;">
+            <MudText Typo="Typo.subtitle2" Color="MudBlazor.Color.Secondary">Resultat mot plan</MudText>
+            <HjelpeIkon Tittel="Resultat mot plan"
+                        Beskrivelse="Det ærlige svaret: kostet avviket fra planen oss penger? Følger man planen perfekt går alle ledd mot null. Ranger måneder på «Netto mot plan» for å se hvor mest å hente."
+                        Begreper="@(new[] { "MWh", "NOK", "Hydrogrid" })" />
+        </div>
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="6" md="3">
+                <KpiCard Label="Planens timing-verdi"
+                         Value="@FormatNokSigned(_data.HydrogridMerverdiNok)"
+                         SubText="referanse — Hydrogrids plan"
+                         Accent="KpiAccent.Neutral"
+                         InfoText="Σ(Plan × spot) − Σ(Plan) × snittspot. Hvor mye Hydrogrids PLAN ville ha tjent over flat baseline." />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiCard Label="Realisert timing-verdi"
+                         Value="@FormatNokSigned(_data.FaktiskMerverdiNok)"
+                         SubText="resultat — faktisk produksjon"
+                         Accent="KpiAccent.Neutral"
+                         InfoText="Σ(Elhub × spot) − Σ(Elhub) × snittspot. Samme størrelse som «Timing-merverdi» på Capture rate-fanen." />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiCard Label="Timing-gap"
+                         Value="@FormatNokSigned(_data.TimingGapNok)"
+                         SubText="Realisert − Planens"
+                         Accent="@(_data.TimingGapNok >= 0 ? KpiAccent.Positive : KpiAccent.Negative)"
+                         InfoText="Positiv = vi timet bedre enn planen; negativ = dårligere." />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiCard Label="Ubalanse-kost"
+                         Value="@($"{_data.UbalanseKostTotalNok.ToString("N0", NumberFormat.Norsk)} NOK")"
+                         SubText="under-leveringer vs forpliktelse"
+                         Accent="KpiAccent.Warning"
+                         InfoText="Σ max(0, RK−spot) × max(0, forpliktelse − Elhub). Foreløpig enveis — kun underlevering. Overlevering ved nedreguleringspris ikke medregnet." />
+            </MudItem>
+        </MudGrid>
+
+        @* Netto-resultatet vises ALENE i egen rad så det blir det sentrale tallet. *@
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" md="6" lg="4">
+                <KpiCard Label="Netto mot plan"
+                         Value="@FormatNokSigned(_data.NettoMotPlanNok)"
+                         SubText="Timing-gap − Ubalanse-kost"
+                         Accent="@(_data.NettoMotPlanNok >= 0 ? KpiAccent.Positive : KpiAccent.Negative)"
+                         InfoText="Det ærlige svaret: kostet avviket fra planen oss penger? Positiv = avviket var lønnsomt; negativ = kostet oss. Følger man planen perfekt går dette mot 0." />
             </MudItem>
         </MudGrid>
 
@@ -283,7 +336,7 @@ else if (_data is not null)
                                      SortBy="@_sortPlanTreff"
                                      Style="text-align:right"
                                      BegrepNoekkel="PlanTreff" />
-                        <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Hydrogrid-merverdi"
+                        <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Hydrogrid plan-merverdi"
                                      SortBy="@_sortHgMerverdi"
                                      Style="text-align:right"
                                      BegrepNoekkel="HydrogridMerverdi" />
@@ -301,10 +354,10 @@ else if (_data is not null)
                                          SortBy="@_sortBunnPris"
                                          Style="text-align:right"
                                          Beskrivelse="Andel av produksjonen som falt i bunn 25 % av spotprisene den måneden." />
-                            <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Faktisk merverdi"
+                            <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Timing-merverdi"
                                          SortBy="@_sortFaktiskMerverdi"
                                          Style="text-align:right"
-                                         Beskrivelse="Merverdi over snitt-spot, beregnet på faktisk produksjon (ikke plan)." />
+                                         Beskrivelse="Σ(MWh × spot) − Σ(MWh) × snittspot beregnet på faktisk produksjon. Samme størrelse som «Timing-merverdi» på Capture rate-fanen — krone-tvillingen til CR." />
                             <KolonneHode TRow="ProduksjonMonthlyDto" Tittel="Snitt-spot"
                                          SortBy="@_sortSnittSpot"
                                          Style="text-align:right"

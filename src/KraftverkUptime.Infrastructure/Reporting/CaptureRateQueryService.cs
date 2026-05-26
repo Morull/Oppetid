@@ -182,14 +182,23 @@ public sealed class CaptureRateQueryService : ICaptureRateQueryService
         IReadOnlyList<CaptureRateCalculator.HourlyInput> hours)
     {
         var tz = KraftverkUptime.Core.Time.TimeZones.Norway;
-        var byDate = new Dictionary<DateOnly, (double Mwh, double Nok, double SpotSum, int SpotCount)>();
+        var byDate = new Dictionary<DateOnly,
+            (double Mwh, double Nok, double SpotSum, int SpotCount, double ElhubSpotValue)>();
         foreach (var h in hours)
         {
             var local = TimeZoneInfo.ConvertTime(h.TimeUtc, tz);
             var date = DateOnly.FromDateTime(local.DateTime);
             byDate.TryGetValue(date, out var cur);
 
-            if (h.MwhElhub is > 0) cur.Mwh += h.MwhElhub.Value;
+            if (h.MwhElhub is > 0)
+            {
+                cur.Mwh += h.MwhElhub.Value;
+                if (h.SpotprisNokMwh.HasValue)
+                {
+                    // Σ(MWh × spot) — telleren i den nye dag-CR-en (Spec CR-MERVERDI-OPPRYDDING).
+                    cur.ElhubSpotValue += h.MwhElhub.Value * h.SpotprisNokMwh.Value;
+                }
+            }
             if (h.SpotomsetningNok is > 0 && h.MwhElhub is > 0) cur.Nok += h.SpotomsetningNok.Value;
             if (h.SpotprisNokMwh.HasValue)
             {
@@ -204,7 +213,8 @@ public sealed class CaptureRateQueryService : ICaptureRateQueryService
             .OrderBy(kv => kv.Key)
             .Select(kv => new CaptureRateCalculator.DailyInput(
                 Date: kv.Key, MwhDay: kv.Value.Mwh, NokDay: kv.Value.Nok,
-                SpotDayAvg: kv.Value.SpotCount > 0 ? kv.Value.SpotSum / kv.Value.SpotCount : 0))
+                SpotDayAvg: kv.Value.SpotCount > 0 ? kv.Value.SpotSum / kv.Value.SpotCount : 0,
+                ElhubSpotValueDay: kv.Value.ElhubSpotValue))
             .ToList();
     }
 
@@ -230,7 +240,8 @@ public sealed class CaptureRateQueryService : ICaptureRateQueryService
 
     private static CaptureRateCalculator.CaptureRateResult EmptyResult() => new(
         CapturePriceNokMwh: 0, TimesCr: 0, TimesBaselineNokMwh: 0,
-        DagCr: 0, DagBaselineNokMwh: 0, MerverdiNok: 0,
+        DagCr: 0, DagBaselineNokMwh: 0,
+        TimingMerverdiNok: 0, RealisertPrisNokMwh: 0, RealisertVsSpotNok: 0,
         AntallTimer: 0, AntallTimerProduksjon: 0,
         AntallDager: 0, AntallDagerEtterFilter: 0);
 }

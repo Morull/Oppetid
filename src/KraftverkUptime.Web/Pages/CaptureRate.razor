@@ -39,14 +39,19 @@ else if (_aggregate is not null)
     }
     else
     {
-        @* ---- KPI-rad med trend-piler ---- *@
-        <MudGrid Class="mb-4">
+        @* ---- Timing-KPI-er (Spec NESTE-CHAT-CR-MERVERDI-OPPRYDDING) ----
+           CR og Timing-merverdi hører sammen og er konsistente: invariant
+           CR > 1 ⟺ Timing-merverdi > 0. *@
+        <MudText Typo="Typo.subtitle2" Color="MudBlazor.Color.Secondary" Class="mb-2">Timing — hvor godt traff vi prisen?</MudText>
+        <MudGrid Class="mb-3">
             <MudItem xs="12" sm="6" md="3">
-                <KpiCard Label="Capture-pris"
+                <KpiCard Label="Capture-pris (volumvektet spot)"
                          Value="@($"{_aggregate.CapturePriceNokMwh.ToString("F0", NumberFormat.Norsk)} NOK/MWh")"
+                         SubText="Σ(MWh × spot) / Σ(MWh)"
                          TrendCurrent="_aggregate.CapturePriceNokMwh"
                          TrendPrevious="_previous?.CapturePriceNokMwh"
-                         HigherIsBetter="true" />
+                         HigherIsBetter="true"
+                         InfoText="Volumvektet spotpris i timene anlegget produserte. Sammenligningsgrunnlag for CR." />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
                 <KpiCard Label="CR (times)"
@@ -54,7 +59,8 @@ else if (_aggregate is not null)
                          SubText="@($"baseline {_aggregate.TimesBaselineNokMwh.ToString("F0", NumberFormat.Norsk)} NOK/MWh")"
                          TrendCurrent="_aggregate.TimesCr"
                          TrendPrevious="_previous?.TimesCr"
-                         HigherIsBetter="true" />
+                         HigherIsBetter="true"
+                         InfoText="Capture-pris / tidsvektet snittspot. Over 1 = traff prishopper bedre enn jevn fordeling." />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
                 <KpiCard Label="CR (dag, P5/P95-filtrert)"
@@ -62,14 +68,43 @@ else if (_aggregate is not null)
                          SubText="@($"{_aggregate.AntallDagerEtterFilter} av {_aggregate.AntallDager} dager")"
                          TrendCurrent="_aggregate.DagCr"
                          TrendPrevious="_previous?.DagCr"
-                         HigherIsBetter="true" />
+                         HigherIsBetter="true"
+                         InfoText="Dag-basert CR med 5/95-persentilfilter — Excel-replika. Samme teller som times-CR." />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <KpiCard Label="Merverdi vs spot"
-                         Value="@FormatNokSigned(_aggregate.MerverdiNok)"
-                         TrendCurrent="_aggregate.MerverdiNok"
-                         TrendPrevious="_previous?.MerverdiNok"
-                         HigherIsBetter="true" />
+                <KpiCard Label="Timing-merverdi"
+                         Value="@FormatNokSigned(_aggregate.TimingMerverdiNok)"
+                         SubText="krone-tvilling til CR"
+                         TrendCurrent="_aggregate.TimingMerverdiNok"
+                         TrendPrevious="_previous?.TimingMerverdiNok"
+                         HigherIsBetter="true"
+                         InfoText="Σ(MWh × spot) − Σ(MWh) × snittspot. Alltid samme fortegn som (CR − 1)." />
+            </MudItem>
+        </MudGrid>
+
+        @* ---- Realisert vs spot (utførelses-gap, eget konsept) ----
+           Spec NESTE-CHAT-CR-MERVERDI-OPPRYDDING: tidligere kalt «Merverdi vs
+           spot» — omdøpt og atskilt fra timing-gruppen siden det måler noe
+           annet (om vi faktisk fikk spotverdien av leveransen). *@
+        <MudText Typo="Typo.subtitle2" Color="MudBlazor.Color.Secondary" Class="mb-2 mt-2">Utførelse — fikk vi spotverdien av leveransen?</MudText>
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="6" md="3">
+                <KpiCard Label="Realisert pris"
+                         Value="@($"{_aggregate.RealisertPrisNokMwh.ToString("F0", NumberFormat.Norsk)} NOK/MWh")"
+                         SubText="Σ(omsetning) / Σ(MWh)"
+                         TrendCurrent="_aggregate.RealisertPrisNokMwh"
+                         TrendPrevious="_previous?.RealisertPrisNokMwh"
+                         HigherIsBetter="true"
+                         InfoText="Hva vi faktisk fikk per MWh. Kan være under spotpris i høyvanns-måneder der vi leverer mer enn budet på day-ahead." />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <KpiCard Label="Realisert vs spot"
+                         Value="@FormatNokSigned(_aggregate.RealisertVsSpotNok)"
+                         SubText="utførelses-gap"
+                         TrendCurrent="_aggregate.RealisertVsSpotNok"
+                         TrendPrevious="_previous?.RealisertVsSpotNok"
+                         HigherIsBetter="true"
+                         InfoText="Σ(omsetning − MWh × spot). Negativ = vi fikk mindre enn spot for det vi leverte. Påvirker IKKE CR — det er et separat mål." />
             </MudItem>
         </MudGrid>
 

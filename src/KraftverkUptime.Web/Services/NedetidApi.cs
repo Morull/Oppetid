@@ -686,11 +686,17 @@ public sealed record CaptureRateResultDto(
     double TimesBaselineNokMwh,
     double DagCr,
     double DagBaselineNokMwh,
-    double MerverdiNok,
+    double TimingMerverdiNok,
+    double RealisertPrisNokMwh,
+    double RealisertVsSpotNok,
     int AntallTimer,
     int AntallTimerProduksjon,
     int AntallDager,
-    int AntallDagerEtterFilter);
+    int AntallDagerEtterFilter)
+{
+    /// <summary>Bakover-kompatibelt alias — speiler <see cref="TimingMerverdiNok"/>.</summary>
+    public double MerverdiNok => TimingMerverdiNok;
+}
 
 public sealed record MonthlyCaptureRateDto(
     int Year,
@@ -729,7 +735,11 @@ public sealed record ProduksjonAnalyseDto(
     IReadOnlyList<ProduksjonHourlyDto> Hourly,
     IReadOnlyList<ProduksjonMonthlyDto> Monthly,
     double SpotbudTreffProsent = 0,
-    int AntallTimerMedSpotbud = 0);
+    int AntallTimerMedSpotbud = 0,
+    // Tapsregnskap punkt 1 (Spec ANBEFALING-TAPSREGNSKAP.md).
+    double UbalanseKostTotalNok = 0,
+    double TimingGapNok = 0,
+    double NettoMotPlanNok = 0);
 
 public sealed record ProduksjonHourlyDto(
     DateTimeOffset TimeUtc,
@@ -757,7 +767,11 @@ public sealed record ProduksjonMonthlyDto(
     double AndelTimerProdIBunnKvartil,
     double HydrogridMerverdiNok,
     double FaktiskMerverdiNok,
-    double SnittSpotprisNokMwh);
+    double SnittSpotprisNokMwh,
+    // Tapsregnskap punkt 1 (Spec ANBEFALING-TAPSREGNSKAP.md) — per måned.
+    double UbalanseKostTotalNok = 0,
+    double TimingGapNok = 0,
+    double NettoMotPlanNok = 0);
 
 public sealed record VaktRoiResponse(
     string PlantId,

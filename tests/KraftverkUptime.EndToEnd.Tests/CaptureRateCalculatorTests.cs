@@ -86,33 +86,46 @@ public class CaptureRateCalculatorTests
     [Fact]
     public void PersentilFilter_FjernerOutlierDag()
     {
-        // 10 dager med rå_d 1.0 + én outlier-dag med rå_d 5.0
-        // P5/P95 over historisk → outlier filtreres bort
+        // Spec NESTE-CHAT-CR-MERVERDI-OPPRYDDING: ny dag-CR bruker
+        // Σ(MWh × spot) / Σ(MWh) som teller (samme grunnlag som times-CR).
+        // For å lage en outlier-dag må MWh og spot KORRELERE positivt — dvs.
+        // produsere mest når prisen er høyest. Setter outlier-dagen med 2 timer:
+        // én med MWh=20 ved spot=2500, én med MWh=0 ved spot=500. Snitt-spot=1500,
+        // volumvektet-spot=2500 → rå=2500/1500=1,67.
+        // Normaldagene har MWh=10 jevnt fordelt over 2 timer ved spot=500/500
+        // → volumvektet=500, snitt=500, rå=1.0.
         var hours = new List<CaptureRateCalculator.HourlyInput>();
         for (var d = 0; d < 11; d++)
         {
-            // Hver dag: 1 time per dag for enkelhet, mwh=10
-            // 10 dager med oppnådd=spot=500 → rå=1.0
-            // Dag 11 (index 10): oppnådd=2500, spot=500 → rå=5.0
-            var spot = 500.0;
-            var oppnaadd = (d == 10) ? 2500.0 : 500.0;
             var t = T0.AddDays(d);
-            hours.Add(new CaptureRateCalculator.HourlyInput(t, MwhElhub: 10, SpotprisNokMwh: spot, SpotomsetningNok: oppnaadd * 10));
+            if (d == 10)
+            {
+                // Outlier: produsert MWh og høy spot sammenfaller.
+                hours.Add(new(t, MwhElhub: 20, SpotprisNokMwh: 2500, SpotomsetningNok: 20 * 2500));
+                hours.Add(new(t.AddHours(1), MwhElhub: 0, SpotprisNokMwh: 500, SpotomsetningNok: 0));
+            }
+            else
+            {
+                // Normaldag: jevnt fordelt, lik spot begge timer → rå = 1.0.
+                hours.Add(new(t, MwhElhub: 10, SpotprisNokMwh: 500, SpotomsetningNok: 10 * 500));
+                hours.Add(new(t.AddHours(1), MwhElhub: 10, SpotprisNokMwh: 500, SpotomsetningNok: 10 * 500));
+            }
         }
 
-        // Historikk = samme rå-fordeling for å gi P5/P95 ≈ [1.0, 1.0]
+        // Historikk = 100 normaldager → P5/P95 ≈ [1.0, 1.0]
         var historical = new List<CaptureRateCalculator.DailyInput>();
         for (var d = 0; d < 100; d++)
         {
             historical.Add(new CaptureRateCalculator.DailyInput(
                 Date: DateOnly.FromDateTime(T0.AddDays(d).DateTime),
-                MwhDay: 10, NokDay: 5000, SpotDayAvg: 500)); // rå = 1.0
+                MwhDay: 20, NokDay: 10000, SpotDayAvg: 500,
+                ElhubSpotValueDay: 20 * 500)); // rå = 1.0
         }
 
         var r = CaptureRateCalculator.Compute(hours, historical);
 
         r.AntallDager.Should().Be(11);
-        r.AntallDagerEtterFilter.Should().BeLessThan(11); // outlier filtrert
+        r.AntallDagerEtterFilter.Should().BeLessThan(11, "outlier-dagen (rå ≈ 1,67) skal filtreres ut");
     }
 
     [Fact]
@@ -213,11 +226,15 @@ public class CaptureRateCalculatorTests
     }
 
     [Fact]
-    public void Merverdi_BeregnesSomDifferanseMotSpot()
+    public void RealisertVsSpot_BeregnesSomDifferanseMotSpot()
     {
+        // Spec NESTE-CHAT-CR-MERVERDI-OPPRYDDING: utførelses-gapet (tidligere
+        // kalt "merverdi") måler om vi faktisk fikk spotverdien av leveransen.
+        // Beregnes som Σ(SpotomsetningNok − Elhub × spot).
+        //
         // 2 timer:
-        //   T0: produsert 1 MWh til 600 NOK (spot 500) → +100 NOK merverdi
-        //   T1: produsert 1 MWh til 400 NOK (spot 500) → -100 NOK merverdi
+        //   T0: produsert 1 MWh til 600 NOK (spot 500) → +100 NOK
+        //   T1: produsert 1 MWh til 400 NOK (spot 500) → -100 NOK
         // Sum = 0
         var rows = new List<CaptureRateCalculator.HourlyInput>
         {
@@ -226,9 +243,9 @@ public class CaptureRateCalculatorTests
         };
         var r = CaptureRateCalculator.Compute(rows, Array.Empty<CaptureRateCalculator.DailyInput>());
 
-        r.MerverdiNok.Should().BeApproximately(0, 1e-9);
+        r.RealisertVsSpotNok.Should().BeApproximately(0, 1e-9);
 
-        // Bytt inn 700 i andre time → merverdi = +100 + +200 = +300
+        // Bytt inn 700 i andre time → realisert vs spot = +100 + +200 = +300
         var rows2 = new List<CaptureRateCalculator.HourlyInput>
         {
             new(T0, MwhElhub: 1, SpotprisNokMwh: 500, SpotomsetningNok: 600),
@@ -236,6 +253,74 @@ public class CaptureRateCalculatorTests
         };
         var r2 = CaptureRateCalculator.Compute(rows2, Array.Empty<CaptureRateCalculator.DailyInput>());
 
-        r2.MerverdiNok.Should().BeApproximately(300, 1e-9);
+        r2.RealisertVsSpotNok.Should().BeApproximately(300, 1e-9);
+    }
+
+    [Fact]
+    public void Invariant_TimingMerverdiSammeFortegnSomCRMinusEn()
+    {
+        // Spec NESTE-CHAT-CR-MERVERDI-OPPRYDDING — hovedfunn: CR > 1 ⟺ Timing-merverdi > 0.
+        // Verifiserer med tre case:
+        //  (a) positiv timing (mest produksjon når spot er høy)
+        //  (b) negativ timing (mest produksjon når spot er lav)
+        //  (c) jevn produksjon (timing-merverdi = 0, CR = 1)
+
+        // (a) Positiv: 10 MWh ved spot 1000, 0 MWh ved spot 500.
+        var positiv = new List<CaptureRateCalculator.HourlyInput>
+        {
+            new(T0,             MwhElhub: 10, SpotprisNokMwh: 1000, SpotomsetningNok: 10000),
+            new(T0.AddHours(1), MwhElhub: 0,  SpotprisNokMwh: 500,  SpotomsetningNok: 0),
+        };
+        var rPos = CaptureRateCalculator.Compute(positiv, Array.Empty<CaptureRateCalculator.DailyInput>());
+        rPos.TimesCr.Should().BeGreaterThan(1.0);
+        rPos.TimingMerverdiNok.Should().BeGreaterThan(0);
+        Math.Sign(rPos.TimesCr - 1.0).Should().Be(Math.Sign(rPos.TimingMerverdiNok));
+
+        // (b) Negativ: 0 MWh ved spot 1000, 10 MWh ved spot 500.
+        var negativ = new List<CaptureRateCalculator.HourlyInput>
+        {
+            new(T0,             MwhElhub: 0,  SpotprisNokMwh: 1000, SpotomsetningNok: 0),
+            new(T0.AddHours(1), MwhElhub: 10, SpotprisNokMwh: 500,  SpotomsetningNok: 5000),
+        };
+        var rNeg = CaptureRateCalculator.Compute(negativ, Array.Empty<CaptureRateCalculator.DailyInput>());
+        rNeg.TimesCr.Should().BeLessThan(1.0);
+        rNeg.TimingMerverdiNok.Should().BeLessThan(0);
+        Math.Sign(rNeg.TimesCr - 1.0).Should().Be(Math.Sign(rNeg.TimingMerverdiNok));
+
+        // (c) Jevn: 5 MWh begge timer, spot 1000 og 500.
+        var jevn = new List<CaptureRateCalculator.HourlyInput>
+        {
+            new(T0,             MwhElhub: 5, SpotprisNokMwh: 1000, SpotomsetningNok: 5000),
+            new(T0.AddHours(1), MwhElhub: 5, SpotprisNokMwh: 500,  SpotomsetningNok: 2500),
+        };
+        var rJevn = CaptureRateCalculator.Compute(jevn, Array.Empty<CaptureRateCalculator.DailyInput>());
+        rJevn.TimesCr.Should().BeApproximately(1.0, 1e-9);
+        rJevn.TimingMerverdiNok.Should().BeApproximately(0, 1e-9);
+    }
+
+    [Fact]
+    public void CapturePris_BrukerVolumvektetSpot_IkkeFaktiskOmsetning()
+    {
+        // Spec NESTE-CHAT-CR-MERVERDI-OPPRYDDING: capture-pris er nå Σ(MWh × spot) / Σ(MWh).
+        // I høyvanns-måneder der faktisk omsetning er lavere enn spotverdien
+        // (vi leverer mer enn budet), skal CR fortsatt være positiv hvis timingen er det.
+        //
+        // 2 timer, jevn 5 MWh, spot 1000 / 500. Snitt-spot = 750.
+        // Omsetning er KUNSTIG lav (3000 NOK total) — viser at CR ikke påvirkes av det.
+        var hours = new List<CaptureRateCalculator.HourlyInput>
+        {
+            new(T0,             MwhElhub: 5, SpotprisNokMwh: 1000, SpotomsetningNok: 2000),
+            new(T0.AddHours(1), MwhElhub: 5, SpotprisNokMwh: 500,  SpotomsetningNok: 1000),
+        };
+        var r = CaptureRateCalculator.Compute(hours, Array.Empty<CaptureRateCalculator.DailyInput>());
+
+        // CapturePris = (5×1000 + 5×500) / 10 = 7500/10 = 750 (= snitt-spot, jevn produksjon)
+        r.CapturePriceNokMwh.Should().BeApproximately(750, 1e-9);
+        r.TimesCr.Should().BeApproximately(1.0, 1e-9);
+
+        // Realisert pris = 3000/10 = 300 (langt under spot → utførelses-gap)
+        r.RealisertPrisNokMwh.Should().BeApproximately(300, 1e-9);
+        // Realisert vs spot = 3000 - (5×1000 + 5×500) = -4500
+        r.RealisertVsSpotNok.Should().BeApproximately(-4500, 1e-9);
     }
 }

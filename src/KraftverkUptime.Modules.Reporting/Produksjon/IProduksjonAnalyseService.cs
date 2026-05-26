@@ -26,18 +26,20 @@ public interface IProduksjonAnalyseService
 /// <summary>
 /// Aggregert analyse-resultat for en periode.
 ///   PlanTreffProsent: 1 − Σ|Elhub − Plan| / Σ|Plan| for timer med Plan &gt; 0.
-///     1.0 = perfekt treff, 0.0 = avvik 100 % i snitt. Klippet til [0, 1].
 ///   AndelProdIToppKvartil: MWh-volum-andel i øverste 25 % spotpris-timer.
-///     0.25 = "ingen timing-effekt" (volum-perspektiv).
-///   AndelProdIBunnKvartil: MWh-volum-andel i bunn-25 % av prisen.
-///   AndelTimerProdIToppKvartil: drifts-time-andel i øverste 25 % spot —
-///     "av timene vi produserte, hvor mange falt i topp-pris-vinduet?"
-///     Komplementært til volum-andelen ovenfor.
-///   AndelTimerProdIBunnKvartil: drifts-time-andel i bunn-25 %.
 ///   HydrogridMerverdiNok: Σ(Plan_t × spot_t) − Σ(Plan_t) × snitt_spot.
-///     Positiv = Hydrogrid flyttet produksjon til høypristimer.
-///   FaktiskMerverdiNok: tilsvarende for Elhub. Sammenlign mot
-///     HydrogridMerverdiNok for å se om vi tjente mer/mindre enn planen.
+///     Plan-kvalitetsmål — viser hvor mye Hydrogrids PLAN flyttet til høypristimer.
+///   FaktiskMerverdiNok: tilsvarende for Elhub — Timing-merverdi for faktisk produksjon.
+///
+/// Spec ANBEFALING-TAPSREGNSKAP.md punkt 1 («Netto mot plan»):
+///   TimingGapNok       = FaktiskMerverdiNok − HydrogridMerverdiNok
+///     Positiv = vi timet BEDRE enn planen; negativ = dårligere.
+///   UbalanseKostTotalNok = Σ UbalanseKostNok over alle timer.
+///     Alltid ≥ 0 — ubalanse er aldri en gevinst i dagens (enveis) formel.
+///   NettoMotPlanNok    = TimingGapNok − UbalanseKostTotalNok
+///     Positiv = avviket fra planen var lønnsomt totalt sett.
+///     Negativ = avviket KOSTET oss penger.
+///     Null = vi fulgte planen perfekt (Realisert = Planens, ingen ubalanse).
 /// </summary>
 public sealed record ProduksjonAnalyseResult(
     string PlantId,
@@ -62,13 +64,13 @@ public sealed record ProduksjonAnalyseResult(
     bool OverlopDataTilgjengelig,
     IReadOnlyList<ProduksjonHourlyPoint> Hourly,
     IReadOnlyList<ProduksjonMonthly> Monthly,
-    // Spotbud-treff (2026-05-19): samme formel som PlanTreff, men mot
-    // Spotbud istedenfor Hydrogrid-plan. Spotbud = faktisk meldt bud til
-    // NordPool (= forpliktelse), så vi ønsker 100% treff her — avvik
-    // koster i ubalanse-gebyr. Default 0 hvis ingen timer har Spotbud > 0
-    // (= eldre import før Spotbud-parsing).
     double SpotbudTreffProsent = 0,
-    int AntallTimerMedSpotbud = 0);
+    int AntallTimerMedSpotbud = 0,
+    // Tapsregnskap punkt 1 (Spec ANBEFALING-TAPSREGNSKAP.md). Default 0 så
+    // eldre call-sites kompilerer.
+    double UbalanseKostTotalNok = 0,
+    double TimingGapNok = 0,
+    double NettoMotPlanNok = 0);
 
 /// <summary>
 /// Én time — rå data for graf-visning og driftslinje. Inkluderer:
@@ -108,4 +110,8 @@ public sealed record ProduksjonMonthly(
     double AndelTimerProdIBunnKvartil,
     double HydrogridMerverdiNok,
     double FaktiskMerverdiNok,
-    double SnittSpotprisNokMwh);
+    double SnittSpotprisNokMwh,
+    // Tapsregnskap punkt 1 — per måned. Default 0 for bakover-kompatibilitet.
+    double UbalanseKostTotalNok = 0,
+    double TimingGapNok = 0,
+    double NettoMotPlanNok = 0);

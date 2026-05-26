@@ -46,40 +46,6 @@ public static class ProduksjonAnalyseCalculator
         var overlopProsent = hours.Count > 0
             ? (double)antTimerOverlop / hours.Count : 0;
 
-        // Per-måned: re-bruker samme aggregat-funksjon på filtrert delmengde
-        var monthly = hours
-            .GroupBy(h => new { h.TimeUtc.Year, h.TimeUtc.Month })
-            .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
-            .Select(g =>
-            {
-                var rows = g.ToList();
-                var (mt, mTopp, mBunn, mTimerTopp, mTimerBunn,
-                     mHg, mFaktisk, mSnittSpot, mElhub, mPlan, _, mProd,
-                     _, _)
-                    = ComputeAggregate(rows);
-                var mOverlop = rows.Count(h => overflow.Contains(TruncateToHour(h.TimeUtc)));
-                var mKap = rows.Count > 0 ? (double)mProd / rows.Count : 0;
-                var mOvrPct = rows.Count > 0 ? (double)mOverlop / rows.Count : 0;
-                return new ProduksjonMonthly(
-                    Year: g.Key.Year,
-                    Month: g.Key.Month,
-                    ElhubMwh: mElhub,
-                    PlanMwh: mPlan,
-                    AntallTimerProduksjon: mProd,
-                    AntallTimerOverlop: mOverlop,
-                    KapasitetsutnyttelseProsent: mKap,
-                    OverlopProsent: mOvrPct,
-                    PlanTreffProsent: mt,
-                    AndelProdIToppKvartil: mTopp,
-                    AndelProdIBunnKvartil: mBunn,
-                    AndelTimerProdIToppKvartil: mTimerTopp,
-                    AndelTimerProdIBunnKvartil: mTimerBunn,
-                    HydrogridMerverdiNok: mHg,
-                    FaktiskMerverdiNok: mFaktisk,
-                    SnittSpotprisNokMwh: mSnittSpot);
-            })
-            .ToList();
-
         // Berik hourly med overlop-flag + ubalanse-kost. Ubalanse-kost per time:
         //   premium = max(0, RK - Spot)        (NOK/MWh oppregulering)
         //   forpliktelse = max(Spotbud, Plan)  (Spotbud er faktisk forpliktelse;
@@ -117,6 +83,60 @@ public static class ProduksjonAnalyseCalculator
             })
             .ToList();
 
+        // Tapsregnskap punkt 1 (Spec ANBEFALING-TAPSREGNSKAP.md):
+        //   TimingGap  = FaktiskMerverdi − HydrogridMerverdi
+        //   UbalanseKostTotal = Σ ubalanse-kost over alle timer
+        //   NettoMotPlan = TimingGap − UbalanseKostTotal
+        //     (positiv = avviket var lønnsomt; negativ = avviket kostet oss)
+        var ubalanseKostTotal = hourlyOutput.Sum(h => h.UbalanseKostNok);
+        var timingGap = faktiskMerverdi - hgMerverdi;
+        var nettoMotPlan = timingGap - ubalanseKostTotal;
+
+        // Per-måned: bruk hourlyOutput (som har ubalanse-kost beregnet) for å
+        // få monthly-tallene konsistente med totalen.
+        var monthly = hours
+            .GroupBy(h => new { h.TimeUtc.Year, h.TimeUtc.Month })
+            .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
+            .Select(g =>
+            {
+                var rows = g.ToList();
+                var (mt, mTopp, mBunn, mTimerTopp, mTimerBunn,
+                     mHg, mFaktisk, mSnittSpot, mElhub, mPlan, _, mProd,
+                     _, _)
+                    = ComputeAggregate(rows);
+                var mOverlop = rows.Count(h => overflow.Contains(TruncateToHour(h.TimeUtc)));
+                var mKap = rows.Count > 0 ? (double)mProd / rows.Count : 0;
+                var mOvrPct = rows.Count > 0 ? (double)mOverlop / rows.Count : 0;
+                // Summer ubalanse-kost fra hourlyOutput for samme måned (matcher
+                // totalen ovenfor).
+                var mUbalanseKost = hourlyOutput
+                    .Where(h => h.TimeUtc.Year == g.Key.Year && h.TimeUtc.Month == g.Key.Month)
+                    .Sum(h => h.UbalanseKostNok);
+                var mTimingGap = mFaktisk - mHg;
+                var mNetto = mTimingGap - mUbalanseKost;
+                return new ProduksjonMonthly(
+                    Year: g.Key.Year,
+                    Month: g.Key.Month,
+                    ElhubMwh: mElhub,
+                    PlanMwh: mPlan,
+                    AntallTimerProduksjon: mProd,
+                    AntallTimerOverlop: mOverlop,
+                    KapasitetsutnyttelseProsent: mKap,
+                    OverlopProsent: mOvrPct,
+                    PlanTreffProsent: mt,
+                    AndelProdIToppKvartil: mTopp,
+                    AndelProdIBunnKvartil: mBunn,
+                    AndelTimerProdIToppKvartil: mTimerTopp,
+                    AndelTimerProdIBunnKvartil: mTimerBunn,
+                    HydrogridMerverdiNok: mHg,
+                    FaktiskMerverdiNok: mFaktisk,
+                    SnittSpotprisNokMwh: mSnittSpot,
+                    UbalanseKostTotalNok: mUbalanseKost,
+                    TimingGapNok: mTimingGap,
+                    NettoMotPlanNok: mNetto);
+            })
+            .ToList();
+
         return new ProduksjonAnalyseResult(
             PlantId: plantId,
             FromUtc: fromUtc,
@@ -141,7 +161,10 @@ public static class ProduksjonAnalyseCalculator
             Hourly: hourlyOutput,
             Monthly: monthly,
             SpotbudTreffProsent: spotbudTreff,
-            AntallTimerMedSpotbud: antTimerMedSpotbud);
+            AntallTimerMedSpotbud: antTimerMedSpotbud,
+            UbalanseKostTotalNok: ubalanseKostTotal,
+            TimingGapNok: timingGap,
+            NettoMotPlanNok: nettoMotPlan);
     }
 
     /// <summary>Trunkerer time-stempel til hel time slik at overflow-set-lookup matcher.</summary>

@@ -3,22 +3,33 @@ using KraftverkUptime.Core.Time;
 namespace KraftverkUptime.Modules.Reporting.CaptureRate;
 
 /// <summary>
-/// Pure-funksjon kalkulator for capture rate (begge varianter):
+/// Pure-funksjon kalkulator for capture rate (begge varianter).
 ///
-///   <b>Times-CR</b> (volumvektet, hovedversjon):
-///     capture_price  = Σ(nok_t) / Σ(mwh_t)            for produksjonstimer
+/// Spec NESTE-CHAT-CR-MERVERDI-OPPRYDDING.md (2026-05-22): rotet sammen tre
+/// ulike mål kalt "merverdi". Skiller dem nå i fire klart adskilte mål:
+///
+///   <b>Capture rate</b> (rent timing-mål):
+///     capture_price  = Σ(mwh_t × spot_t) / Σ(mwh_t)   — volumvektet spotpris
 ///     times_baseline = Σ(spot_t) / |H_all|            (tidsvektet snitt over alle timer)
 ///     times_cr       = capture_price / times_baseline
+///   ⇒ CR &gt; 1 ⟺ timingen var bedre enn jevn fordeling.
+///
+///   <b>Timing-merverdi</b> (krone-tvillingen til CR):
+///     timing_merverdi = Σ(mwh_t × spot_t) − Σ(mwh_t) × times_baseline
+///   ⇒ Invariant: timing_merverdi &gt; 0 ⟺ CR &gt; 1 (alltid).
+///
+///   <b>Realisert vs spot</b> (utførelses-gapet — fikk vi faktisk spot for det
+///   vi leverte?):
+///     realisert_pris    = Σ(nok_t) / Σ(mwh_t)
+///     realisert_vs_spot = Σ(nok_t − spot_t × mwh_t)
+///   ⇒ Negativ verdi = vi fikk mindre enn spotverdien av leveransen
+///     (typisk i høyvanns-måneder der overproduksjon ikke ble solgt på day-ahead).
 ///
 ///   <b>Dag-CR</b> (Excel-replika med 5/95-persentilfilter):
-///     For hver dag: oppnådd_d = nok_d / mwh_d, spot_d = aritmetisk dag-snitt
-///                   rå_d      = oppnådd_d / spot_d
-///     Filter:       behold dager der rå_d ∈ [P5, P95] beregnet over historisk tidsserie
-///     dag_cr        = Σ(mwh_d × rå_d) / Σ(mwh_d)      for filtrerte dager
-///
-///   <b>Merverdi (NOK)</b>:
-///     merverdi = Σ(nok_t − spot_t × mwh_t)            for produksjonstimer
-///     (positiv = anlegget tjente mer enn rent spot)
+///     Per dag: oppnådd_d = Σ(mwh_h × spot_h)_dag / Σ(mwh_h)_dag (samme grunnlag som times-CR)
+///              rå_d      = oppnådd_d / spot_d_snitt
+///     Filter:  behold dager der rå_d ∈ [P5, P95] beregnet over historisk tidsserie
+///     dag_cr  = Σ(mwh_d × rå_d) / Σ(mwh_d)      for filtrerte dager
 ///
 /// Pure: ingen DB- eller IO-tilgang. Caller leverer ferdig-pivoterte timesrader
 /// (settlement) og full historisk dag-serie for persentil-beregning.
@@ -34,13 +45,19 @@ public static class CaptureRateCalculator
 
     /// <summary>
     /// Aggregert dag for persentil-beregning — kommer typisk fra hele tidsserien
-    /// (8+ år) for å matche Excel-modellens P5/P95-vinduer over alt anlegget har av historikk.
+    /// (8+ år) for å matche Excel-modellens P5/P95-vinduer.
+    ///
+    /// <see cref="ElhubSpotValueDay"/> = Σ(MWh × spot) for dagen. Det er teller
+    /// for det nye CR-grunnlaget (volumvektet spotpris i stedet for faktisk
+    /// omsetning). <see cref="NokDay"/> beholdes for "Realisert vs spot"-
+    /// beregningen.
     /// </summary>
     public sealed record DailyInput(
         DateOnly Date,
         double MwhDay,
         double NokDay,
-        double SpotDayAvg);
+        double SpotDayAvg,
+        double ElhubSpotValueDay);
 
     public sealed record CaptureRateResult(
         double CapturePriceNokMwh,
@@ -48,11 +65,20 @@ public static class CaptureRateCalculator
         double TimesBaselineNokMwh,
         double DagCr,
         double DagBaselineNokMwh,
-        double MerverdiNok,
+        double TimingMerverdiNok,
+        double RealisertPrisNokMwh,
+        double RealisertVsSpotNok,
         int AntallTimer,
         int AntallTimerProduksjon,
         int AntallDager,
-        int AntallDagerEtterFilter);
+        int AntallDagerEtterFilter)
+    {
+        /// <summary>
+        /// Bakover-kompatibelt alias — speiler det nye <see cref="TimingMerverdiNok"/>.
+        /// Felt-navnet kan brukes som "den merverdien som er konsistent med CR".
+        /// </summary>
+        public double MerverdiNok => TimingMerverdiNok;
+    }
 
     /// <summary>
     /// Beregner capture rate for en periode. <paramref name="historicalDailyForPercentile"/>
@@ -80,12 +106,18 @@ public static class CaptureRateCalculator
         }
 
         // ---- Felles aggregater ----
+        // Telleren for CR er nå Σ(mwh × spot) — VOLUMVEKTET SPOTPRIS, ikke
+        // faktisk omsetning. Faktisk omsetning (sumNok) brukes kun for "Realisert
+        // vs spot"-utførelses-gapet. Slik kan CR > 1 ⟺ Timing-merverdi > 0
+        // som invariant; tidligere kunne CR < 1 selv om timingen var positiv,
+        // dersom faktisk omsetning per MWh var lav (høyvanns-måneder).
         double sumMwh = 0;
-        double sumNok = 0;
+        double sumNok = 0;             // faktisk omsetning — for Realisert vs spot
+        double sumElhubSpotValue = 0;  // Σ(mwh × spot) — for CR og Timing-merverdi
         double sumSpot = 0;
         var timerProduksjon = 0;
         var timerMedSpot = 0;
-        double merverdi = 0;
+        double realisertVsSpot = 0;
 
         foreach (var h in hours)
         {
@@ -98,14 +130,25 @@ public static class CaptureRateCalculator
             {
                 sumMwh += h.MwhElhub.Value;
                 sumNok += h.SpotomsetningNok.Value;
-                merverdi += h.SpotomsetningNok.Value - h.SpotprisNokMwh.Value * h.MwhElhub.Value;
+                sumElhubSpotValue += h.MwhElhub.Value * h.SpotprisNokMwh.Value;
+                realisertVsSpot += h.SpotomsetningNok.Value - h.SpotprisNokMwh.Value * h.MwhElhub.Value;
                 timerProduksjon++;
             }
         }
 
-        var capturePrice = sumMwh > 0 ? sumNok / sumMwh : 0;
+        // Capture-pris = volumvektet spotpris (nytt grunnlag). Var tidligere
+        // sumNok/sumMwh som blandet timing og markedsutførelse.
+        var capturePrice = sumMwh > 0 ? sumElhubSpotValue / sumMwh : 0;
         var timesBaseline = timerMedSpot > 0 ? sumSpot / timerMedSpot : 0;
         var timesCr = timesBaseline > 0 ? capturePrice / timesBaseline : 0;
+
+        // Timing-merverdi = krone-tvillingen til CR. Algebraisk identitet:
+        // timing_merverdi = sumMwh × snittspot × (CR − 1) → samme fortegn som CR−1.
+        var timingMerverdi = sumElhubSpotValue - sumMwh * timesBaseline;
+
+        // Realisert vs spot = utførelses-gap. Realisert pris = faktisk omsetning
+        // per MWh — kan være mindre enn spot i høyvanns-måneder.
+        var realisertPris = sumMwh > 0 ? sumNok / sumMwh : 0;
 
         // ---- Dag-CR med persentilfilter ----
         var (dagCr, dagBaseline, antallDager, antallEtterFilter) = ComputeDagCr(
@@ -117,7 +160,9 @@ public static class CaptureRateCalculator
             TimesBaselineNokMwh: timesBaseline,
             DagCr: dagCr,
             DagBaselineNokMwh: dagBaseline,
-            MerverdiNok: merverdi,
+            TimingMerverdiNok: timingMerverdi,
+            RealisertPrisNokMwh: realisertPris,
+            RealisertVsSpotNok: realisertVsSpot,
             AntallTimer: hours.Count,
             AntallTimerProduksjon: timerProduksjon,
             AntallDager: antallDager,
@@ -141,12 +186,15 @@ public static class CaptureRateCalculator
             return (0, 0, 0, 0);
         }
 
-        // Beregn rå_d for valgt periode (kun dager med produksjon + spot > 0)
+        // Beregn rå_d for valgt periode (kun dager med produksjon + spot > 0).
+        // NB: dag-oppnådd-prisen bruker nå Σ(MWh × spot) / Σ(MWh), samme grunnlag
+        // som times-CR. Tidligere brukte den NokDay (faktisk omsetning), som ga
+        // ulik teller for times-CR og dag-CR — det er nettopp det vi rydder vekk.
         var rawInPeriod = new List<(DateOnly Date, double Mwh, double Raw)>();
         foreach (var d in dailyInPeriod)
         {
-            if (d.MwhDay <= 0 || d.NokDay <= 0 || d.SpotDayAvg <= 0) continue;
-            var oppnaadd = d.NokDay / d.MwhDay;
+            if (d.MwhDay <= 0 || d.ElhubSpotValueDay <= 0 || d.SpotDayAvg <= 0) continue;
+            var oppnaadd = d.ElhubSpotValueDay / d.MwhDay;
             var raw = oppnaadd / d.SpotDayAvg;
             rawInPeriod.Add((d.Date, d.MwhDay, raw));
         }
@@ -160,8 +208,8 @@ public static class CaptureRateCalculator
         // Excel-modellens "alle år"-fenster. Hvis historikken er tom, fall tilbake
         // til persentil over kun valgt periode (mindre konservativt).
         var historicalRaws = historical
-            .Where(d => d.MwhDay > 0 && d.NokDay > 0 && d.SpotDayAvg > 0)
-            .Select(d => (d.NokDay / d.MwhDay) / d.SpotDayAvg)
+            .Where(d => d.MwhDay > 0 && d.ElhubSpotValueDay > 0 && d.SpotDayAvg > 0)
+            .Select(d => (d.ElhubSpotValueDay / d.MwhDay) / d.SpotDayAvg)
             .ToList();
         if (historicalRaws.Count == 0)
         {
@@ -196,14 +244,23 @@ public static class CaptureRateCalculator
     private static IReadOnlyList<DailyInput> AggregateDaily(IReadOnlyList<HourlyInput> hours)
     {
         var tz = TimeZones.Norway;
-        var byDate = new Dictionary<DateOnly, (double Mwh, double Nok, double SpotSum, int SpotCount)>();
+        var byDate = new Dictionary<DateOnly,
+            (double Mwh, double Nok, double SpotSum, int SpotCount, double ElhubSpotValue)>();
         foreach (var h in hours)
         {
             var local = TimeZoneInfo.ConvertTime(h.TimeUtc, tz);
             var date = DateOnly.FromDateTime(local.DateTime);
             byDate.TryGetValue(date, out var cur);
 
-            if (h.MwhElhub is > 0) cur.Mwh += h.MwhElhub.Value;
+            if (h.MwhElhub is > 0)
+            {
+                cur.Mwh += h.MwhElhub.Value;
+                if (h.SpotprisNokMwh.HasValue)
+                {
+                    // Σ(MWh × spot) for dagen — telleren i den nye dag-CR-en.
+                    cur.ElhubSpotValue += h.MwhElhub.Value * h.SpotprisNokMwh.Value;
+                }
+            }
             if (h.SpotomsetningNok is > 0 && h.MwhElhub is > 0) cur.Nok += h.SpotomsetningNok.Value;
             if (h.SpotprisNokMwh.HasValue)
             {
@@ -220,7 +277,8 @@ public static class CaptureRateCalculator
                 Date: kv.Key,
                 MwhDay: kv.Value.Mwh,
                 NokDay: kv.Value.Nok,
-                SpotDayAvg: kv.Value.SpotCount > 0 ? kv.Value.SpotSum / kv.Value.SpotCount : 0))
+                SpotDayAvg: kv.Value.SpotCount > 0 ? kv.Value.SpotSum / kv.Value.SpotCount : 0,
+                ElhubSpotValueDay: kv.Value.ElhubSpotValue))
             .ToList();
     }
 
@@ -256,7 +314,9 @@ public static class CaptureRateCalculator
         TimesBaselineNokMwh: 0,
         DagCr: 0,
         DagBaselineNokMwh: 0,
-        MerverdiNok: 0,
+        TimingMerverdiNok: 0,
+        RealisertPrisNokMwh: 0,
+        RealisertVsSpotNok: 0,
         AntallTimer: 0,
         AntallTimerProduksjon: 0,
         AntallDager: 0,
