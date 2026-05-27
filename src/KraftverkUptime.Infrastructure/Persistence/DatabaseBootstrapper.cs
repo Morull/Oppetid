@@ -248,6 +248,14 @@ public static class DatabaseBootstrapper
             -- feil i EndUtc fra SCADA/operlog. Idempotent ALTER.
             ALTER TABLE core.vakt_event_overrides
                 ADD COLUMN IF NOT EXISTS actual_end_override_utc timestamptz NULL;
+
+            -- Vakt-utrykning-overstyring (2026-05-22, Spec
+            -- NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md): U2-PlanDeviation
+            -- hendelser uten operlog-match teller ikke som vakt-utrykning i
+            -- Auto-modus. Drifts-leder kan overstyre per hendelse.
+            -- 0=Auto (default), 1=Yes, 2=No. Idempotent ALTER.
+            ALTER TABLE core.vakt_event_overrides
+                ADD COLUMN IF NOT EXISTS guard_response_override smallint NOT NULL DEFAULT 0;
             """;
 
         try

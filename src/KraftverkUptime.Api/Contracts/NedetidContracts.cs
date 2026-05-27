@@ -1,3 +1,5 @@
+using KraftverkUptime.Core.Domain;
+
 namespace KraftverkUptime.Api.Contracts;
 
 /// <summary>
@@ -59,7 +61,11 @@ public sealed record VaktRoiEventDto(
     int OverflowTimerInCounterfactual,
     bool OverflowDataMissing,
     bool PlanDataPartial,
-    string Forklaring);
+    string Forklaring,
+    // Spec NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md (2026-05-22):
+    // Manuell overstyring av om vakta rykket ut. Default Auto for events
+    // uten override-rad. UI viser dette i ny «Vakt utrykt»-kolonne.
+    GuardResponseOverride GuardResponseOverride = GuardResponseOverride.Auto);
 
 public sealed record VaktRoiResponse(
     string PlantId,

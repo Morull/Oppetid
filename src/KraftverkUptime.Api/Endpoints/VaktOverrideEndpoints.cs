@@ -1,5 +1,6 @@
 using Asp.Versioning;
 using Asp.Versioning.Builder;
+using KraftverkUptime.Core.Domain;
 using KraftverkUptime.Core.Security;
 using KraftverkUptime.Infrastructure.Persistence;
 using KraftverkUptime.Infrastructure.Persistence.Entities;
@@ -13,11 +14,20 @@ namespace KraftverkUptime.Api.Endpoints;
 /// (sensor-glitch) eller mangler data der drifts-leder vet at det var/ikke
 /// var overløp.
 ///
-/// Classification: <c>Auto</c> (default), <c>HaddeOverlop</c>, <c>IkkeOverlop</c>.
+/// En override-rad kan bære opptil tre uavhengige overstyringer:
+/// <list type="bullet">
+///   <item>Classification: <c>Auto</c> (default), <c>HaddeOverlop</c>, <c>IkkeOverlop</c>.</item>
+///   <item>ActualEndOverrideUtc: manuell slutt-tid hvis SCADA-data er feil (null = ingen overstyring).</item>
+///   <item>GuardResponseOverride (2026-05-22): <c>Auto</c> / <c>Yes</c> / <c>No</c> — om vakta
+///     rykket ut. <c>null</c> i request = ikke endre denne overstyringen.</item>
+/// </list>
+///
+/// Raden slettes automatisk når ALLE tre overstyringer er på default
+/// (Classification=Auto, ActualEndOverrideUtc=null, GuardResponseOverride=Auto).
 ///
 /// API:
 ///   GET    /api/v1/plants/{plantId}/vakt-overrides
-///   PUT    /api/v1/plants/{plantId}/vakt-overrides   (body: { eventStartUtc, classification, comment })
+///   PUT    /api/v1/plants/{plantId}/vakt-overrides   (body: { eventStartUtc, classification, comment?, actualEndOverrideUtc?, guardResponseOverride? })
 ///   DELETE /api/v1/plants/{plantId}/vakt-overrides?eventStartUtc=...
 /// </summary>
 public static class VaktOverrideEndpoints
@@ -60,7 +70,7 @@ public static class VaktOverrideEndpoints
             .OrderBy(o => o.EventStartUtc)
             .Select(o => new VaktOverrideDto(
                 o.PlantId, o.EventStartUtc, o.Classification, o.Comment, o.SetAt, o.SetBy,
-                o.ActualEndOverrideUtc))
+                o.ActualEndOverrideUtc, o.GuardResponseOverride))
             .ToListAsync(ct).ConfigureAwait(false);
         return Results.Ok(rows);
     }
@@ -93,10 +103,18 @@ public static class VaktOverrideEndpoints
             .FirstOrDefaultAsync(o => o.PlantId == plantId && o.EventStartUtc == body.EventStartUtc, ct)
             .ConfigureAwait(false);
 
-        // En override-rad kan nå bære klassifisering OG/eller varighet — begge
-        // valgfrie. Slett raden kun hvis BÅDE classification = "Auto" OG
-        // ActualEndOverrideUtc er null (= helt tilbake til default).
-        var skalSlettes = body.Classification == "Auto" && body.ActualEndOverrideUtc is null;
+        // En override-rad kan nå bære klassifisering, varighet OG/eller vakt-
+        // utrykning — alle tre valgfrie. Slett raden kun hvis ALLE tre er på
+        // default (classification = "Auto", ActualEndOverrideUtc = null,
+        // GuardResponseOverride = Auto). null i body.GuardResponseOverride betyr
+        // "ikke endre", så vi må kombinere med eksisterende verdi for å vurdere
+        // den endelige tilstanden.
+        var finalGuardResponse = body.GuardResponseOverride
+            ?? existing?.GuardResponseOverride
+            ?? GuardResponseOverride.Auto;
+        var skalSlettes = body.Classification == "Auto"
+            && body.ActualEndOverrideUtc is null
+            && finalGuardResponse == GuardResponseOverride.Auto;
         if (skalSlettes)
         {
             if (existing is not null)
@@ -105,7 +123,7 @@ public static class VaktOverrideEndpoints
                 await db.SaveChangesAsync(ct).ConfigureAwait(false);
             }
             return Results.Ok(new VaktOverrideDto(
-                plantId, body.EventStartUtc, "Auto", null, now, null, null));
+                plantId, body.EventStartUtc, "Auto", null, now, null, null, GuardResponseOverride.Auto));
         }
 
         if (existing is null)
@@ -119,6 +137,7 @@ public static class VaktOverrideEndpoints
                 OwnerOrgId = "dev-org",
                 SetAt = now,
                 ActualEndOverrideUtc = body.ActualEndOverrideUtc,
+                GuardResponseOverride = body.GuardResponseOverride ?? GuardResponseOverride.Auto,
             });
         }
         else
@@ -127,12 +146,17 @@ public static class VaktOverrideEndpoints
             existing.Comment = body.Comment;
             existing.SetAt = now;
             existing.ActualEndOverrideUtc = body.ActualEndOverrideUtc;
+            // null = "ikke endre" — la eksisterende vakt-utrykning-overstyring stå.
+            if (body.GuardResponseOverride.HasValue)
+            {
+                existing.GuardResponseOverride = body.GuardResponseOverride.Value;
+            }
         }
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
 
         return Results.Ok(new VaktOverrideDto(
             plantId, body.EventStartUtc, body.Classification, body.Comment, now, null,
-            body.ActualEndOverrideUtc));
+            body.ActualEndOverrideUtc, finalGuardResponse));
     }
 
     private static async Task<IResult> DeleteAsync(
@@ -155,10 +179,12 @@ public sealed record VaktOverrideDto(
     string? Comment,
     DateTimeOffset SetAt,
     string? SetBy,
-    DateTimeOffset? ActualEndOverrideUtc);
+    DateTimeOffset? ActualEndOverrideUtc,
+    GuardResponseOverride GuardResponseOverride);
 
 public sealed record UpsertVaktOverrideRequest(
     DateTimeOffset EventStartUtc,
     string Classification,
     string? Comment,
-    DateTimeOffset? ActualEndOverrideUtc = null);
+    DateTimeOffset? ActualEndOverrideUtc = null,
+    GuardResponseOverride? GuardResponseOverride = null);

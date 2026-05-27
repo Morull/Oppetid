@@ -546,6 +546,11 @@ else if (!IsPortfolioMode && _response is not null)
                 <MudTh><MudTableSortLabel SortBy="@SortByVaktCategory">Kategori</MudTableSortLabel></MudTh>
                 <MudTh><MudTableSortLabel SortBy="@SortByVaktInWindow">Vakt-vindu</MudTableSortLabel></MudTh>
                 <MudTh><MudTableSortLabel SortBy="@SortByVaktReddbar">Reddbar</MudTableSortLabel></MudTh>
+                <MudTh>
+                    <MudTooltip Text="Om vakta rykket ut for denne hendelsen. Auto = automatisk vurdering (operlog-match for U2-PlanDeviation). Ja/Nei = drifts-leder har bekreftet manuelt.">
+                        <span>Vakt utrykt</span>
+                    </MudTooltip>
+                </MudTh>
                 <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVaktExtra">Ekstra (t)</MudTableSortLabel></MudTh>
                 <MudTh Style="text-align:right">Overløp</MudTh>
                 <MudTh Style="text-align:right">
@@ -572,6 +577,17 @@ else if (!IsPortfolioMode && _response is not null)
                 <MudTd DataLabel="Kategori">@DisplayKategori(context.Event.Kategori)</MudTd>
                 <MudTd DataLabel="Vakt-vindu">@(context.ErInnenforVakt ? "Ja" : "–")</MudTd>
                 <MudTd DataLabel="Reddbar">@(context.ErReddbar ? "Ja" : "–")</MudTd>
+                <MudTd DataLabel="Vakt utrykt">
+                    @{
+                        var vu = VaktUtrykningView(context);
+                    }
+                    <MudTooltip Text="@vu.Tooltip">
+                        <span style="display:inline-flex; align-items:center; gap:6px;">
+                            <span style="width:8px; height:8px; border-radius:50%; background-color:@vu.DotColor; display:inline-block;"></span>
+                            <span>@vu.Label</span>
+                        </span>
+                    </MudTooltip>
+                </MudTd>
                 <MudTd DataLabel="Ekstra" Style="text-align:right">@(context.ErInnenforVakt && context.ErReddbar ? context.EkstraTimerSpart.ToString("F1", NumberFormat.Norsk) : "–")</MudTd>
                 <MudTd DataLabel="Overløp" Style="text-align:right">@DisplayOverflow(context)</MudTd>
                 <MudTd DataLabel="Overløp NOK" Style="text-align:right">@(context.ReddetProduksjon_NOK > 0 ? FormatNok(context.ReddetProduksjon_NOK) : "–")</MudTd>
@@ -595,6 +611,67 @@ else if (!IsPortfolioMode && _response is not null)
             </RowTemplate>
         </MudTable>
     </MudPaper>
+
+    @* ---- Hendelser til vurdering (Spec NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md) ----
+       U2-PlanDeviation-hendelser uten operlog-match og uten eksplisitt drifts-leder-
+       overstyring. Filtreres ut av ROI-summen i Auto-modus — vises her separat så
+       drifts-leder kan ta stilling per hendelse. Antallet vises i headeren selv når
+       seksjonen er kollapset. *@
+    @if (HendelserTilVurdering() is { Count: > 0 } tilVurdering)
+    {
+        <MudPaper Class="pa-4 mt-4" Elevation="1">
+            <div class="d-flex justify-space-between align-center" style="cursor:pointer;"
+                 @onclick="ToggleTilVurdering">
+                <div class="d-flex align-center gap-2">
+                    <MudIcon Icon="@(_visTilVurdering ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                             Size="MudBlazor.Size.Small" />
+                    <MudText Typo="Typo.h4">
+                        Hendelser til vurdering: @tilVurdering.Count
+                    </MudText>
+                </div>
+                <MudTooltip Text="U2-PlanDeviation-hendelser uten operlog-match. Auto-vurdering: vakta rykket ikke ut. Drifts-leder kan overstyre per hendelse i Detaljer-popupen.">
+                    <MudIcon Icon="@Icons.Material.Filled.Info"
+                             Color="MudBlazor.Color.Secondary"
+                             Size="MudBlazor.Size.Small" />
+                </MudTooltip>
+            </div>
+            <MudCollapse Expanded="_visTilVurdering">
+                <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary" Class="mt-2 mb-2">
+                    Plan-avvik uten alarm i operatør-loggen — filtreres ut av Vakt-ROI til drifts-leder bekrefter eller avkrefter utrykning.
+                </MudText>
+                <MudTable Items="tilVurdering" Hover="true" Dense="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Start</MudTh>
+                        <MudTh>Slutt</MudTh>
+                        <MudTh>Kategori</MudTh>
+                        <MudTh>Årsak</MudTh>
+                        <MudTh Style="text-align:right">Tap (MWh)</MudTh>
+                        <MudTh Style="text-align:right">Tap (NOK)</MudTh>
+                        <MudTh Style="text-align:center; width:140px;">Handling</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@FormatLocal(context.Event.StartUtc)</MudTd>
+                        <MudTd>@FormatLocal(context.Event.EndUtc)</MudTd>
+                        <MudTd>@DisplayKategori(context.Event.Kategori)</MudTd>
+                        <MudTd>
+                            <MudTooltip Text="@(context.Event.CauseCode ?? "")">
+                                <span>@CauseFormatter.Display(context.Event.CauseCode)</span>
+                            </MudTooltip>
+                        </MudTd>
+                        <MudTd Style="text-align:right">@context.Event.TapMwh.ToString("F2", NumberFormat.Norsk)</MudTd>
+                        <MudTd Style="text-align:right">@FormatNok(context.Event.TapNok)</MudTd>
+                        <MudTd Style="text-align:center;">
+                            <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small"
+                                       StartIcon="@Icons.Material.Filled.RateReview"
+                                       OnClick="@(() => OpenDetailDialogAsync(context))">
+                                Vurder
+                            </MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudCollapse>
+        </MudPaper>
+    }
 }
 
 @code {
@@ -797,6 +874,70 @@ else if (!IsPortfolioMode && _response is not null)
         return e.Event.Kategori.Contains(s, StringComparison.OrdinalIgnoreCase)
             || (e.Event.CauseCode?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
             || e.Forklaring.Contains(s, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Toggle-state for "Hendelser til vurdering"-seksjonen.
+    private bool _visTilVurdering;
+    private void ToggleTilVurdering() => _visTilVurdering = !_visTilVurdering;
+
+    /// <summary>
+    /// "Hendelser til vurdering": U2-PlanDeviation-hendelser uten operlog-match og
+    /// uten eksplisitt drifts-leder-overstyring (= Auto). Disse er filtrert ut av
+    /// ROI-summen i Auto-modus og venter på drifts-leders bekreftelse/avkreftelse.
+    /// Spec NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md (2026-05-22).
+    /// </summary>
+    private IReadOnlyList<VaktRoiEventDto> HendelserTilVurdering()
+    {
+        if (_response is null) return Array.Empty<VaktRoiEventDto>();
+        return _response.Events
+            .Where(e => string.Equals(e.Event.CauseCode, "U2-PlanDeviation", StringComparison.Ordinal)
+                && e.GuardResponseOverride == GuardResponseOverride.Auto
+                && !e.Event.HarOperlogMatch)
+            .OrderByDescending(e => e.Event.StartUtc)
+            .ToList();
+    }
+
+    /// <summary>
+    /// View-modell for "Vakt utrykt"-kolonnen. Spec NESTE-CHAT-VAKTROI-
+    /// PLANDEVIATION-FILTER.md (2026-05-22): viser status (Auto/Ja/Nei) med
+    /// farge-prikk og tooltip. For ikke-U2-hendelser: alltid «Auto · alltid teller»
+    /// (informasjonsmessig) — siden filteret kun gjelder U2-PlanDeviation har
+    /// override-verdien ingen effekt på ROI for andre kategorier.
+    /// </summary>
+    private static (string Label, string DotColor, string Tooltip) VaktUtrykningView(VaktRoiEventDto e)
+    {
+        var erU2 = string.Equals(e.Event.CauseCode, "U2-PlanDeviation", StringComparison.Ordinal);
+
+        // Ikke-U2: override har ingen effekt, vis informasjonsmessig grå-tekst.
+        if (!erU2)
+        {
+            return (
+                "Auto · alltid teller",
+                "var(--mud-palette-action-disabled)",
+                "Filter gjelder kun U2-PlanDeviation. Denne hendelsen teller alltid som vakt-utrykning.");
+        }
+
+        // U2-PlanDeviation: override bestemmer ROI-bidrag.
+        return e.GuardResponseOverride switch
+        {
+            GuardResponseOverride.Yes => (
+                "Ja",
+                "var(--mud-palette-success)",
+                "Drifts-leder har bekreftet at vakta rykket ut."),
+            GuardResponseOverride.No => (
+                "Nei",
+                "var(--mud-palette-warning)",
+                "Drifts-leder har bekreftet at vakta IKKE rykket ut — filtrert fra ROI."),
+            // Auto:
+            _ when e.Event.HarOperlogMatch => (
+                "Auto · alarm trigget",
+                "var(--mud-palette-success)",
+                "U2-PlanDeviation med operlog-match. Auto-vurdering: vakta rykket ut."),
+            _ => (
+                "Auto · ingen alarm",
+                "var(--mud-palette-action-disabled)",
+                "U2-PlanDeviation uten operlog-match. Auto-vurdering: vakta rykket IKKE ut — filtrert fra ROI. Drifts-leder kan overstyre."),
+        };
     }
 
     protected override async Task OnInitializedAsync()

@@ -193,16 +193,36 @@ public static class NedetidEndpoints
             .Where(o => o.Classification != "Auto")
             .ToDictionary(o => o.EventStartUtc, o => o.Classification);
 
+        // U2-PlanDeviation-filter (spec NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md,
+        // 2026-05-22): bygg settet av events hvor EffectiveGuardResponse == false.
+        // Disse passeres til Calculator som excludeFromReddbar slik at de blir
+        // klassifisert som IkkeReddbar (ingen ROI), men fortsatt teller som outage-
+        // tid. Logikken sitter i Core.Domain.EffectiveGuardResponseEvaluator —
+        // kalkulatoren forblir en ren funksjon av events + plan-data.
+        var guardOverridesByEventStart = overrideRows
+            .ToDictionary(o => o.EventStartUtc, o => o.GuardResponseOverride);
+        var excludeFromReddbar = events
+            .Where(e =>
+            {
+                var ovr = guardOverridesByEventStart.TryGetValue(e.StartUtc, out var g)
+                    ? (GuardResponseOverride?)g
+                    : null;
+                return !EffectiveGuardResponseEvaluator.ShouldCount(e, ovr);
+            })
+            .Select(e => e.StartUtc)
+            .ToHashSet();
+
         var roi = calculator.Calculate(
             events, snittSpot, planResult.PlanByHour,
             dataset.OverflowHours, overflowDataAvailable: dataset.DataAvailable,
             snittUbalansetillegg_NokMwh: snittUbalansetillegg,
             overrides: overrides,
             proxyHours: planResult.ProxyHours,
-            vaktOptions: vaktOptions);
+            vaktOptions: vaktOptions,
+            excludeFromReddbar: excludeFromReddbar);
         var effectiveVakt = vaktOptions ?? VaktTidsmodellOptions.Default;
         var response = BuildVaktRoiResponse(plantId, fromUtc, toUtc, plant.InstalledCapacityMw,
-            snittSpot, snittUbalansetillegg, effectiveVakt, roi);
+            snittSpot, snittUbalansetillegg, effectiveVakt, roi, guardOverridesByEventStart);
 
         if (string.Equals(format, "csv", StringComparison.OrdinalIgnoreCase))
         {
@@ -293,7 +313,8 @@ public static class NedetidEndpoints
         double effektMw, double snittSpot,
         double snittUbalansetillegg,
         VaktTidsmodellOptions vaktOptions,
-        IReadOnlyList<VaktRoiResultat> roi)
+        IReadOnlyList<VaktRoiResultat> roi,
+        IReadOnlyDictionary<DateTimeOffset, GuardResponseOverride> guardOverrides)
     {
         var dtos = roi.Select(r => new VaktRoiEventDto(
             Event: MapEvent(r.Event),
@@ -308,7 +329,9 @@ public static class NedetidEndpoints
             OverflowTimerInCounterfactual: r.OverflowTimerInCounterfactual,
             OverflowDataMissing: r.OverflowDataMissing,
             PlanDataPartial: r.PlanDataPartial,
-            Forklaring: r.Forklaring)).ToList();
+            Forklaring: r.Forklaring,
+            GuardResponseOverride: guardOverrides.TryGetValue(r.Event.StartUtc, out var g)
+                ? g : GuardResponseOverride.Auto)).ToList();
 
         var reddbareInnenfor = roi.Count(r => r.ErInnenforVakt && r.ErReddbar);
         var totalReddetMwh = roi.Sum(r => r.ReddetMwh);

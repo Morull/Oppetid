@@ -137,16 +137,26 @@ public sealed class NedetidApi
 
     /// <summary>
     /// Setter override for én vakt-event. Classification: "Auto",
-    /// "HaddeOverlop" eller "IkkeOverlop".
+    /// "HaddeOverlop" eller "IkkeOverlop". <paramref name="guardResponseOverride"/>
+    /// = null betyr «ikke endre vakt-utrykning-overstyringen» — la eksisterende
+    /// verdi stå (eller default Auto for nye rader).
     /// </summary>
     public async Task<VaktOverrideDto> UpsertVaktOverrideAsync(
         string plantId, DateTimeOffset eventStartUtc, string classification,
         string? comment,
         DateTimeOffset? actualEndOverrideUtc = null,
+        GuardResponseOverride? guardResponseOverride = null,
         CancellationToken ct = default)
     {
         var url = $"api/v1/plants/{Uri.EscapeDataString(plantId)}/vakt-overrides";
-        var body = new { eventStartUtc, classification, comment, actualEndOverrideUtc };
+        var body = new
+        {
+            eventStartUtc,
+            classification,
+            comment,
+            actualEndOverrideUtc,
+            guardResponseOverride,
+        };
         var resp = await _http.PutAsJsonAsync(url, body, JsonOptions, ct).ConfigureAwait(false);
         resp.EnsureSuccessStatusCode();
         return await resp.Content.ReadFromJsonAsync<VaktOverrideDto>(JsonOptions, ct).ConfigureAwait(false)
@@ -528,7 +538,22 @@ public sealed record VaktRoiEventDto(
     int OverflowTimerInCounterfactual,
     bool OverflowDataMissing,
     string Forklaring,
-    bool PlanDataPartial = false);
+    bool PlanDataPartial = false,
+    // Spec NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md (2026-05-22):
+    // Manuell overstyring av om vakta rykket ut. Auto = bruk
+    // EffectiveGuardResponse-logikken (operlog-match for U2-PlanDeviation).
+    GuardResponseOverride GuardResponseOverride = GuardResponseOverride.Auto);
+
+/// <summary>
+/// Wire-speil av <c>KraftverkUptime.Core.Domain.GuardResponseOverride</c>.
+/// Speiles her i Web-prosjektet for å unngå å dra Core inn i WASM-bygget.
+/// </summary>
+public enum GuardResponseOverride
+{
+    Auto = 0,
+    Yes = 1,
+    No = 2,
+}
 
 public sealed record PortfolioKpiResponse(
     DateTimeOffset FromUtc,
@@ -592,7 +617,8 @@ public sealed record VaktOverrideDto(
     string? Comment,
     DateTimeOffset SetAt,
     string? SetBy,
-    DateTimeOffset? ActualEndOverrideUtc);
+    DateTimeOffset? ActualEndOverrideUtc,
+    GuardResponseOverride GuardResponseOverride = GuardResponseOverride.Auto);
 
 public sealed record EffektivitetResponse(
     string PlantId,

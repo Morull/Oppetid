@@ -167,6 +167,9 @@ public sealed class KraftverkDbContext : DbContext
             b.Property(x => x.Comment).HasMaxLength(500);
             b.Property(x => x.OwnerOrgId).HasMaxLength(64).IsRequired();
             b.Property(x => x.SetBy).HasMaxLength(128);
+            // Vakt-utrykning-overstyring lagres som smallint i DB
+            // (0=Auto, 1=Yes, 2=No) for kompakt lagring + match med Spec-en.
+            b.Property(x => x.GuardResponseOverride).HasConversion<short>();
         });
 
         // SCADA foundation — ref ANALYSE-NEDETID-SCADA.md + Spec KASKADE-DAMMER

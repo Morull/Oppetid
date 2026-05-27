@@ -120,13 +120,30 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
                 .Where(o => o.Classification != "Auto")
                 .ToDictionary(o => o.EventStartUtc, o => o.Classification);
 
+            // U2-PlanDeviation-filter (spec NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md,
+            // 2026-05-22): hendelser uten operlog-match og uten eksplisitt Yes-override
+            // teller ikke som vakt-utrykning. Bygges per-plant før kalkulatoren kalles.
+            var guardOverridesByEventStart = overrideRows
+                .ToDictionary(o => o.EventStartUtc, o => o.GuardResponseOverride);
+            var excludeFromReddbar = events
+                .Where(e =>
+                {
+                    var ovr = guardOverridesByEventStart.TryGetValue(e.StartUtc, out var g)
+                        ? (GuardResponseOverride?)g
+                        : null;
+                    return !EffectiveGuardResponseEvaluator.ShouldCount(e, ovr);
+                })
+                .Select(e => e.StartUtc)
+                .ToHashSet();
+
             var roi = _calculator.Calculate(
                 events, snittSpot, planResult.PlanByHour,
                 dataset.OverflowHours, overflowDataAvailable: dataset.DataAvailable,
                 snittUbalansetillegg_NokMwh: snittUbalansetillegg,
                 overrides: overrides,
                 proxyHours: planResult.ProxyHours,
-                vaktOptions: vaktOptions);
+                vaktOptions: vaktOptions,
+                excludeFromReddbar: excludeFromReddbar);
 
             var plantReddetNok = roi.Sum(r => r.ReddetNok);
             var plantReddetProduksjon = roi.Sum(r => r.ReddetProduksjon_NOK);

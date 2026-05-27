@@ -123,6 +123,16 @@ public sealed class VaktRoiCalculator
     /// <c>_vaktModell</c>. Helg- og helligdags-håndteringen er IKKE konfigurerbar
     /// — hele lørdag/søndag/helligdag er fortsatt vakt-aktiv.
     /// </param>
+    /// <param name="excludeFromReddbar">
+    /// Settet av event-<c>StartUtc</c>-er som skal ekskluderes fra reddbar-
+    /// klassifiseringen, uavhengig av kategori. Brukes av Vakt-ROI-endepunktene
+    /// for å filtrere ut U2-PlanDeviation-hendelser uten operlog-match (spec
+    /// NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md, 2026-05-22). Hendelser i
+    /// settet blir markert som <c>IkkeReddbar</c> med null ROI, men teller
+    /// fortsatt som outage-tid i counterfactual-vinduet (= bryter ikke
+    /// monoton-invarianten). Selve EffectiveGuardResponse-logikken sitter
+    /// utenfor kalkulatoren i <c>EffectiveGuardResponseEvaluator</c>.
+    /// </param>
     public IReadOnlyList<VaktRoiResultat> Calculate(
         IReadOnlyList<DowntimeEvent> events,
         double snittSpotprisNokMwh,
@@ -132,7 +142,8 @@ public sealed class VaktRoiCalculator
         double snittUbalansetillegg_NokMwh = 0,
         IReadOnlyDictionary<DateTimeOffset, string>? overrides = null,
         IReadOnlySet<DateTimeOffset>? proxyHours = null,
-        VaktTidsmodellOptions? vaktOptions = null)
+        VaktTidsmodellOptions? vaktOptions = null,
+        IReadOnlySet<DateTimeOffset>? excludeFromReddbar = null)
     {
         ArgumentNullException.ThrowIfNull(events);
         ArgumentNullException.ThrowIfNull(planByHour);
@@ -141,6 +152,7 @@ public sealed class VaktRoiCalculator
         overflowHours ??= new HashSet<DateTimeOffset>();
         overrides ??= new Dictionary<DateTimeOffset, string>();
         proxyHours ??= new HashSet<DateTimeOffset>();
+        excludeFromReddbar ??= new HashSet<DateTimeOffset>();
 
         // Hvis caller har gitt egne vakt-tider for denne spørringen, bygg en
         // lokal modell. Ellers bruk default fra konstruktør (DI-injected).
@@ -148,11 +160,14 @@ public sealed class VaktRoiCalculator
 
         // Pass 1: klassifiser hvert event (utenfor-vakt / ikke-reddbar / reddbar)
         // og lag en arbeidsliste med counterfactualEnd per reddbar event.
+        // Events i excludeFromReddbar blir IkkeReddbar uansett kategori — det er
+        // U2-PlanDeviation-filteret som anvendes oppstrøms av endepunktene.
         var classified = new List<(DowntimeEvent Event, EventClassification Class, DateTimeOffset? CounterfactualEnd)>(events.Count);
         foreach (var e in events)
         {
             var innenforVakt = vaktModell.ErInnenforVakt(e.StartUtc);
-            var reddbar = ReddbareKategorier.Contains(e.Category);
+            var manueltEkskludert = excludeFromReddbar.Contains(e.StartUtc);
+            var reddbar = !manueltEkskludert && ReddbareKategorier.Contains(e.Category);
             if (!innenforVakt)
             {
                 classified.Add((e, EventClassification.UtenforVakt, null));
@@ -344,6 +359,14 @@ public sealed class VaktRoiCalculator
 
             if (klass == EventClassification.IkkeReddbar)
             {
+                // To grunner kan gi IkkeReddbar: (1) kategori er ikke i ReddbareKategorier,
+                // eller (2) hendelsen er manuelt ekskludert oppstrøms (U2-PlanDeviation-
+                // filter). Forklaringen skal speile riktig årsak så drifts-leder forstår
+                // hvorfor ROI = 0 her.
+                var ikkeReddbarForklaring = excludeFromReddbar.Contains(e.StartUtc)
+                    ? "U2-PlanDeviation uten operlog-match — vakta rykket ikke ut (auto-vurdering). " +
+                      "Drifts-leder kan overstyre i Detaljer-popup."
+                    : $"Kategori '{e.Category}' regnes ikke som reddbar (planlagt/marked/data).";
                 result.Add(new VaktRoiResultat
                 {
                     Event = e,
@@ -358,7 +381,7 @@ public sealed class VaktRoiCalculator
                     OverflowTimerInCounterfactual = 0,
                     OverflowDataMissing = false,
                     PlanDataPartial = false,
-                    Forklaring = $"Kategori '{e.Category}' regnes ikke som reddbar (planlagt/marked/data).",
+                    Forklaring = ikkeReddbarForklaring,
                 });
                 continue;
             }

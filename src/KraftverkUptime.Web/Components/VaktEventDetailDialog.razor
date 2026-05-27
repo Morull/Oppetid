@@ -141,6 +141,28 @@
                               HelperText="@ActualEndHelperText" />
             </MudItem>
 
+            @* ====== Vakt-utrykning (Spec NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md) ======
+               Drifts-leder bekrefter eller avkrefter at vakta faktisk rykket ut for denne
+               hendelsen. Default Auto = bruk operlog-match som proxy for U2-PlanDeviation,
+               teller alltid ellers. *@
+            <MudItem xs="12" Class="mt-2">
+                <MudText Typo="Typo.subtitle1" Class="mb-1">Vakt-utrykning</MudText>
+                <MudRadioGroup T="GuardResponseOverride" @bind-Value="_guardResponse">
+                    <MudRadio Value="GuardResponseOverride.Auto" Color="Color.Primary">
+                        Auto <MudText Typo="Typo.caption" Color="Color.Secondary" Class="ms-1">(bruk auto-vurdering)</MudText>
+                    </MudRadio>
+                    <MudRadio Value="GuardResponseOverride.Yes" Color="Color.Success">
+                        Ja, vakt rykket ut
+                    </MudRadio>
+                    <MudRadio Value="GuardResponseOverride.No" Color="Color.Warning">
+                        Nei, ingen utrykning
+                    </MudRadio>
+                </MudRadioGroup>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">
+                    @GuardResponseHelperText
+                </MudText>
+            </MudItem>
+
             <MudItem xs="12">
                 <MudTextField @bind-Value="_comment" Label="Kommentar (valgfri)"
                               Lines="2" MaxLength="500" />
@@ -173,8 +195,33 @@
     private string _classification = "Auto";
     private string? _comment;
     private DateTime? _actualEndLocal;
+    private GuardResponseOverride _guardResponse = GuardResponseOverride.Auto;
     private bool _busy;
     private string? _error;
+
+    /// <summary>
+    /// Helper-tekst for vakt-utrykning-feltet. Forklarer hva auto-vurderingen sier
+    /// (basert på causeCode + harOperlogMatch) så drifts-leder vet hva Auto-modus
+    /// faktisk gir.
+    /// </summary>
+    private string GuardResponseHelperText
+    {
+        get
+        {
+            var er_u2 = string.Equals(RoiEvent.Event.CauseCode, "U2-PlanDeviation", StringComparison.Ordinal);
+            var operlogTekst = RoiEvent.Event.HarOperlogMatch
+                ? "Operatør-logg-match: ja"
+                : "Operatør-logg-match: nei";
+            if (!er_u2)
+            {
+                return $"{operlogTekst}. Filter gjelder kun U2-PlanDeviation — denne hendelsen teller alltid i Auto-modus.";
+            }
+            var autoUtfall = RoiEvent.Event.HarOperlogMatch
+                ? "Auto-vurdering: vakta rykket ut (alarm trigget)."
+                : "Auto-vurdering: vakta rykket IKKE ut (ingen alarm i loggen).";
+            return $"{operlogTekst}. {autoUtfall}";
+        }
+    }
 
     /// <summary>
     /// Avledet varighet hvis brukeren har skrevet inn faktisk slutt — hjelper
@@ -209,6 +256,14 @@
             {
                 _actualEndLocal = endOv.ToLocalTime().DateTime;
             }
+            _guardResponse = ExistingOverride.GuardResponseOverride;
+        }
+        else
+        {
+            // Ingen override-rad enda — VaktRoiEventDto kan likevel bære
+            // GuardResponseOverride (alltid Auto i dette tilfellet, men spec
+            // åpner for at API senere kan returnere noe annet).
+            _guardResponse = RoiEvent.GuardResponseOverride;
         }
     }
 
@@ -233,11 +288,15 @@
         try
         {
             await NedetidApi.UpsertVaktOverrideAsync(
-                PlantId, RoiEvent.Event.StartUtc, _classification, _comment, actualEndUtc);
+                PlantId, RoiEvent.Event.StartUtc, _classification, _comment, actualEndUtc,
+                guardResponseOverride: _guardResponse);
 
+            var alleDefaults = _classification == "Auto"
+                && actualEndUtc is null
+                && _guardResponse == GuardResponseOverride.Auto;
             Snackbar.Add(
-                _classification == "Auto" && actualEndUtc is null
-                    ? "Override fjernet — bruker SCADA-data."
+                alleDefaults
+                    ? "Override fjernet — bruker auto-vurdering."
                     : "Override lagret.",
                 Severity.Success);
             Dialog.Close(DialogResult.Ok(true));

@@ -1,3 +1,5 @@
+using KraftverkUptime.Core.Domain;
+
 namespace KraftverkUptime.Infrastructure.Persistence.Entities;
 
 /// <summary>
@@ -41,4 +43,13 @@ public sealed class VaktEventOverrideEntry
     /// Valideres til å være etter <see cref="EventStartUtc"/>.
     /// </summary>
     public DateTimeOffset? ActualEndOverrideUtc { get; set; }
+
+    /// <summary>
+    /// Manuell overstyring av om vakta rykket ut for denne hendelsen.
+    /// Spec NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md (2026-05-22): U2-PlanDeviation-
+    /// hendelser uten operlog-match teller IKKE som vakt-utrykning i Auto-modus —
+    /// drifts-leder kan overstyre per hendelse. Default <see cref="GuardResponseOverride.Auto"/>
+    /// (= EffectiveGuardResponse-logikken bestemmer). Lagres som smallint, 0=Auto, 1=Yes, 2=No.
+    /// </summary>
+    public GuardResponseOverride GuardResponseOverride { get; set; } = GuardResponseOverride.Auto;
 }

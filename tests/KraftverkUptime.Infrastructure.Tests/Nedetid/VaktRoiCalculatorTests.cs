@@ -893,4 +893,202 @@ public class VaktRoiCalculatorTests
         aCustom.ReddetMwh.Should().BeApproximately(aDefault.ReddetMwh, 0.001,
             "plan-sum for leder skal ikke vokse når B faller ut av gruppen.");
     }
+
+    // ------------------------------------------------------------------------
+    // Spec NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md (2026-05-22):
+    // U2-PlanDeviation-hendelser uten operlog-match skal IKKE telle som
+    // vakt-utrykning i Auto-modus. Drifts-leder kan overstyre via Yes/No.
+    // Andre cause-koder er upåvirket (regresjons-sjekk).
+    // ------------------------------------------------------------------------
+
+    /// <summary>
+    /// Bygger excludeFromReddbar-settet slik endepunktene gjør det: kombinerer
+    /// event + override-verdi via <see cref="EffectiveGuardResponseEvaluator.ShouldCount"/>.
+    /// </summary>
+    private static IReadOnlySet<DateTimeOffset> BuildExcludeSet(
+        IEnumerable<DowntimeEvent> events,
+        IReadOnlyDictionary<DateTimeOffset, GuardResponseOverride> overrides)
+    {
+        return events
+            .Where(e =>
+            {
+                var ovr = overrides.TryGetValue(e.StartUtc, out var g) ? (GuardResponseOverride?)g : null;
+                return !EffectiveGuardResponseEvaluator.ShouldCount(e, ovr);
+            })
+            .Select(e => e.StartUtc)
+            .ToHashSet();
+    }
+
+    [Theory]
+    [InlineData("U2-PlanDeviation", GuardResponseOverride.Auto, false, false)]
+    [InlineData("U2-PlanDeviation", GuardResponseOverride.Auto, true, true)]
+    [InlineData("U2-PlanDeviation", GuardResponseOverride.Yes, false, true)]
+    [InlineData("U2-PlanDeviation", GuardResponseOverride.Yes, true, true)]
+    [InlineData("U2-PlanDeviation", GuardResponseOverride.No, false, false)]
+    [InlineData("U2-PlanDeviation", GuardResponseOverride.No, true, false)]
+    [InlineData("U1-UnplannedStop", GuardResponseOverride.Auto, false, true)]
+    [InlineData("U1-UnplannedStop", GuardResponseOverride.Auto, true, true)]
+    public void U2_PlanDeviation_Filter_Matrix(
+        string causeCode, GuardResponseOverride ovr, bool harOperlogMatch, bool expectedTellerSomReddbar)
+    {
+        // Trip onsdag 16:00-17:30 lokal — vakt aktiv, overløp i hele counterfactual.
+        // Hendelsen er TripFeil + reddbar-kategori. Eneste varierte forutsetning er
+        // EffectiveGuardResponse-utfallet basert på causeCode/override/operlog.
+        var ev = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 2, 4, 16),
+            EndUtc = OsloLokal(2026, 2, 4, 17, 30),
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            CauseCode = causeCode,
+            HarOperlogMatch = harOperlogMatch,
+            TapMwh = 1.0,
+            TapNok = 850,
+            TimerSettlement = 2,
+        };
+
+        var counterfactualEnd = OsloLokal(2026, 2, 5, 8);
+        var overflow = OverflowAlleTimer(ev.EndUtc, counterfactualEnd);
+        var plan = PlanFlat(ev.StartUtc, counterfactualEnd, 2.2 * 0.5);
+
+        var overrides = new Dictionary<DateTimeOffset, GuardResponseOverride>
+        {
+            [ev.StartUtc] = ovr,
+        };
+        var excludeFromReddbar = BuildExcludeSet(new[] { ev }, overrides);
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { ev },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true,
+            excludeFromReddbar: excludeFromReddbar);
+
+        var r = roi.Should().ContainSingle().Which;
+
+        if (expectedTellerSomReddbar)
+        {
+            r.ErReddbar.Should().BeTrue(
+                "matrise-celle ({0}, {1}, operlog={2}) skal telle som vakt-utrykning",
+                causeCode, ovr, harOperlogMatch);
+            r.ReddetMwh.Should().BeGreaterThan(0);
+            r.ReddetNok.Should().BeGreaterThan(0);
+        }
+        else
+        {
+            r.ErReddbar.Should().BeFalse(
+                "matrise-celle ({0}, {1}, operlog={2}) skal IKKE telle som vakt-utrykning",
+                causeCode, ovr, harOperlogMatch);
+            r.ReddetMwh.Should().Be(0);
+            r.ReddetNok.Should().Be(0);
+            r.EkstraTimerSpart.Should().Be(0);
+        }
+    }
+
+    [Fact]
+    public void U2_Auto_UtenOperlog_TellerFortsattSomOutage_ForAndreVaktEvents()
+    {
+        // Monoton-invariant-test: en U2-PlanDeviation uten operlog (filtreres ut)
+        // skal IKKE inflate ROI-en til en U1-event som ligger like ved i samme
+        // vakt-vindu. Outage-tiden fra U2-eventet teller fortsatt selv om den
+        // ikke gir ROI selv.
+        //
+        // Event A (U1): trip 16:00-17:00 — leder, får ROI
+        // Event B (U2 uten operlog): plan-deviation 17:30-18:00 — filtreres
+        //
+        // Begge har counterfactualEnd = torsdag 08:00. B sin outage [17:30, 18:00)
+        // skal komme med i merging-passet og dermed kappe A sin SavedHours.
+        var a = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 2, 4, 16),
+            EndUtc = OsloLokal(2026, 2, 4, 17),
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            CauseCode = "U1-UnplannedStop",
+            HarOperlogMatch = true,
+            TapMwh = 0.5, TapNok = 425, TimerSettlement = 1,
+        };
+        var b = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 2, 4, 17, 30),
+            EndUtc = OsloLokal(2026, 2, 4, 18),
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            CauseCode = "U2-PlanDeviation",
+            HarOperlogMatch = false,    // Auto-modus → filtreres ut
+            TapMwh = 0.5, TapNok = 425, TimerSettlement = 1,
+        };
+
+        var counterfactualEnd = OsloLokal(2026, 2, 5, 8);
+        var overflow = OverflowAlleTimer(OsloLokal(2026, 2, 4, 16), counterfactualEnd);
+        var plan = PlanFlat(a.StartUtc, counterfactualEnd, 2.2 * 0.5);
+
+        var excludeFromReddbar = BuildExcludeSet(
+            new[] { a, b },
+            new Dictionary<DateTimeOffset, GuardResponseOverride>());
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { a, b },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true,
+            excludeFromReddbar: excludeFromReddbar);
+
+        var rA = roi.First(r => r.Event.StartUtc == a.StartUtc);
+        var rB = roi.First(r => r.Event.StartUtc == b.StartUtc);
+
+        // A er fortsatt reddbar leder.
+        rA.ErReddbar.Should().BeTrue();
+        rA.ReddetNok.Should().BeGreaterThan(0);
+
+        // B er ekskludert — fortsatt synlig, men null ROI med forklaring som
+        // peker drifts-leder mot Detaljer-popup.
+        rB.ErReddbar.Should().BeFalse();
+        rB.ReddetNok.Should().Be(0);
+        rB.Forklaring.Should().Contain("U2-PlanDeviation");
+        rB.Forklaring.Should().Contain("operlog");
+
+        // Sanity-sjekk på monoton-invariant: A sin EkstraTimerSpart skal være
+        // counterfactual-vindu minus outage fra BÅDE A og B (= [16:00, 17:00)
+        // ∪ [17:30, 18:00) = 1.5 t). 16:00 lokal → 08:00 dagen etter = 16 t,
+        // savedHours = 16 - 1.5 = 14.5 t.
+        rA.EkstraTimerSpart.Should().BeApproximately(14.5, 0.01,
+            "B sin outage [17:30, 18:00) skal kuttes fra A sin savedHours selv om B er filtrert fra reddbar-set.");
+    }
+
+    [Fact]
+    public void EffectiveGuardResponseEvaluator_AndreCauseCodes_ErUendret()
+    {
+        // Regresjons-sjekk: filteret skal KUN slå inn for U2-PlanDeviation.
+        // Andre cause-koder (operlog:fault, operlog:alarm, U1-UnplannedStop,
+        // PlanlagtVedlikehold, null) skal alltid kvalifisere — uavhengig av
+        // operlog-match og override-verdi (siden override er irrelevant uten
+        // U2-filter).
+        var causes = new string?[] { "operlog:fault", "operlog:alarm", "U1-UnplannedStop", "PlanlagtVedlikehold", null };
+        foreach (var cause in causes)
+        {
+            var ev = new DowntimeEvent
+            {
+                PlantId = "drivdal",
+                StartUtc = OsloLokal(2026, 2, 4, 16),
+                EndUtc = OsloLokal(2026, 2, 4, 17),
+                State = UnitState.ForcedOutage,
+                Category = DowntimeEventCategory.TripFeil,
+                CauseCode = cause,
+                HarOperlogMatch = false, // verste tilfelle — filteret bør ikke slå inn likevel
+                TapMwh = 0.5, TapNok = 425, TimerSettlement = 1,
+            };
+            EffectiveGuardResponseEvaluator.ShouldCount(ev, null).Should().BeTrue(
+                "cause '{0}' med operlog=false skal fortsatt telle som vakt-utrykning", cause ?? "<null>");
+            EffectiveGuardResponseEvaluator.ShouldCount(ev, GuardResponseOverride.Auto).Should().BeTrue(
+                "cause '{0}' Auto skal alltid telle (filter gjelder kun U2)", cause ?? "<null>");
+            EffectiveGuardResponseEvaluator.ShouldCount(ev, GuardResponseOverride.No).Should().BeTrue(
+                "cause '{0}' No-override skal IKKE filtrere ut når cause ikke er U2-PlanDeviation", cause ?? "<null>");
+        }
+    }
 }
