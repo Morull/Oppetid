@@ -207,10 +207,12 @@ public sealed class HotFolderWatcher : BackgroundService
             return;
         }
 
-        // 3. Dedup-sjekk: registrer hash. Hvis allerede sett → flytt til duplicates/.
-        //    Sjekken kjøres ETTER detect slik at duplicates-loggen får plant-info.
-        if (!_dedup.TryRegister(fileHash, file.Name,
-                detection.PlantId, detection.SourceType?.ToSourceTypeKey(), out var existing))
+        // 3. Dedup-PEEK (ikke registrer ennå). Hvis hashen allerede er registrert
+        //    fra en TIDLIGERE VELLYKKET import → flytt til duplicates/. Selve
+        //    registreringen utsettes til etter vellykket import (steg 5) slik at en
+        //    fil som feiler under import ikke blir permanent låst som «duplikat».
+        //    Peeken kjøres ETTER detect slik at duplicates-loggen får plant-info.
+        if (_dedup.Contains(fileHash, out var existing))
         {
             _log.LogInformation(
                 "HotFolder: duplikat av {OrigFile} (hash {Hash}, sett første gang {Time}) — hopper over.",
@@ -229,7 +231,13 @@ public sealed class HotFolderWatcher : BackgroundService
             using var scope = _services.CreateScope();
             await RouteAndImportAsync(scope, file, detection.PlantId!, detection.SourceType!.Value, ct);
 
-            await MoveToDoneAsync(file, detection.PlantId!, detection.SourceType.Value.ToSourceTypeKey(), ct);
+            // 5. Registrer hash FØRST etter at importen lyktes. Da kan en fil som
+            //    feilet (quarantine i catch) re-importeres senere uten å bli stoppet
+            //    av dedup-vakten.
+            _dedup.TryRegister(fileHash, file.Name,
+                detection.PlantId, detection.SourceType?.ToSourceTypeKey(), out _);
+
+            await MoveToDoneAsync(file, detection.PlantId!, detection.SourceType!.Value.ToSourceTypeKey(), ct);
             _queue.Complete(file.FullName, "OK",
                 detection.PlantId, detection.SourceType.Value.ToSourceTypeKey(),
                 "Auto-import ok", DateTimeOffset.UtcNow);

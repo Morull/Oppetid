@@ -79,6 +79,27 @@ public sealed class HotFolderDedupCache
         }
     }
 
+    /// <summary>
+    /// Sjekk om en hash allerede er registrert UTEN å registrere den. Brukes til
+    /// å peeke før import, slik at selve registreringen kan utsettes til ETTER en
+    /// vellykket import. Da blir ikke en fil som feiler under import permanent
+    /// låst som «duplikat» (register-før-import-svakheten).
+    /// </summary>
+    public bool Contains(string fileHash, out DedupRecord existing)
+    {
+        lock (_lock)
+        {
+            PruneExpired();
+            if (_byHash.TryGetValue(fileHash, out var prev))
+            {
+                existing = prev;
+                return true;
+            }
+            existing = null!;
+            return false;
+        }
+    }
+
     /// <summary>Slett alle records — brukes av tester.</summary>
     public void Clear()
     {

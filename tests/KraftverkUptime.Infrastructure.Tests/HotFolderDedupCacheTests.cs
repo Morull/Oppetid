@@ -139,4 +139,36 @@ public sealed class HotFolderDedupCacheTests : IDisposable
         cache.Count.Should().Be(0);
         cache.TryRegister("h1", "f1-new.xlsx", null, null, out _).Should().BeTrue();
     }
+
+    // --- Regresjon for «kommer fortsatt i duplicates» (register-etter-import, 2026-06-01) ---
+
+    [Fact]
+    public void Contains_UnseenHash_ReturnsFalse()
+    {
+        var cache = NewCache();
+        cache.Contains("ukjent", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Contains_DoesNotRegister_SoFailedImportCanRetry()
+    {
+        var cache = NewCache();
+
+        // Watcheren peeker FØR import. En peek skal aldri registrere — ellers
+        // ville en fil som feiler under import blitt permanent låst som duplikat.
+        cache.Contains("h", out _).Should().BeFalse();
+        cache.Contains("h", out _).Should().BeFalse();
+        cache.Count.Should().Be(0, "peek skal ikke legge til noe i cachen");
+    }
+
+    [Fact]
+    public void Contains_AfterSuccessfulRegister_ReturnsTrue_WithRecord()
+    {
+        var cache = NewCache();
+        cache.TryRegister("h", "export.csv", "ogreyfoss", "scada", out _);
+
+        cache.Contains("h", out var existing).Should().BeTrue();
+        existing.FirstFileName.Should().Be("export.csv");
+        existing.PlantId.Should().Be("ogreyfoss");
+    }
 }

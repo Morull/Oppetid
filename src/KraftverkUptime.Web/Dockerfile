@@ -40,4 +40,7 @@ RUN printf '%s\n' \
     '}' > /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
-HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost/ >/dev/null || exit 1
+# 127.0.0.1, ikke localhost: i containeren slaar localhost opp til IPv6 ::1,
+# men nginx lytter kun paa IPv4 0.0.0.0:80 -> wget mot localhost gir
+# "connection refused" og containeren feilmerkes unhealthy selv om den serverer.
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1/ >/dev/null || exit 1
