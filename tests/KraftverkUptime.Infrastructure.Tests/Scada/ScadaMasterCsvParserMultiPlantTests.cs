@@ -13,6 +13,11 @@ public sealed class ScadaMasterCsvParserMultiPlantTests
 {
     private static readonly TimeZoneInfo Tz = TimeZoneInfo.Utc;
 
+    /// <summary>Fast +02:00-sone (ingen DST) — deterministisk, uavhengig av OS-tz-database.
+    /// Brukes til å bevise at sone-løse tider konverteres, men ISO-zonet IKKE forskyves.</summary>
+    private static readonly TimeZoneInfo TzPlus2 =
+        TimeZoneInfo.CreateCustomTimeZone("Test+2", TimeSpan.FromHours(2), "Test +2", "Test +2");
+
     /// <summary>Lookup som matcher prefiks-mappingen i prod (HotFolderOptions/ScadaImportService).</summary>
     private static string? MapSignal(string signalId)
     {
@@ -159,5 +164,72 @@ public sealed class ScadaMasterCsvParserMultiPlantTests
         byPlant["orsdalen"].SignalCount.Should().Be(1);
         byPlant["ogreyfoss"].SignalCount.Should().Be(3);      // OGREY1_G1, OGREY2_G2, OGREY1_OVERLOP
         byPlant["logjen"].SignalCount.Should().Be(2);         // GEN_P + OVERLOP
+    }
+
+    // ── Nytt eksportformat (2026-06): "DateTime (UTC)"-header + ISO-8601-Z-tider ──
+
+    [Fact]
+    public void ParseMultiPlant_NyHeaderDateTimeUtc_Godtas()
+    {
+        // Nyere eksport har "DateTime (UTC)" i kol. 0 i stedet for "DateTime".
+        var csv = """
+            DateTime (UTC);Value (Cluster1.VIKESA_G1_GEN_P_PV);Unit (Cluster1.VIKESA_G1_GEN_P_PV)
+            2026-05-01T00:00:00.000Z;100.0;kW
+            """;
+
+        var parser = new ScadaMasterCsvParser();
+        var result = parser.ParseMultiPlant(new StringReader(csv), TzPlus2, MapSignal);
+
+        result.RowsParsed.Should().Be(1);
+        result.RowsSkipped.Should().Be(0);
+        result.PerPlant.Should().ContainSingle().Which.PlantId.Should().Be("vikesa");
+    }
+
+    [Fact]
+    public void ParseMultiPlant_IsoZTidsstempel_BeholdesSomUtc()
+    {
+        // Allerede UTC i fila → ingen +2t-forskyvning fra anleggets tidssone.
+        var csv = """
+            DateTime (UTC);Value (Cluster1.VIKESA_G1_GEN_P_PV);Unit (Cluster1.VIKESA_G1_GEN_P_PV)
+            2026-05-01T00:00:00.000Z;100.0;kW
+            """;
+
+        var parser = new ScadaMasterCsvParser();
+        var result = parser.ParseMultiPlant(new StringReader(csv), TzPlus2, MapSignal);
+
+        var sample = result.PerPlant.Single().Samples.Single();
+        sample.TimeUtc.Should().Be(new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public void ParseMultiPlant_GammeltLokaltidsFormat_KonverteresFortsattTilUtc()
+    {
+        // Regresjon: sone-løst format tolkes som anleggets tz (+2) → 02:00 lokal = 00:00 UTC.
+        var csv = """
+            DateTime;Value (Cluster1.VIKESA_G1_GEN_P_PV);Unit (Cluster1.VIKESA_G1_GEN_P_PV)
+            2026-05-01 02:00:00.000;100.0;kW
+            """;
+
+        var parser = new ScadaMasterCsvParser();
+        var result = parser.ParseMultiPlant(new StringReader(csv), TzPlus2, MapSignal);
+
+        var sample = result.PerPlant.Single().Samples.Single();
+        sample.TimeUtc.Should().Be(new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public void ParseMultiPlant_NyttFormat_MedDesimalKomma_ParsesKorrekt()
+    {
+        // Blandet: ny header + ISO-Z + norsk desimal-komma i verdi-cella.
+        var csv = """
+            DateTime (UTC);Value (Cluster1.VIKESA_G1_GEN_P_PV);Unit (Cluster1.VIKESA_G1_GEN_P_PV)
+            2026-05-01T00:00:00.000Z;2874,4444;kW
+            """;
+
+        var parser = new ScadaMasterCsvParser();
+        var result = parser.ParseMultiPlant(new StringReader(csv), TzPlus2, MapSignal);
+
+        var sample = result.PerPlant.Single().Samples.Single();
+        sample.Value.Should().BeApproximately(2874.4444, 1e-6);
     }
 }

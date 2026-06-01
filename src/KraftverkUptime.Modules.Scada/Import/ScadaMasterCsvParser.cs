@@ -42,7 +42,8 @@ public sealed class ScadaMasterCsvParser
         var headerLine = reader.ReadLine()
             ?? throw new InvalidDataException("Tom CSV — manglende header-rad.");
         var headerCols = headerLine.Split(';');
-        if (headerCols.Length < 3 || !headerCols[0].Trim().Equals("DateTime", StringComparison.OrdinalIgnoreCase))
+        // StartsWith, ikke Equals: nyere eksport bruker "DateTime (UTC)" / "DateTime (Local)".
+        if (headerCols.Length < 3 || !headerCols[0].Trim().StartsWith("DateTime", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException(
                 "Forventet header som starter med 'DateTime;Value (Cluster1.NAME1);Unit (...)'.");
@@ -143,7 +144,8 @@ public sealed class ScadaMasterCsvParser
         var headerLine = reader.ReadLine()
             ?? throw new InvalidDataException("Tom CSV — manglende header-rad.");
         var headerCols = headerLine.Split(';');
-        if (headerCols.Length < 3 || !headerCols[0].Trim().Equals("DateTime", StringComparison.OrdinalIgnoreCase))
+        // StartsWith, ikke Equals: nyere eksport bruker "DateTime (UTC)" / "DateTime (Local)".
+        if (headerCols.Length < 3 || !headerCols[0].Trim().StartsWith("DateTime", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException(
                 "Forventet header som starter med 'DateTime;Value (Cluster1.NAME1);Unit (...)'.");
@@ -251,17 +253,40 @@ public sealed class ScadaMasterCsvParser
     }
 
     /// <summary>
-    /// Parser tidspunkt i format <c>"2026-02-01 10:00:00.000"</c> som lokal anlegg-tid
-    /// og konverterer til UTC. CSV-en har ikke tidssone-info — vi antar at eksport-en
-    /// bruker anleggets konfigurerte tidssone (typisk Europe/Oslo).
+    /// Parser tidspunkt fra master-CSV til UTC. Støtter to formater:
+    /// <list type="bullet">
+    ///   <item>ISO-8601 med eksplisitt sone (<c>"2026-05-01T00:00:00.000Z"</c> eller
+    ///   <c>…±hh:mm</c>) — allerede zonet, parses direkte uten tz-konvertering.</item>
+    ///   <item>Sone-løst lokaltids-format (<c>"2026-02-01 10:00:00.000"</c>) — antas å
+    ///   være anleggets konfigurerte tidssone (typisk Europe/Oslo), konverteres til UTC.</item>
+    /// </list>
     /// </summary>
     private static bool TryParseTimestamp(string raw, TimeZoneInfo tz, out DateTimeOffset utc)
     {
         utc = default;
         if (string.IsNullOrWhiteSpace(raw)) return false;
 
+        var s = raw.Trim();
+
+        // Nytt eksportformat: ISO-8601 med eksplisitt tidssone (…T…Z eller …±hh:mm).
+        // Strengen er allerede zonet → parse direkte, IKKE plant-tz-konverter.
+        if (s.Contains('T') &&
+            (s[^1] is 'Z' or 'z' || HasExplicitOffset(s)))
+        {
+            if (DateTimeOffset.TryParse(
+                    s,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                    out var dto))
+            {
+                utc = dto.ToUniversalTime();
+                return true;
+            }
+            return false;
+        }
+
         if (DateTime.TryParseExact(
-                raw.Trim(),
+                s,
                 ["yyyy-MM-dd HH:mm:ss.fff", "yyyy-MM-dd HH:mm:ss"],
                 CultureInfo.InvariantCulture,
                 DateTimeStyles.None,
@@ -298,6 +323,18 @@ public sealed class ScadaMasterCsvParser
             }
         }
         return false;
+    }
+
+    /// <summary>
+    /// Sann hvis tids-delen (etter <c>T</c>) bærer en eksplisitt UTC-offset
+    /// (<c>+hh:mm</c> eller <c>-hh:mm</c>). Ser bort fra bindestreker i dato-delen.
+    /// </summary>
+    private static bool HasExplicitOffset(string s)
+    {
+        var t = s.IndexOf('T');
+        if (t < 0) return false;
+        var tail = s.AsSpan(t);
+        return tail.Contains('+') || tail.LastIndexOf('-') > 0; // '-' i tids-delen = offset
     }
 
     /// <summary>
