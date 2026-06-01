@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kraftverk}
       POSTGRES_DB: ${POSTGRES_DB:-kraftverk}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -26,9 +26,9 @@ services:
     # for alle imports selv om DB-radene fortsatt finnes.
     command: "azurite --location /data --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --loose --skipApiVersionCheck"
     ports:
-      - "10000:10000"
-      - "10001:10001"
-      - "10002:10002"
+      - "127.0.0.1:10000:10000"
+      - "127.0.0.1:10001:10001"
+      - "127.0.0.1:10002:10002"
     volumes:
       - azurite-data:/data
 
@@ -61,7 +61,7 @@ services:
       # HOT_FOLDER_HOST_PATH-miljøvariabel hvis du vil bruke en annen mappe.
       - "${HOT_FOLDER_HOST_PATH:-./CSV Eksporter}:/imports"
     ports:
-      - "${API_PORT:-5080}:8080"
+      - "127.0.0.1:${API_PORT:-5080}:8080"
 
   worker:
     build:
@@ -91,7 +91,7 @@ services:
       api:
         condition: service_started
     ports:
-      - "${WEB_PORT:-5180}:80"
+      - "127.0.0.1:${WEB_PORT:-5180}:80"
 
 volumes:
   postgres-data:

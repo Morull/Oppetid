@@ -1,0 +1,25 @@
+# Caddy = eneste inngangspunkt foran KraftverkUptime.
+# Serverer Blazor-frontend paa / og proxyer API-kall til api-containeren,
+# slik at WASM-appen kan kalle "samme origin" (api/v1/...) uansett hvilken
+# adresse brukeren aapner appen fra (localhost, LAN eller Tailscale).
+#
+# Lytter paa 8080 inni containeren. Caddy loeser docker-DNS-navnene
+# "web" og "api" og proever paa nytt hvis de ikke er oppe enda.
+
+:8080 {
+	# API, Swagger og helsesjekker gaar til API-containeren.
+	@api path /api/* /swagger /swagger/* /health /health/*
+	handle @api {
+		reverse_proxy api:8080
+	}
+
+	# Alt annet (Blazor WASM, statiske filer) gaar til web (nginx).
+	handle {
+		reverse_proxy web:80
+	}
+
+	# Stoette for store CSV-opplastinger.
+	request_body {
+		max_size 200MB
+	}
+}

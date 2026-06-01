@@ -58,10 +58,15 @@ public sealed class ExcelSettlementParser : ISettlementParser
     /// Brukes til å plukke ut KANONISK plant-navn (med norske tegn) fra R1
     /// selv når fane-navnet er ASCII-stripet ("1 Lgjen", "7 greyfoss").
     /// </summary>
+    // Bundet kvantor (.{1,80}? + \s{1,8}) i stedet for .+?\s+ for å hindre
+    // katastrofal backtracking på lange/avvikende celleverdier — en slik celle
+    // i en Vikeså-fil traff 50 ms-timeouten og fikk hele importen til å feile
+    // (RegexMatchTimeoutException, 2026-05-30). Navn + dato står alltid helt
+    // først i tittelen, så 80 tegn er rikelig.
     private static readonly Regex PlantTitleRegex = new(
-        @"^(?<name>.+?)\s+\d{1,2}\.\d{1,2}\.\d{4}",
+        @"^(?<name>.{1,80}?)\s{1,8}\d{1,2}\.\d{1,2}\.\d{4}",
         RegexOptions.CultureInvariant | RegexOptions.Compiled,
-        TimeSpan.FromMilliseconds(50));
+        TimeSpan.FromMilliseconds(250));
 
     /// <summary>
     /// Regex for fane-navn som "1 Lgjen", "7 greyfoss" — sifre, mellomrom, navn.

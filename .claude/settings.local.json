@@ -6,7 +6,11 @@
       "Bash(git rebase *)",
       "Bash(dotnet build *)",
       "Bash(git stash *)",
-      "Bash(dotnet test *)"
+      "Bash(dotnet test *)",
+      "PowerShell(dotnet --version)",
+      "PowerShell(Get-Command dotnet)",
+      "Bash(tail -n 8 \"/c/Users/MORTEN~1/AppData/Local/Temp/claude/C--Morten-00-Oppetid/535cc5a4-013d-4a4e-970b-8db5b691907c/tasks/b40nkwl2t.output\" 2>/dev/null; echo \"---EXIT MARKER---\")",
+      "Bash(cd \"/c/Morten/00 Oppetid\" && echo \"=== caddy/ ===\" && find caddy -type f 2>/dev/null | head -50 && echo \"\" && echo \"=== Virkningsgrader/ ===\" && find Virkningsgrader -type f 2>/dev/null | head -30 && echo \"\" && echo \"=== sizes ===\" && du -sh caddy Virkningsgrader 2>/dev/null)"
     ]
   }
 }

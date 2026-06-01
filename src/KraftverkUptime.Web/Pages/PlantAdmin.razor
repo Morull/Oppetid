@@ -62,6 +62,39 @@ else
                              Variant="Variant.Outlined"
                              HelperText="Forventet produksjon i et gjennomsnittlig (normalt) år. Brukes til å sammenligne mot faktisk produksjon og til å fordele felleskostnader etter GWh-andel. La stå tom hvis ukjent." />
 
+            @* Start/stopp-KPI (Spec NESTE-CHAT-START-STOPP-KPI.md, 2026-05-22).
+               Tre felt for å styre KPI-kortet på Rapport-detalj: OEM-budsjett,
+               kostnad per syklus, og kildehenvisning. Tomme felt = KPI viser
+               bare tellingen uten budsjett-progressbar/slitasje-anslag. *@
+            <MudNumericField T="int?" @bind-Value="_form.StartStoppBudsjettPerAar"
+                             Label="Start/stopp-budsjett per år"
+                             Min="0" Max="10000" Step="10"
+                             Variant="Variant.Outlined"
+                             HelperText="OEM-anbefaling for antall sykler før akselerert slitasje. La stå tom hvis ukjent." />
+
+            <MudNumericField T="double?" @bind-Value="_form.StartStoppKostnadPerSyklusNok"
+                             Label="Slitasje-kostnad per syklus (NOK)"
+                             Min="0" Max="100000" Step="50" Format="F0"
+                             Variant="Variant.Outlined"
+                             HelperText="Anslått slitasje-kostnad per oppstart. Hvis ukjent, se tommelfinger-anslag under." />
+
+            <MudTextField T="string" @bind-Value="_form.StartStoppKilde"
+                          Label="Start/stopp — kilde / kommentar"
+                          Variant="Variant.Outlined"
+                          Lines="2"
+                          HelperText='F.eks. «Voith OEM-manual 2018, kap. 6.3». Vises i info-popover på KPI-kortet.' />
+
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="mt-1">
+                <MudText Typo="Typo.body2">
+                    <strong>Tommelfinger-anslag for små Francis-turbiner (1-10 MW) i fravær av OEM-data:</strong>
+                    ca. 400–500 NOK per MW per syklus. For et 5 MW-anlegg gir det ~2000–2500 NOK per syklus.
+                </MudText>
+                <MudText Typo="Typo.caption" Class="mt-1">
+                    Baseres på forsknings-litteratur (Springer 2023, ScienceDirect 2021) — bør erstattes
+                    med OEM-spesifikke tall så snart de er tilgjengelige.
+                </MudText>
+            </MudAlert>
+
             <MudSelect T="string" @bind-Value="_form.TurbineType"
                        Label="Turbin-type"
                        Variant="Variant.Outlined" Clearable="true"
@@ -633,6 +666,9 @@ else
                     HeadM = plant.HeadM,
                     EnergyEquivalentKwhPerM3 = plant.EnergyEquivalentKwhPerM3,
                     CommissioningYear = plant.CommissioningYear,
+                    StartStoppBudsjettPerAar = plant.StartStoppBudsjettPerAar,
+                    StartStoppKostnadPerSyklusNok = plant.StartStoppKostnadPerSyklusNok,
+                    StartStoppKilde = plant.StartStoppKilde,
                 };
             }
             await ReloadDamsAsync();
@@ -1047,7 +1083,10 @@ else
                 TurbineType: _form.TurbineType,
                 HeadM: _form.HeadM,
                 EnergyEquivalentKwhPerM3: _form.EnergyEquivalentKwhPerM3,
-                CommissioningYear: _form.CommissioningYear);
+                CommissioningYear: _form.CommissioningYear,
+                StartStoppBudsjettPerAar: _form.StartStoppBudsjettPerAar,
+                StartStoppKostnadPerSyklusNok: _form.StartStoppKostnadPerSyklusNok,
+                StartStoppKilde: _form.StartStoppKilde);
             await Api.UpdatePlantAsync(PlantId, body);
             Snackbar.Add($"{_form.Name} oppdatert.", Severity.Success);
             Nav.NavigateTo("/plants");
@@ -1108,5 +1147,9 @@ else
         public double? HeadM { get; set; }
         public double? EnergyEquivalentKwhPerM3 { get; set; }
         public int? CommissioningYear { get; set; }
+        // Start/stopp-KPI (Spec NESTE-CHAT-START-STOPP-KPI.md, 2026-05-22).
+        public int? StartStoppBudsjettPerAar { get; set; }
+        public double? StartStoppKostnadPerSyklusNok { get; set; }
+        public string? StartStoppKilde { get; set; }
     }
 }

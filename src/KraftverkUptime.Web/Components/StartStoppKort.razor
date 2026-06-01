@@ -1,0 +1,151 @@
+@*
+   Start/stopp-syklus-KPI på Rapport-detalj. Spec NESTE-CHAT-START-STOPP-KPI.md
+   (2026-05-22). Plasseres under Drift-seksjonen.
+
+   Layout:
+     ┌─────────────────────────────────────┐
+     │ Start/stopp-sykler              ℹ  │
+     │ 12                                  │
+     │ ▲ +33 % vs forrige periode          │
+     │ 45 av 80 årsbudsjett (56 %) ▓▓▓░░░  │
+     │ ≈ 24 000 NOK slitasje               │
+     └─────────────────────────────────────┘
+
+   Synlighet:
+   - Hovedtall + info-knapp alltid.
+   - Trend-pil kun hvis EndringProsent.HasValue.
+   - Progressbar kun hvis BudsjettPerAar.HasValue && BudsjettBruktAtd.HasValue.
+   - Slitasje-anslag kun hvis KostnadTotalNok.HasValue.
+   - Hvis verken budsjett eller kostnad er satt: lenke "Sett OEM-tall i admin".
+*@
+
+@using KraftverkUptime.Web.Services
+@inject NavigationManager Nav
+
+@if (Data is null)
+{
+    return;
+}
+
+<MudPaper Class="pa-3 h-100" Elevation="2"
+          Style="@($"border-left: 4px solid {AccentColor}; position: relative;")">
+    <div class="d-flex justify-space-between align-start" style="gap: 4px;">
+        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Start/stopp-sykler</MudText>
+        <MudTooltip Arrow="true" Placement="Placement.Top">
+            <TooltipContent>
+                <div style="max-width: 360px; padding: 4px 2px;">
+                    <MudText Typo="Typo.body2" Style="font-weight: 600; margin-bottom: 4px;">
+                        Hva er en syklus?
+                    </MudText>
+                    <MudText Typo="Typo.body2" Style="margin-bottom: 8px;">
+                        Én syklus = én komplett sekvens: <strong>oppstart → drift → stopp</strong>.
+                        I praksis tilsvarer det «hver gang turbinen starter».
+                    </MudText>
+                    <MudText Typo="Typo.body2" Style="margin-bottom: 8px;">
+                        <strong>Det er oppstarts-transienten som skaper slitasjen.</strong>
+                        Når turbinen rampes opp fra hvile til nominell effekt, treffer vannet
+                        løpehjuls-bladene under raskt endrede strømningsforhold. Dette driver
+                        «low-cycle fatigue» — sprekkinitiering i bladene. Stoppet bidrar,
+                        men i mindre grad.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Style="margin-bottom: 4px;">
+                        <strong>Telles ikke:</strong>
+                    </MudText>
+                    <MudText Typo="Typo.body2" Style="margin-bottom: 4px;">
+                        • Korte regulerings-stopp under ca. 30 minutter (time-oppløsning).<br />
+                        • Effektregulering uten full stopp (part-load — annen skademekanisme).
+                    </MudText>
+                    <MudText Typo="Typo.body2" Style="margin-top: 8px;">
+                        Tallet sporer altså <em>kald-start-sykler</em> spesifikt — den fysisk
+                        mest skadelige hendelsen.
+                    </MudText>
+                    @if (!string.IsNullOrWhiteSpace(Data.Kilde))
+                    {
+                        <MudText Typo="Typo.caption" Style="margin-top: 8px; opacity: 0.85;">
+                            Kilde: @Data.Kilde
+                        </MudText>
+                    }
+                </div>
+            </TooltipContent>
+            <ChildContent>
+                <MudIcon Icon="@Icons.Material.Outlined.Info"
+                         Size="MudBlazor.Size.Small"
+                         Style="cursor: help; color: var(--mud-palette-text-secondary); opacity: 0.6;" />
+            </ChildContent>
+        </MudTooltip>
+    </div>
+
+    <MudText Typo="Typo.h4">@Data.AntallStarter</MudText>
+
+    @if (Data.EndringProsent.HasValue)
+    {
+        var pct = Data.EndringProsent.Value * 100;
+        var isUp = pct >= 0;
+        var arrow = isUp ? "▲" : "▼";
+        // Opp = mer slitasje = dårlig (rød). Ned = mindre slitasje = bra (grønn).
+        var color = isUp ? "var(--mud-palette-error)" : "var(--mud-palette-success)";
+        <div class="d-flex align-center mt-1" style="gap: 4px;">
+            <MudText Typo="Typo.caption" Style="@($"color: {color}; font-weight: 600;")">
+                @($"{arrow} {pct.ToString("F1", NumberFormat.Norsk)} %")
+            </MudText>
+            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">vs forrige periode</MudText>
+        </div>
+    }
+
+    @if (Data.BudsjettPerAar.HasValue && Data.BudsjettBruktAtd.HasValue && Data.BudsjettBruktProsent.HasValue)
+    {
+        var pct = Data.BudsjettBruktProsent.Value;
+        var color = pct < 60 ? MudBlazor.Color.Success
+            : pct < 80 ? MudBlazor.Color.Warning
+            : MudBlazor.Color.Error;
+        <div class="mt-2">
+            <div class="d-flex justify-space-between" style="font-size: 0.78rem;">
+                <span>
+                    @Data.BudsjettBruktAtd av @Data.BudsjettPerAar årsbudsjett
+                    (@pct.ToString("F0", NumberFormat.Norsk) %)
+                </span>
+            </div>
+            <MudProgressLinear Color="@color"
+                               Value="@Math.Min(pct, 100)"
+                               Striped="@(pct >= 100)"
+                               Class="mt-1" />
+        </div>
+    }
+
+    @if (Data.KostnadTotalNok.HasValue && Data.KostnadTotalNok.Value > 0)
+    {
+        <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mt-2 d-block">
+            ≈ @NumberFormat.Nok(Data.KostnadTotalNok.Value) NOK slitasje
+        </MudText>
+    }
+
+    @if (!Data.BudsjettPerAar.HasValue && !Data.KostnadPerSyklus.HasValue)
+    {
+        <MudLink Href="@($"/plant-admin/{PlantId}")"
+                 Typo="Typo.caption"
+                 Color="MudBlazor.Color.Primary"
+                 Class="mt-2 d-block">
+            Sett OEM-tall i anleggs-admin →
+        </MudLink>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public StartStoppDto? Data { get; set; }
+    [Parameter, EditorRequired] public string PlantId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Aksent-fargen følger trenden hvis vi har trend-data, ellers nøytral.
+    /// Opp = rød (mer slitasje = dårlig); ned = grønn.
+    /// </summary>
+    private string AccentColor
+    {
+        get
+        {
+            if (Data?.EndringProsent is null) return "var(--mud-palette-primary)";
+            return Data.EndringProsent.Value >= 0
+                ? "var(--mud-palette-error)"
+                : "var(--mud-palette-success)";
+        }
+    }
+}

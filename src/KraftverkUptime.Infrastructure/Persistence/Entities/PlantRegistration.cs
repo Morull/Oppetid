@@ -81,6 +81,28 @@ public sealed class PlantRegistration : IOwnedEntity, ISoftDeletable
     /// </summary>
     public int? CommissioningYear { get; set; }
 
+    /// <summary>
+    /// Antall start/stopp-sykler per år OEM tillater før akselerert slitasje.
+    /// Brukes til budsjett-progressbar i Rapport-detalj sin Start/stopp-KPI.
+    /// Null = ikke satt; UI viser lenke til admin for å fylle inn.
+    /// Spec NESTE-CHAT-START-STOPP-KPI.md (2026-05-22).
+    /// </summary>
+    public int? StartStoppBudsjettPerAar { get; set; }
+
+    /// <summary>
+    /// Estimert slitasje-kostnad per syklus (NOK). Settes per anlegg basert
+    /// på OEM-vedlikeholdsplan eller egen erfaring. Brukes til NOK-anslag
+    /// på Start/stopp-KPI-kortet. Null = ikke satt.
+    /// </summary>
+    public double? StartStoppKostnadPerSyklusNok { get; set; }
+
+    /// <summary>
+    /// Fritekst-felt for kildehenvisning til OEM-dokumentasjonen eller
+    /// internt anslag (eks. «Voith OEM-manual 2018, kap. 6.3»). Vises i
+    /// info-popoveren på KPI-kortet hvis satt.
+    /// </summary>
+    public string? StartStoppKilde { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? DeletedAt { get; set; }
     public string? DeletedBy { get; set; }

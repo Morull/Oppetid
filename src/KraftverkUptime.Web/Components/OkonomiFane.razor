@@ -1,0 +1,211 @@
+@*
+   Økonomi-fane på Portefølje-siden.
+
+   Layout (Spec NESTE-CHAT-OKONOMI-FANE-PDF.md Del 5):
+       [Anleggs-velger]                              [Last ned PDF (Steg 7–8)]
+
+       Inntekter
+       [Spotomsetning]  [Capture rate]  [Merverdi vs spot]
+
+       Kostnader
+       [Ubalansekost]   [KAIA-kostnad]  [Vakt-kost]
+
+       Resultat / drift
+       [Oppgjør]        [Nedetidstap]   [Reddet av vakt]
+
+       [Per-anlegg-tabell ved multi-anleggs-valg]
+
+   Periode kommer fra FilterState (felles topp-bar) som i resten av appen.
+   Anleggs-velger lokal i fanen (Sammendrag-fanen viser fortsatt alle).
+*@
+
+@implements IDisposable
+@inject EconomyApi EconomyApi
+@inject FilterState Filter
+@inject HttpClient Http
+@inject Microsoft.JSInterop.IJSRuntime JS
+
+@using KraftverkUptime.Web.Services
+
+<div class="d-flex justify-space-between align-center mb-2" style="gap: 12px; flex-wrap: wrap;">
+    <div style="flex: 1; min-width: 280px;">
+        <AnleggVelger Plants="@Filter.Plants" SelectedPlantsChanged="OnPlantsChanged" />
+    </div>
+    <MudButton Variant="Variant.Filled"
+               Color="MudBlazor.Color.Primary"
+               StartIcon="@Icons.Material.Filled.PictureAsPdf"
+               OnClick="OnDownloadPdfAsync"
+               Disabled="@(_report is null)">
+        Last ned PDF
+    </MudButton>
+</div>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+}
+else if (_loading)
+{
+    <div class="d-flex align-center mb-3" style="gap: 12px;">
+        <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Small" />
+        <MudText>Henter økonomi-rapport…</MudText>
+    </div>
+}
+else if (_report is null)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-3">
+        Velg minst ett anlegg for å se økonomi-rapport.
+    </MudAlert>
+}
+else
+{
+    <KpiSection Group="_report.Inntekter" />
+    <KpiSection Group="_report.Kostnader" />
+    <KpiSection Group="_report.Resultat" />
+
+    @if (_report.PerPlant.Length > 1)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="1">
+            <MudText Typo="Typo.h6" Class="mb-2">Per anlegg</MudText>
+            <MudTable Items="_report.PerPlant" Dense="true" Hover="true"
+                      SortLabel="Sortér"
+                      Elevation="0">
+                <HeaderContent>
+                    <MudTh><MudTableSortLabel SortBy="@(new Func<PerPlantEconomyDto, object>(r => r.PlantName))">Anlegg</MudTableSortLabel></MudTh>
+                    <MudTh Style="text-align: right;"><MudTableSortLabel InitialDirection="SortDirection.Descending" SortBy="@(new Func<PerPlantEconomyDto, object>(r => r.OppgjorNok))">Oppgjør (NOK)</MudTableSortLabel></MudTh>
+                    <MudTh Style="text-align: right;"><MudTableSortLabel SortBy="@(new Func<PerPlantEconomyDto, object>(r => r.SpotomsetningNok))">Spotomsetning (NOK)</MudTableSortLabel></MudTh>
+                    <MudTh Style="text-align: right;"><MudTableSortLabel SortBy="@(new Func<PerPlantEconomyDto, object>(r => r.UbalansekostNok))">Ubalansekost (NOK)</MudTableSortLabel></MudTh>
+                    <MudTh Style="text-align: right;"><MudTableSortLabel SortBy="@(new Func<PerPlantEconomyDto, object>(r => r.KaiaKostnadNok))">KAIA (NOK)</MudTableSortLabel></MudTh>
+                    <MudTh Style="text-align: right;"><MudTableSortLabel SortBy="@(new Func<PerPlantEconomyDto, object>(r => r.CaptureRate))">Capture rate</MudTableSortLabel></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Anlegg">@context.PlantName</MudTd>
+                    <MudTd DataLabel="Oppgjør" Style="text-align: right; font-variant-numeric: tabular-nums;">@NumberFormat.Nok(context.OppgjorNok)</MudTd>
+                    <MudTd DataLabel="Spotomsetning" Style="text-align: right; font-variant-numeric: tabular-nums;">@NumberFormat.Nok(context.SpotomsetningNok)</MudTd>
+                    <MudTd DataLabel="Ubalansekost" Style="text-align: right; font-variant-numeric: tabular-nums;">@NumberFormat.Nok(context.UbalansekostNok)</MudTd>
+                    <MudTd DataLabel="KAIA" Style="text-align: right; font-variant-numeric: tabular-nums;">@NumberFormat.Nok(context.KaiaKostnadNok)</MudTd>
+                    <MudTd DataLabel="Capture rate" Style="text-align: right; font-variant-numeric: tabular-nums;">@NumberFormat.Ratio(context.CaptureRate)</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+}
+
+@code {
+    private List<string> _selected = new();
+    private EconomyReportDto? _report;
+    private bool _loading;
+    private string? _error;
+
+    protected override void OnInitialized()
+    {
+        Filter.OnChange += OnFilterChanged;
+    }
+
+    public void Dispose()
+    {
+        Filter.OnChange -= OnFilterChanged;
+    }
+
+    private async void OnFilterChanged()
+    {
+        try { await LoadAsync(); }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke oppdatere økonomi-rapport: {ex.Message}";
+            try { await InvokeAsync(StateHasChanged); } catch { /* disposed */ }
+        }
+    }
+
+    private async Task OnPlantsChanged(IReadOnlyList<string> plantIds)
+    {
+        _selected = plantIds.ToList();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (_selected.Count == 0)
+        {
+            _report = null;
+            _error = null;
+            StateHasChanged();
+            return;
+        }
+
+        if (!Filter.FromDate.HasValue || !Filter.ToDate.HasValue)
+        {
+            _report = null;
+            return;
+        }
+
+        _loading = true;
+        _error = null;
+        _report = null;
+        StateHasChanged();
+
+        try
+        {
+            var fromUtc = DateTime.SpecifyKind(Filter.FromDate.Value, DateTimeKind.Utc);
+            var toUtc = DateTime.SpecifyKind(Filter.ToDate.Value, DateTimeKind.Utc);
+            var kind = MapGranularity(Filter.Granularity);
+
+            _report = await EconomyApi.GetReportAsync(
+                _selected,
+                new DateTimeOffset(fromUtc, TimeSpan.Zero),
+                new DateTimeOffset(toUtc, TimeSpan.Zero),
+                kind);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente økonomi-rapport: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Mapper UI-granulariteten til PeriodKind som backend forstår. Hvis
+    /// brukeren har valgt egendefinerte datoer (Custom) får vi like-lengde-
+    /// vindu umiddelbart før som forrige periode.
+    /// </summary>
+    private static string MapGranularity(PeriodGranularity g) => g switch
+    {
+        PeriodGranularity.Maned => "Month",
+        PeriodGranularity.Kvartal => "Quarter",
+        PeriodGranularity.Ar => "Year",
+        PeriodGranularity.HittilIAr => "YearToDate",
+        _ => "Custom",
+    };
+
+    /// <summary>
+    /// Åpner /api/v1/economy/pdf i samme fane med samme parametre som datakallet.
+    /// Nettleseren håndterer nedlastingen via Content-Disposition på respons.
+    ///
+    /// URL-en må være absolutt mot API-en, ikke mot Web-hosten. I dev/Docker
+    /// kjører Web på 5180 og API på 5080 — relativ URL ville treffe Web.
+    /// Vi prefikser med HttpClient.BaseAddress som er satt fra
+    /// wwwroot/appsettings.json (ApiBaseAddress). Spec
+    /// NESTE-CHAT-OKONOMI-OPPFOLGING.md Funn 4 (2026-05-22).
+    /// </summary>
+    private async Task OnDownloadPdfAsync()
+    {
+        if (_selected.Count == 0 || !Filter.FromDate.HasValue || !Filter.ToDate.HasValue) return;
+
+        var fromUtc = DateTime.SpecifyKind(Filter.FromDate.Value, DateTimeKind.Utc);
+        var toUtc = DateTime.SpecifyKind(Filter.ToDate.Value, DateTimeKind.Utc);
+        var kind = MapGranularity(Filter.Granularity);
+        var plants = string.Join(',', _selected);
+
+        var url = new Uri(Http.BaseAddress!, "api/v1/economy/pdf"
+            + $"?plants={Uri.EscapeDataString(plants)}"
+            + $"&from={Uri.EscapeDataString(fromUtc.ToString("o"))}"
+            + $"&to={Uri.EscapeDataString(toUtc.ToString("o"))}"
+            + $"&kind={Uri.EscapeDataString(kind)}").ToString();
+
+        await JS.InvokeVoidAsync("open", url, "_blank");
+    }
+}

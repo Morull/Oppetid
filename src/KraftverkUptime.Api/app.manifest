@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.0.0.0" name="KraftverkUptime.Api"/>
+
+  <!--
+    Long-path-støtte for lokal Windows-kjøring (forsvar i dybden mot
+    «The specified file name or path is too long»). Hot-folder-importen
+    håndterer C:\Morten\00 Oppetid\CSV Eksporter, der dype stier + lange
+    eksport-navn kan nærme seg MAX_PATH (260).
+
+    NB: longPathAware krever også at OS-et har lange stier aktivert:
+      HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled = 1
+    (DWORD, krever omstart). Uten dette ignoreres flagget.
+
+    Selve rotårsaken (ubegrenset voksende filnavn) er fikset i
+    HotFolderNaming/HotFolderWatcher; dette er kun et ekstra sikkerhetsnett.
+  -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings xmlns:ws2="http://schemas.microsoft.com/SMI/2016/WindowsSettings">
+      <ws2:longPathAware>true</ws2:longPathAware>
+    </windowsSettings>
+  </application>
+</assembly>

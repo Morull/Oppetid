@@ -505,6 +505,14 @@ public static class DatabaseBootstrapper
                 ADD COLUMN IF NOT EXISTS energy_equivalent_kwh_per_m3 double precision NULL;
             ALTER TABLE core.plants
                 ADD COLUMN IF NOT EXISTS commissioning_year integer NULL;
+            -- Start/stopp-sykler KPI (Spec NESTE-CHAT-START-STOPP-KPI.md, 2026-05-22).
+            -- Brukes til å vise budsjett-progressbar og slitasje-anslag i Rapport-detalj.
+            ALTER TABLE core.plants
+                ADD COLUMN IF NOT EXISTS start_stopp_budsjett_per_aar integer NULL;
+            ALTER TABLE core.plants
+                ADD COLUMN IF NOT EXISTS start_stopp_kostnad_per_syklus_nok double precision NULL;
+            ALTER TABLE core.plants
+                ADD COLUMN IF NOT EXISTS start_stopp_kilde text NULL;
             """;
 
         try

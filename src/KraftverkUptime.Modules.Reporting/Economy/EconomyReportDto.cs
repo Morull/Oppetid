@@ -51,9 +51,11 @@ public sealed record EconomyKpiDto(
 
 /// <summary>
 /// Én rad i per-anleggs-tabellen som vises når Økonomi-fanen viser flere
-/// anlegg samtidig. Inneholder de viktigste KPI-ene i samme rekkefølge som
-/// UI-tabellens kolonner: Oppgjør, Spotomsetning, Ubalansekost,
-/// KAIA-kostnad, Capture rate.
+/// anlegg samtidig. Inneholder både økonomi-feltene som vises i
+/// Økonomi-fanen og drift-/datakvalitet-feltene som Portefølje-Sammendrag
+/// trenger for sin tabell. Spec MASTERPLAN-CODE-2026-05-22 § «Sammendrag
+/// reuser /economy» (2026-05-22) — målet er 1 aggregert kall som dekker
+/// både underfaner istedenfor 22+ per-anleggs-kall.
 /// </summary>
 public sealed record PerPlantEconomyDto(
     string PlantId,
@@ -62,7 +64,23 @@ public sealed record PerPlantEconomyDto(
     double SpotomsetningNok,
     double UbalansekostNok,
     double KaiaKostnadNok,
-    double CaptureRate);
+    double CaptureRate,
+    // Drift- og produksjons-felt for Sammendrag-tabellen.
+    double InstalledCapacityMw,
+    double TotalProductionMwh,
+    double MerverdiNok,
+    double AvailabilityFactor,
+    double ForcedOutageRate,
+    // Nedetid + Vakt-ROI per anlegg for Sammendrag-kortene.
+    double NedetidTimer,
+    double NedetidstapNok,
+    double ReddetAvVaktNok,
+    int AntallEvents,
+    int AntallReddbareEvents,
+    // Datakvalitet og normal-produksjon for Sammendrag-tabellen.
+    double? NormalAarsproduksjonGwh,
+    double GoodHoursPct,
+    int ManglerImportHours);
 
 /// <summary>
 /// Stabile maskin-nøkler for KPI-ene. Brukes som <see cref="EconomyKpiDto.Key"/>

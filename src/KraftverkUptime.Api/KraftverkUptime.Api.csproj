@@ -5,6 +5,8 @@
     <AssemblyName>KraftverkUptime.Api</AssemblyName>
     <UserSecretsId>kraftverkuptime-api</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <!-- Long-path-støtte ved lokal Windows-kjøring (se app.manifest). Ignoreres på Linux. -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>

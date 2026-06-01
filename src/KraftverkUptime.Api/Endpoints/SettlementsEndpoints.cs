@@ -153,6 +153,7 @@ public static class SettlementsEndpoints
         AnnotationOverlayService overlay,
         IDowntimeAnnotationRepository annotationRepo,
         IDowntimeCategoryRepository categoryRepo,
+        KraftverkUptime.Modules.Reporting.StartStopp.IStartStoppQueryService startStopp,
         CancellationToken ct)
     {
         var record = await recorder
@@ -182,7 +183,35 @@ public static class SettlementsEndpoints
         // returneres rapporten uendret (referanselikhet, ingen ekstra arbeid).
         var merged = await overlay.ApplyAsync(report, annotationRepo, categoryRepo, ct).ConfigureAwait(false);
 
-        return Results.Ok(merged);
+        // Start/stopp-KPI som ledsager rapporten på samme respons (Spec
+        // NESTE-CHAT-START-STOPP-KPI.md, 2026-05-22). Feiler stille — UI
+        // skjuler kortet hvis StartStopp er null.
+        KraftverkUptime.Modules.Reporting.StartStopp.StartStoppDto? ssDto = null;
+        try
+        {
+            ssDto = await startStopp.BuildAsync(
+                plantId, merged.PeriodStartUtc, merged.PeriodEndUtc, ct)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            ssDto = null;
+        }
+
+        // Anonymt objekt = JSON-shape som er bakoverkompatibel med
+        // UptimeReportSummary-klienten (extra StartStopp-felt ignoreres av
+        // gamle klienter; nye klienter leser feltet).
+        return Results.Ok(new
+        {
+            merged.PlantId,
+            merged.PeriodStartUtc,
+            merged.PeriodEndUtc,
+            merged.PeriodHours,
+            merged.StateCounts,
+            merged.Classified,
+            merged.Kpis,
+            StartStopp = ssDto,
+        });
     }
 
     // ---- GET /api/v1/plants/{plantId}/settlements/{idempotencyKey}/report/xlsx

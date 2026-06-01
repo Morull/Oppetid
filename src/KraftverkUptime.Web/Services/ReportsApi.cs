@@ -369,7 +369,11 @@ public sealed record PlantDto(
     string? TurbineType = null,
     double? HeadM = null,
     double? EnergyEquivalentKwhPerM3 = null,
-    int? CommissioningYear = null);
+    int? CommissioningYear = null,
+    // Start/stopp-KPI (Spec NESTE-CHAT-START-STOPP-KPI.md, 2026-05-22).
+    int? StartStoppBudsjettPerAar = null,
+    double? StartStoppKostnadPerSyklusNok = null,
+    string? StartStoppKilde = null);
 
 /// <summary>
 /// Body for <c>PUT /api/v1/plants/{plantId}</c>. <see cref="Type"/> er enum-string —
@@ -390,7 +394,10 @@ public sealed record UpdatePlantRequest(
     string? TurbineType = null,
     double? HeadM = null,
     double? EnergyEquivalentKwhPerM3 = null,
-    int? CommissioningYear = null);
+    int? CommissioningYear = null,
+    int? StartStoppBudsjettPerAar = null,
+    double? StartStoppKostnadPerSyklusNok = null,
+    string? StartStoppKilde = null);
 
 /// <summary>Bekreftelses-body for <c>DELETE /api/v1/plants/{plantId}/data</c>.</summary>
 public sealed record ResetPlantDataRequestDto(string ConfirmText);
@@ -483,6 +490,10 @@ public sealed record SettlementUploadResponse(
 /// <summary>
 /// Slank visnings-variant av <c>UptimeReport</c>. Speiler feltene Web trenger
 /// uten å dra inn Modules.Classification-prosjektet som referanse.
+///
+/// <see cref="StartStopp"/> kommer fra ledsager-tjenesten på samme endepunkt
+/// (Spec NESTE-CHAT-START-STOPP-KPI.md, 2026-05-22). Null = ikke beregnet
+/// eller anlegget mangler data; UI skjuler kortet i så fall.
 /// </summary>
 public sealed record UptimeReportSummary(
     string PlantId,
@@ -491,7 +502,24 @@ public sealed record UptimeReportSummary(
     int PeriodHours,
     IReadOnlyDictionary<string, int> StateCounts,
     IReadOnlyList<KpiDto> Kpis,
-    IReadOnlyList<ClassifiedHourDto> Classified);
+    IReadOnlyList<ClassifiedHourDto> Classified,
+    StartStoppDto? StartStopp = null);
+
+/// <summary>
+/// Web-side speil av <c>KraftverkUptime.Modules.Reporting.StartStopp.StartStoppDto</c>.
+/// Holdes i synk manuelt — Web kan ikke referere Modules.Reporting fordi det
+/// er WASM-frikoblet. Spec NESTE-CHAT-START-STOPP-KPI.md, 2026-05-22.
+/// </summary>
+public sealed record StartStoppDto(
+    int AntallStarter,
+    int? AntallStarterForrige,
+    double? EndringProsent,
+    int? BudsjettPerAar,
+    int? BudsjettBruktAtd,
+    double? BudsjettBruktProsent,
+    double? KostnadPerSyklus,
+    double? KostnadTotalNok,
+    string? Kilde);
 
 public sealed record KpiDto(
     string Name,

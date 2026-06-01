@@ -40,10 +40,14 @@ public sealed class HotFolderDetector
     /// Regex for kanonisk plant-tittel i R1: "Navn dd.MM.yyyy[ - dd.MM.yyyy]".
     /// Speiler <c>ExcelSettlementParser.PlantTitleRegex</c>.
     /// </summary>
+    // Bundet kvantor (.{1,80}? + \s{1,8}) i stedet for .+?\s+ hindrer katastrofal
+    // backtracking på lange celleverdier som ellers traff 50 ms-timeouten og fikk
+    // deteksjonen til å gi opp ("Klarte ikke åpne workbook: RegexMatchTimeoutException").
+    // Speiler ExcelSettlementParser.PlantTitleRegex.
     private static readonly Regex PlantTitleRegex = new(
-        @"^(?<name>.+?)\s+\d{1,2}\.\d{1,2}\.\d{4}",
+        @"^(?<name>.{1,80}?)\s{1,8}\d{1,2}\.\d{1,2}\.\d{4}",
         RegexOptions.CultureInvariant | RegexOptions.Compiled,
-        TimeSpan.FromMilliseconds(50));
+        TimeSpan.FromMilliseconds(250));
 
     // Regex som plukker plant-navn fra filnavn. Eksempler:
     //   "Avregning Drivdal April 2026.xlsx" → drivdal

@@ -1,0 +1,57 @@
+@*
+   KpiSection — én KPI-gruppe i Økonomi-fanen (Inntekter/Kostnader/Resultat).
+   Rendrer seksjonstittelen + en MudGrid med ett KpiCard per KPI. Gjenbruker
+   eksisterende KpiCard med trend-pil og semantisk fargekoding fra DTO-ens
+   GoodDirection-felt.
+*@
+
+@using KraftverkUptime.Web.Services
+
+<MudText Typo="Typo.h6" Class="mt-4 mb-2">@Group.Title</MudText>
+<MudGrid Class="mb-2">
+    @foreach (var kpi in Group.Kpis)
+    {
+        <MudItem xs="12" sm="6" md="4">
+            <KpiCard Label="@kpi.Label"
+                     Value="@FormatVerdi(kpi)"
+                     TrendCurrent="@kpi.Verdi"
+                     TrendPrevious="@kpi.VerdiForrige"
+                     HigherIsBetter="@HigherIsBetter(kpi)"
+                     SubText="@SubText(kpi)" />
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    [Parameter, EditorRequired] public EconomyKpiGroupDto Group { get; set; } = default!;
+
+    /// <summary>
+    /// Formaterer verdien basert på enhet. NOK uten desimaler, ratio som
+    /// prosent med 1 desimal, MWh med 1 desimal (sjelden i Økonomi).
+    /// </summary>
+    private static string FormatVerdi(EconomyKpiDto kpi) => kpi.Enhet switch
+    {
+        "NOK" => $"{NumberFormat.Nok(kpi.Verdi)} NOK",
+        "ratio" => NumberFormat.Ratio(kpi.Verdi),
+        "MWh" => $"{NumberFormat.Mwh(kpi.Verdi)} MWh",
+        _ => NumberFormat.Nok(kpi.Verdi),
+    };
+
+    /// <summary>
+    /// Mapper DTO-ens GoodDirection til HigherIsBetter-flagget på KpiCard.
+    /// "up" = økning er god → HigherIsBetter=true.
+    /// </summary>
+    private static bool HigherIsBetter(EconomyKpiDto kpi) =>
+        string.Equals(kpi.GoodDirection, "up", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Sub-tekst når vi ikke har trend (begge perioder 0). Tom streng skjuler
+    /// raden helt; ellers viser KpiCard "vs forrige" med pil.
+    /// </summary>
+    private static string? SubText(EconomyKpiDto kpi)
+    {
+        if (kpi.VerdiForrige.HasValue && kpi.VerdiForrige.Value != 0) return null;
+        if (kpi.VerdiForrige is null) return "ingen sammenligning";
+        return "forrige periode = 0";
+    }
+}

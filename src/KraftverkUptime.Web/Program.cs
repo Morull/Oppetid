@@ -22,6 +22,7 @@ builder.Services.AddScoped<ReportsApi>();
 builder.Services.AddScoped<AnnotationsApi>();
 builder.Services.AddScoped<NedetidApi>();
 builder.Services.AddScoped<KaiaCostApi>();
+builder.Services.AddScoped<EconomyApi>();
 builder.Services.AddSingleton<FilterState>();
 builder.Services.AddSingleton<CauseFormatter>();
 

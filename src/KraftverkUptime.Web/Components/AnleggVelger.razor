@@ -1,0 +1,149 @@
+@*
+   AnleggVelger — gjenbrukbar anleggs-velger med tre moduser:
+     1. Ett anlegg  — MudSelect med plant-listen
+     2. Utvalg      — MudSelect med MultiSelection=true
+     3. Alle        — knapp som velger alle plants i porteføljen
+
+   Bobler valget til foreldre-komponenten via SelectedPlantsChanged
+   (List<string> med plant-ID-er). Brukes av Økonomi-fanen og kan
+   gjenbrukes andre steder. Spec NESTE-CHAT-OKONOMI-FANE-PDF.md Del 2.
+*@
+
+@using KraftverkUptime.Web.Services
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <div class="d-flex align-center flex-wrap" style="gap: 12px;">
+        <MudText Typo="Typo.subtitle2">Anleggs-valg</MudText>
+
+        <MudButtonGroup Variant="Variant.Outlined" Size="MudBlazor.Size.Small">
+            <MudButton Color="@ColorFor(VelgerModus.Ett)"
+                       OnClick="() => SetModeAsync(VelgerModus.Ett)">
+                Ett anlegg
+            </MudButton>
+            <MudButton Color="@ColorFor(VelgerModus.Utvalg)"
+                       OnClick="() => SetModeAsync(VelgerModus.Utvalg)">
+                Utvalg
+            </MudButton>
+            <MudButton Color="@ColorFor(VelgerModus.Alle)"
+                       OnClick="() => SetModeAsync(VelgerModus.Alle)">
+                Alle (@Plants.Count)
+            </MudButton>
+        </MudButtonGroup>
+
+        @if (_modus == VelgerModus.Ett)
+        {
+            <MudSelect T="string"
+                       Value="_singleId"
+                       ValueChanged="OnSingleChanged"
+                       Label="Velg anlegg"
+                       Variant="Variant.Outlined"
+                       Margin="Margin.Dense"
+                       Dense="true"
+                       Style="min-width: 220px;">
+                @foreach (var p in Plants)
+                {
+                    <MudSelectItem T="string" Value="@p.Id">@p.Name</MudSelectItem>
+                }
+            </MudSelect>
+        }
+        else if (_modus == VelgerModus.Utvalg)
+        {
+            <MudSelect T="string"
+                       SelectedValues="_multi"
+                       SelectedValuesChanged="OnMultiChanged"
+                       MultiSelection="true"
+                       Label="Velg anlegg (flere)"
+                       Variant="Variant.Outlined"
+                       Margin="Margin.Dense"
+                       Dense="true"
+                       Style="min-width: 260px;">
+                @foreach (var p in Plants)
+                {
+                    <MudSelectItem T="string" Value="@p.Id">@p.Name</MudSelectItem>
+                }
+            </MudSelect>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Color="MudBlazor.Color.Secondary">
+                Hele porteføljen (@Plants.Count anlegg)
+            </MudText>
+        }
+    </div>
+</MudPaper>
+
+@code {
+    /// <summary>Plant-liste å velge fra. Tom liste = vis ingen alternativer.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<PlantDto> Plants { get; set; } = Array.Empty<PlantDto>();
+
+    /// <summary>Bobles til parent når valget endres.</summary>
+    [Parameter] public EventCallback<IReadOnlyList<string>> SelectedPlantsChanged { get; set; }
+
+    /// <summary>
+    /// Foretrukket initial-modus. Default = Alle slik at brukeren ser et
+    /// resultat med en gang uten å velge.
+    /// </summary>
+    [Parameter] public VelgerModus InitialModus { get; set; } = VelgerModus.Alle;
+
+    private VelgerModus _modus;
+    private string _singleId = string.Empty;
+    private IEnumerable<string> _multi = Array.Empty<string>();
+
+    public enum VelgerModus { Ett, Utvalg, Alle }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Sett default-single-id når vi får plants første gang.
+        if (string.IsNullOrEmpty(_singleId) && Plants.Count > 0)
+        {
+            _singleId = Plants[0].Id;
+        }
+
+        // Hvis dette er første render, varsle parent om initialvalget slik
+        // at OkonomiFane kan starte fetch uten manuell interaksjon.
+        if (!_initialized && Plants.Count > 0)
+        {
+            _initialized = true;
+            _modus = InitialModus;
+            await EmitAsync();
+        }
+    }
+
+    private bool _initialized;
+
+    private Task SetModeAsync(VelgerModus modus)
+    {
+        if (_modus == modus) return Task.CompletedTask;
+        _modus = modus;
+        return EmitAsync();
+    }
+
+    private Task OnSingleChanged(string id)
+    {
+        _singleId = id;
+        return EmitAsync();
+    }
+
+    private Task OnMultiChanged(IEnumerable<string> ids)
+    {
+        _multi = ids?.ToList() ?? new List<string>();
+        return EmitAsync();
+    }
+
+    private Task EmitAsync()
+    {
+        var selected = _modus switch
+        {
+            VelgerModus.Ett => string.IsNullOrEmpty(_singleId)
+                ? new List<string>()
+                : new List<string> { _singleId },
+            VelgerModus.Utvalg => _multi.ToList(),
+            VelgerModus.Alle => Plants.Select(p => p.Id).ToList(),
+            _ => new List<string>(),
+        };
+        return SelectedPlantsChanged.InvokeAsync(selected);
+    }
+
+    private MudBlazor.Color ColorFor(VelgerModus m) =>
+        m == _modus ? MudBlazor.Color.Primary : MudBlazor.Color.Default;
+}

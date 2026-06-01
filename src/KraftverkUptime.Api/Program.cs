@@ -11,7 +11,13 @@ using KraftverkUptime.Infrastructure.Persistence;
 using KraftverkUptime.Infrastructure.Telemetry;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using QuestPDF.Infrastructure;
 using System.Threading.RateLimiting;
+
+// QuestPDF Community License — gratis under Dalane Krafts terskel
+// (én juridisk enhet, < 1 mill USD i omsetning). Spec: NESTE-CHAT-OKONOMI-FANE-PDF.md
+// del 6. Settes globalt før første PDF-render.
+QuestPDF.Settings.License = LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -101,6 +107,19 @@ builder.Services.AddCors(o =>
         .AllowCredentials());
 });
 
+// --- Response compression (Spec MASTERPLAN-CODE-2026-05-22 ytelse-kjapp gevinst) ---
+// 70–80 % båndbredde-reduksjon på JSON-responser. Brotli foretrekkes når
+// klienten støtter det; Gzip som fallback. application/pdf og bilder
+// komprimeres ikke (de er allerede komprimerte).
+builder.Services.AddResponseCompression(opt =>
+{
+    opt.EnableForHttps = true;
+    opt.Providers.Add<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProvider>();
+    opt.Providers.Add<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProvider>();
+    opt.MimeTypes = Microsoft.AspNetCore.ResponseCompression.ResponseCompressionDefaults.MimeTypes
+        .Concat(new[] { "application/json", "application/problem+json" });
+});
+
 var app = builder.Build();
 
 // --- Kjør migreringer i dev ---
@@ -114,6 +133,7 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
 });
+app.UseResponseCompression();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
@@ -150,6 +170,7 @@ app.MapMultiPlantOperlogV1(apiV1);
 app.MapMultiPlantScadaV1(apiV1);
 app.MapCaptureRateV1(apiV1);
 app.MapKaiaCostV1(apiV1);
+app.MapEconomyV1(apiV1);
 app.MapAdminV1(apiV1);
 app.MapDamsV1(apiV1);
 app.MapSignalMapsV1(apiV1);

@@ -368,7 +368,8 @@ public sealed class HotFolderWatcher : BackgroundService
         var targetDir = Path.Combine(doneRoot, monthBucket);
         Directory.CreateDirectory(targetDir);
 
-        var stamped = $"{plantId}_{sourceKey}_{DateTime.UtcNow:yyyyMMddTHHmmssfff}_{file.Name}";
+        var stamped = HotFolderNaming.BuildStampedName(
+            $"{plantId}_{sourceKey}_{DateTime.UtcNow:yyyyMMddTHHmmssfff}_", file.Name);
         var targetPath = Path.Combine(targetDir, stamped);
         File.Move(file.FullName, targetPath, overwrite: false);
         await Task.CompletedTask;
@@ -384,12 +385,16 @@ public sealed class HotFolderWatcher : BackgroundService
             var targetDir = Path.Combine(quarantineRoot, dayBucket);
             Directory.CreateDirectory(targetDir);
 
-            var targetPath = Path.Combine(targetDir, file.Name);
+            // Strip akkumulerte stamp-prefikser + kapp lengde slik at heller ikke
+            // karantene-flyttingen feiler på MAX_PATH (.error.txt/.diag.json legger
+            // på ekstra tegn, derfor samme budsjett som done/duplicates).
+            var safeName = HotFolderNaming.BuildStampedName(string.Empty, file.Name);
+            var targetPath = Path.Combine(targetDir, safeName);
             // Hvis fil med samme navn finnes, legg til timestamp-suffiks
             if (File.Exists(targetPath))
             {
-                var stem = Path.GetFileNameWithoutExtension(file.Name);
-                var ext = Path.GetExtension(file.Name);
+                var stem = Path.GetFileNameWithoutExtension(safeName);
+                var ext = Path.GetExtension(safeName);
                 targetPath = Path.Combine(targetDir, $"{stem}_{DateTime.UtcNow:HHmmss}{ext}");
             }
             File.Move(file.FullName, targetPath);
@@ -426,7 +431,8 @@ public sealed class HotFolderWatcher : BackgroundService
             var targetDir = Path.Combine(dupRoot, monthBucket);
             Directory.CreateDirectory(targetDir);
 
-            var stamped = $"dup_{DateTime.UtcNow:yyyyMMddTHHmmssfff}_{file.Name}";
+            var stamped = HotFolderNaming.BuildStampedName(
+                $"dup_{DateTime.UtcNow:yyyyMMddTHHmmssfff}_", file.Name);
             var targetPath = Path.Combine(targetDir, stamped);
             File.Move(file.FullName, targetPath, overwrite: false);
 

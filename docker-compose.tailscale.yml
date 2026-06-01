@@ -1,0 +1,26 @@
+# Tailscale-/flerbruker-overlegg.
+# Kjoeres SAMMEN med basis-compose:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.tailscale.yml up --build -d
+#
+# Legger til Caddy som eneste inngang paa 127.0.0.1:8080. Tailscale Serve
+# (host-prosess) proxyer https://<maskin>.<tailnet>.ts.net -> localhost:8080.
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+      - api
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    # Bind kun til localhost: ingenting eksponeres direkte paa LAN/tailnet.
+    # Tailscale Serve naar Caddy via localhost og terminerer HTTPS.
+    ports:
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  caddy-data:
+  caddy-config:

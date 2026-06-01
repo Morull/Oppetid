@@ -81,12 +81,18 @@ public sealed class KaiaCostQueryService : IKaiaCostQueryService
             return Array.Empty<KaiaCostResult>();
         }
 
-        // Group by (plant_id, period) — nyeste reimport vinner per periode.
-        // Dette gir én rad per (plant, måned), så et kvartals-query gir
-        // 11 plants × 3 måneder = 33 rader (ikke 11).
+        // Dedupliser PER ANLEGG på overlappende perioder — ikke bare eksakt
+        // like (PeriodStart, PeriodEnd). Ellers dobbelttelles KAIA-kostnad når
+        // samme måned er re-importert med ulik datospenn (f.eks. «mai 1–17» +
+        // «mai 1–20»). Gir fortsatt én rad per (plant, måned). Se
+        // OverlappingImportResolver.
         var latestPerPlantPeriod = imports
-            .GroupBy(x => (x.PlantId!, x.PeriodStartUtc, x.PeriodEndUtc))
-            .Select(g => g.First())
+            .GroupBy(x => x.PlantId!)
+            .SelectMany(g => OverlappingImportResolver.ResolveNonOverlapping(
+                g,
+                x => x.PeriodStartUtc,
+                x => x.PeriodEndUtc,
+                x => x.ImportedAtUtc))
             .ToList();
 
         var plantIds = latestPerPlantPeriod

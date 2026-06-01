@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject NedetidApi NedetidApi
 @inject KaiaCostApi KaiaCostApi
+@inject EconomyApi EconomyApi
 @inject ReportsApi ReportsApi
 @inject FilterState Filter
 @inject NavigationManager Nav
@@ -19,7 +20,40 @@
     .dk-portfolio-table table {
         white-space: nowrap;
         min-width: 100%;
+        /* fixed-mode + width-styles på thead-celler gjør at tbody og tfoot
+           ARVER samme kolonnebredder. Det er kjernen i SUM-cellene-fiksen
+           (Spec NESTE-CHAT-OKONOMI-OPPFOLGING-2.md Punkt 1, 2026-05-22):
+           tidligere brukte tabellen auto-layout der hver rad-seksjon kunne
+           ha ulike kolonnebredder, og SUM-cellene la seg da feil sted. */
+        table-layout: fixed;
     }
+    /* 8-kolonne-modus (default): Anlegg, Effekt, AF, FOR, Produksjon,
+       Normalår, Spotoms, Datakvalitet. */
+    .dk-portfolio-table.dk-cols-compact thead th:nth-child(1)  { width: 200px; }
+    .dk-portfolio-table.dk-cols-compact thead th:nth-child(2)  { width: 100px; }
+    .dk-portfolio-table.dk-cols-compact thead th:nth-child(3)  { width: 80px;  }
+    .dk-portfolio-table.dk-cols-compact thead th:nth-child(4)  { width: 80px;  }
+    .dk-portfolio-table.dk-cols-compact thead th:nth-child(5)  { width: 140px; }
+    .dk-portfolio-table.dk-cols-compact thead th:nth-child(6)  { width: 110px; }
+    .dk-portfolio-table.dk-cols-compact thead th:nth-child(7)  { width: 160px; }
+    .dk-portfolio-table.dk-cols-compact thead th:nth-child(8)  { width: 120px; }
+    /* 13-kolonne-modus (showAllColumns): Anlegg, Effekt, AF, FOR, Produksjon,
+       Normalår, Spotoms, CR, Merverdi, Nedetid, Tap, Reddet vakt, Reddbare,
+       Datakvalitet. */
+    .dk-portfolio-table.dk-cols-wide thead th:nth-child(1)  { width: 180px; }
+    .dk-portfolio-table.dk-cols-wide thead th:nth-child(2)  { width: 90px;  }
+    .dk-portfolio-table.dk-cols-wide thead th:nth-child(3)  { width: 70px;  }
+    .dk-portfolio-table.dk-cols-wide thead th:nth-child(4)  { width: 70px;  }
+    .dk-portfolio-table.dk-cols-wide thead th:nth-child(5)  { width: 130px; }
+    .dk-portfolio-table.dk-cols-wide thead th:nth-child(6)  { width: 100px; }
+    .dk-portfolio-table.dk-cols-wide thead th:nth-child(7)  { width: 150px; }
+    .dk-portfolio-table.dk-cols-wide thead th:nth-child(8)  { width: 80px;  }
+    .dk-portfolio-table.dk-cols-wide thead th:nth-child(9)  { width: 130px; }
+    .dk-portfolio-table.dk-cols-wide thead th:nth-child(10) { width: 100px; }
+    .dk-portfolio-table.dk-cols-wide thead th:nth-child(11) { width: 130px; }
+    .dk-portfolio-table.dk-cols-wide thead th:nth-child(12) { width: 140px; }
+    .dk-portfolio-table.dk-cols-wide thead th:nth-child(13) { width: 100px; }
+    .dk-portfolio-table.dk-cols-wide thead th:nth-child(14) { width: 110px; }
     .dk-portfolio-table thead th:first-child,
     .dk-portfolio-table tbody td:first-child,
     .dk-portfolio-table tfoot td:first-child {
@@ -38,6 +72,15 @@
     }
     .dk-portfolio-table thead th {
         padding: 10px 12px !important;
+    }
+    /* SUM-rad: må matche tbody-cellenes padding og white-space slik at
+       kolonne-bredden er identisk og SUM-tallene legger seg direkte under
+       kolonnene de summerer. Tidligere arvet tfoot default MudBlazor-padding
+       (4px) som ga 997 px total bredde mot tbody sine 5720 px (Spec
+       NESTE-CHAT-OKONOMI-OPPFOLGING.md Funn 2, 2026-05-22). */
+    .dk-portfolio-table tfoot td {
+        padding: 10px 12px !important;
+        white-space: nowrap;
     }
     /* Spec NESTE-CHAT-VAKTROI-OG-UI-FIKS.md Del C: høyrejustering på
        numeriske kolonner. MudBlazor sin default sett text-align:start
@@ -61,6 +104,9 @@
 <PageHeader Title="Portefølje-rapport"
             Subtitle="Samlet rapport på tvers av alle anlegg for valgt periode. Klikk anleggs-rad for detaljer. Hold musepekeren over kolonneoverskriftene for forklaringer." />
 
+<MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pt-3"
+         ActivePanelIndex="_activeTab" ActivePanelIndexChanged="OnTabChangedAsync">
+    <MudTabPanel Text="Sammendrag">
 @if (_error is not null)
 {
     <MudAlert Severity="Severity.Error">@_error</MudAlert>
@@ -80,14 +126,34 @@ else if (_rows is not null)
     }
     else
     {
-        @* ---- Data-mangler-banner (hvis noen anlegg mangler delsett) ---- *@
+        @* ---- Data-mangler-banner (hvis noen anlegg mangler delsett) ----
+             Spec NESTE-CHAT-OKONOMI-OPPFOLGING.md § Datakvalitets-banner
+             (2026-05-22): vis HVOR MYE + NÅR istedenfor bare "mangler data".
+             Vi utleder "Importen rekker til" fra DataQuality.ManglerImportHours
+             som er kontinuerlig mangel fra periode-slutt og bakover. *@
         var medMangler = _rows.Where(r => r.MissingData.Count > 0).ToList();
         @if (medMangler.Count > 0)
         {
+            var maksManglendeTimer = medMangler
+                .Select(r => r.DataQuality?.ManglerImportHours ?? 0)
+                .DefaultIfEmpty(0)
+                .Max();
+            var maksManglendeDager = (int)Math.Ceiling(maksManglendeTimer / 24.0);
+            var sisteImportDato = Filter.ToDate?.AddHours(-maksManglendeTimer);
+
             <MudAlert Severity="Severity.Warning" Class="mb-3" Dense="true">
                 <MudText Typo="Typo.body2">
-                    <strong>Rapporten er ikke komplett:</strong>
-                    @medMangler.Count av @_rows.Count anlegg mangler data —
+                    @if (maksManglendeTimer > 0 && sisteImportDato.HasValue)
+                    {
+                        <strong>Importen rekker til @sisteImportDato.Value.ToString("dd.MM."):</strong>
+                        @($" siste {maksManglendeDager} {(maksManglendeDager == 1 ? "dag" : "dager")} mangler for {medMangler.Count} av {_rows.Count} anlegg")
+                        <span> — </span>
+                    }
+                    else
+                    {
+                        <strong>Rapporten er ikke komplett:</strong>
+                        @($" {medMangler.Count} av {_rows.Count} anlegg har ufullstendig data — ")
+                    }
                     @string.Join("; ",
                         medMangler.Select(r =>
                             $"{r.PlantName} ({string.Join(", ", r.MissingData)})"))
@@ -170,7 +236,7 @@ else if (_rows is not null)
                 <MudTable Items="_rows" Hover="true" Dense="true" Elevation="0" SortLabel="Sortér"
                           OnRowClick="@((TableRowClickEventArgs<Row> args) => OnRowClick(args.Item))"
                           RowStyle="cursor: pointer;"
-                          Class="dk-portfolio-table">
+                          Class="@($"dk-portfolio-table {(_showAllColumns ? "dk-cols-wide" : "dk-cols-compact")}")">
                     <HeaderContent>
                         <MudTh Style="min-width: 110px;"><MudTableSortLabel SortBy="@SortByName">Anlegg</MudTableSortLabel></MudTh>
                         <MudTh Class="num">
@@ -321,8 +387,19 @@ else if (_rows is not null)
         </MudPaper>
     }
 }
+    </MudTabPanel>
+    <MudTabPanel Text="Økonomi">
+        <OkonomiFane />
+    </MudTabPanel>
+</MudTabs>
 
 @code {
+    // 0 = Sammendrag, 1 = Økonomi. Styrer hvilken fane som faktisk fetcher
+    // data ved periode-bytte (Spec NESTE-CHAT-OKONOMI-OPPFOLGING.md Funn 3,
+    // 2026-05-22): Sammendrag-fanens 22+ parallelle per-anleggs-kall skal
+    // ikke fyre når brukeren er på Økonomi-fanen.
+    private int _activeTab;
+
     private bool _loading;
     private string? _error;
     private List<Row>? _rows;
@@ -390,13 +467,35 @@ else if (_rows is not null)
     }
 
     /// <summary>
-    /// Henter portefølje-KPI-er, vakt-ROI og nedetid for hver plant parallelt.
-    /// Hver plant feiler isolert — én feilende vakt-ROI gir bare 0 i de
-    /// kolonnene, ikke ødelagt rapport. Skalerer til 11 anlegg uten merkbar
-    /// forsinkelse takket være parallel-fanout.
+    /// Fane-bytte: lazy-last Sammendrag-data hvis vi nettopp byttet tilbake
+    /// dit og data ikke allerede er hentet. Økonomi-fanens egen komponent
+    /// håndterer sin egen lasting.
+    /// </summary>
+    private async Task OnTabChangedAsync(int index)
+    {
+        _activeTab = index;
+        if (index == 0 && _rows is null && !_loading)
+        {
+            await LoadAsync();
+        }
+    }
+
+    /// <summary>
+    /// Henter portefølje-data via ETT aggregert /economy-kall istedenfor
+    /// 22+ per-anleggs-kall (Spec MASTERPLAN-CODE-2026-05-22 § «Sammendrag
+    /// reuser /economy», 2026-05-22). Backend gjør all aggregering — Web
+    /// mapper bare `PerPlantEconomyDto` til `Row` for tabell-rendering.
+    ///
+    /// KAIA-bulken kjøres fortsatt separat for å få Megler/Fast-breakdown
+    /// til KAIA-kortets undertittel; den info-en ligger ikke i /economy.
+    ///
+    /// Fane-gating (Funn 3): hvis Økonomi-fanen er aktiv hopper vi over
+    /// Sammendrag-fetchen helt og lar Økonomi-komponenten håndtere sin
+    /// egen lasting.
     /// </summary>
     private async Task LoadAsync()
     {
+        if (_activeTab != 0) return;
         if (!Filter.FromDate.HasValue || !Filter.ToDate.HasValue) return;
         _loading = true;
         _error = null;
@@ -415,37 +514,18 @@ else if (_rows is not null)
             var fromUtc = Filter.FromDate.Value.ToUtcOffsetSafe();
             var toUtc = Filter.ToDate.Value.ToUtcOffsetSafe();
 
-            var portfolio = await NedetidApi.GetPortfolioKpisAsync(fromUtc, toUtc);
-
-            // Plant-detaljer for å få NormalAarsproduksjonGwh (Normalår-andel-
-            // kolonnen). Failer stille — uten verdiene blir kolonnen tom.
-            IReadOnlyList<PlantDto> plantDetails = Array.Empty<PlantDto>();
-            try { plantDetails = await ReportsApi.ListPlantsAsync(); }
-            catch { /* Normalår-andel vises tom */ }
-            var normalGwhByPlant = plantDetails
-                .Where(p => p.NormalAarsproduksjonGwh.HasValue)
-                .ToDictionary(p => p.Id, p => p.NormalAarsproduksjonGwh!.Value,
-                    StringComparer.Ordinal);
-
-            // Datakvalitet i én bulk-spørring (SPEC-MVP-HARDENING tiltak C) —
-            // unngår N+1 ved å hente alle anlegg på én gang.
-            IReadOnlyList<DataQualitySummaryDto> dqSummaries = Array.Empty<DataQualitySummaryDto>();
-            try { dqSummaries = await NedetidApi.GetPortfolioDataQualityAsync(fromUtc, toUtc); }
-            catch { /* DQ er informasjons-kolonne; tom lykke om endepunktet feiler */ }
-            var dqByPlant = dqSummaries.ToDictionary(d => d.PlantId, d => d, StringComparer.Ordinal);
-
-            // KAIA-kostnad (Spec KAIA-KOSTNAD) — én bulk-spørring per periode.
-            // Feiler stille; kortet skjules om endepunktet ikke svarer.
+            // KAIA-breakdown (Megler/Fast) — egen call for tooltip-detaljer.
             _ = LoadKaiaCostAsync(fromUtc, toUtc);
 
-            // Fan-out: vakt-ROI + nedetid for hver plant parallelt.
-            var enrichTasks = portfolio.Plants.Select(p =>
-                EnrichAsync(p, dqByPlant.GetValueOrDefault(p.PlantId),
-                    normalGwhByPlant.TryGetValue(p.PlantId, out var n) ? n : (double?)null,
-                    fromUtc, toUtc));
-            var enriched = await Task.WhenAll(enrichTasks);
+            // Aggregert økonomi-rapport: dekker alle Sammendrag-kolonnene
+            // i ett kall. "all" = hele porteføljen.
+            var report = await EconomyApi.GetReportAsync(
+                new[] { "all" }, fromUtc, toUtc, kind: "Custom");
 
-            _rows = enriched.OrderByDescending(r => r.ReddetNok).ToList();
+            _rows = report.PerPlant
+                .Select(p => MapEconomyToRow(p, fromUtc, toUtc))
+                .OrderByDescending(r => r.ReddetNok)
+                .ToList();
             _totalReddetNok = _rows.Sum(r => r.ReddetNok);
         }
         catch (Exception ex)
@@ -457,6 +537,54 @@ else if (_rows is not null)
             _loading = false;
             StateHasChanged();
         }
+    }
+
+    /// <summary>
+    /// Mapper en PerPlantEconomyDto (fra /economy) til en Row (Sammendrag-
+    /// tabellens internt format). Datakvalitet-cellen får et minimalistisk
+    /// DTO-speil der bare GoodPct og ManglerImportHours er populerte —
+    /// kompakt-varianten av <see cref="DataQualityBadge"/> bruker kun
+    /// GoodPct, så resten kan stå null/0 uten visuell ulempe.
+    /// </summary>
+    private static Row MapEconomyToRow(PerPlantEconomyDto p, DateTimeOffset fromUtc, DateTimeOffset toUtc)
+    {
+        var missing = new List<string>();
+        if (p.ManglerImportHours > 0) missing.Add("Settlement-import");
+        if (p.CaptureRate <= 0 && p.SpotomsetningNok > 0) missing.Add("Capture rate");
+
+        var dq = new DataQualitySummaryDto(
+            PlantId: p.PlantId,
+            PlantName: p.PlantName,
+            FromUtc: fromUtc,
+            ToUtc: toUtc,
+            TotalHours: 0,
+            GoodHours: 0,
+            WarningHours: 0,
+            BadHours: 0,
+            MissingHours: 0,
+            ManglerImportHours: p.ManglerImportHours,
+            GoodPct: p.GoodHoursPct,
+            DekningPct: 0,
+            TopIssues: Array.Empty<DataQualityIssueDto>());
+
+        return new Row(
+            PlantId: p.PlantId,
+            PlantName: p.PlantName,
+            InstalledCapacityMw: p.InstalledCapacityMw,
+            AvailabilityFactor: p.AvailabilityFactor,
+            ForcedOutageRate: p.ForcedOutageRate,
+            TotalProductionMwh: p.TotalProductionMwh,
+            SpotomsetningNok: p.SpotomsetningNok,
+            CaptureRateTimes: p.CaptureRate,
+            MerverdiNok: p.MerverdiNok,
+            NedetidTimer: p.NedetidTimer,
+            TapNok: p.NedetidstapNok,
+            ReddetNok: p.ReddetAvVaktNok,
+            AntallEvents: p.AntallEvents,
+            AntallReddbare: p.AntallReddbareEvents,
+            DataQuality: dq,
+            NormalAarsproduksjonGwh: p.NormalAarsproduksjonGwh,
+            MissingData: missing);
     }
 
     /// <summary>
@@ -490,50 +618,6 @@ else if (_rows is not null)
             _kaiaLoading = false;
             await InvokeAsync(StateHasChanged);
         }
-    }
-
-    private async Task<Row> EnrichAsync(
-        PortfolioPlantKpi p, DataQualitySummaryDto? dq, double? normalGwh,
-        DateTimeOffset fromUtc, DateTimeOffset toUtc)
-    {
-        double Kpi(string name) => p.Kpis.TryGetValue(name, out var v) && v.HasValue ? v.Value : 0;
-
-        // Vakt-ROI og Nedetid feiler stille per plant — vi får 0 i tabellen
-        // hvis SCADA-data eller settlement-data mangler for periode. Samler
-        // hvilke som feilet i MissingData så UI kan flagge anlegget.
-        VaktRoiResponse? vakt = null;
-        NedetidResponse? ned = null;
-        var missing = new List<string>();
-        try { vakt = await NedetidApi.GetVaktRoiAsync(p.PlantId, fromUtc, toUtc); }
-        catch { missing.Add("Vakt-ROI"); }
-        try { ned = await NedetidApi.GetNedetidAsync(p.PlantId, fromUtc, toUtc); }
-        catch { missing.Add("Nedetid"); }
-
-        // Capture rate er allerede i p.Kpis fra portefølje-API. Hvis nøkkelen
-        // mangler, betyr det at server-side feilet på det anlegget — flagg.
-        if (!p.Kpis.ContainsKey("CaptureRate_Times"))
-        {
-            missing.Add("Capture rate");
-        }
-
-        return new Row(
-            PlantId: p.PlantId,
-            PlantName: p.PlantName,
-            InstalledCapacityMw: p.InstalledCapacityMw,
-            AvailabilityFactor: Kpi("AvailabilityFactor_AF"),
-            ForcedOutageRate: Kpi("ForcedOutageRate_FOR"),
-            TotalProductionMwh: Kpi("TotalProduction_MWh"),
-            SpotomsetningNok: Kpi("Spotomsetning_NOK"),
-            CaptureRateTimes: Kpi("CaptureRate_Times"),
-            MerverdiNok: Kpi("Merverdi_NOK"),
-            NedetidTimer: ned?.TotalNedetidTimer ?? 0,
-            TapNok: ned?.TotalTapNok ?? 0,
-            ReddetNok: vakt?.TotalReddetNok ?? 0,
-            AntallEvents: vakt?.AntallEventsTotalt ?? 0,
-            AntallReddbare: vakt?.AntallReddbareInnenforVakt ?? 0,
-            DataQuality: dq,
-            NormalAarsproduksjonGwh: normalGwh,
-            MissingData: missing);
     }
 
     /// <summary>

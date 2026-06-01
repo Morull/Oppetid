@@ -81,10 +81,14 @@ else
        brudd siden den IKKE er Spotomsetning + Ubalansekost (inkluderer flere
        poster). Speiler nå Drift/Marked/Økonomi-inndelingen fra KPI-katalog-
        tabellen lenger ned. *@
+    @* KAIA-kostnad-kortet legges som siste kort i "Resultat"-seksjonen
+       (Spec NESTE-CHAT-OKONOMI-OPPFOLGING-2 Punkt 2, 2026-05-22). Eksisterende
+       Megler+Fast-undertittel beholdes som intern dekomponering. Den gamle
+       separate "Megler & avgifter"-overskriften er fjernet. *@
     @foreach (var seksjon in HighlightSections(_report))
     {
         <MudText Typo="Typo.subtitle2" Color="MudBlazor.Color.Secondary" Class="mb-2 mt-2">@seksjon.Tittel</MudText>
-        <MudGrid Class="mb-3">
+        <MudGrid Class="@(seksjon.Tittel == "Resultat" ? "mb-6" : "mb-3")">
             @foreach (var card in seksjon.Cards)
             {
                 <MudItem xs="12" sm="6" md="4" lg="3">
@@ -95,35 +99,35 @@ else
                              InfoText="@card.Info" />
                 </MudItem>
             }
-        </MudGrid>
-    }
-
-    @* KAIA-kostnad (Spec KAIA-KOSTNAD): meglerprovisjon + fast årsavgift
-       pro-rata på rapportperioden. Lastes som egen HTTP-call etter
-       rapporten — vises som "Laster…" inntil den er klar. Egen seksjon fordi
-       den lastes asynkront og inngår ikke i Oppgjør-summen. *@
-    @if (_kaiaCost is not null || _kaiaCostLoading)
-    {
-        <MudText Typo="Typo.subtitle2" Color="MudBlazor.Color.Secondary" Class="mb-2 mt-2">Megler &amp; avgifter</MudText>
-        <MudGrid Class="mb-6">
-            @if (_kaiaCost is not null)
+            @* Start/stopp-syklus-KPI legges som siste kort i Drift-seksjonen
+               (Spec NESTE-CHAT-START-STOPP-KPI.md, 2026-05-22). *@
+            @if (seksjon.Tittel == "Drift" && _report.StartStopp is not null)
             {
                 <MudItem xs="12" sm="6" md="4" lg="3">
-                    <KpiCard Label="KAIA-kostnad"
-                             Value="@FormatKaiaTotal(_kaiaCost)"
-                             SubText="@($"Megler {FormatNok(_kaiaCost.MeglerprovisjonNok)} · Fast {FormatNok(_kaiaCost.FastAvgiftNok)}")"
-                             Accent="KpiAccent.Warning"
-                             InfoText="@KaiaTooltip(_kaiaCost)" />
+                    <StartStoppKort Data="@_report.StartStopp" PlantId="@PlantId" />
                 </MudItem>
             }
-            else if (_kaiaCostLoading)
+            @if (seksjon.Tittel == "Resultat" && (_kaiaCost is not null || _kaiaCostLoading))
             {
-                <MudItem xs="12" sm="6" md="4" lg="3">
-                    <KpiCard Label="KAIA-kostnad"
-                             Value="—"
-                             Accent="KpiAccent.Warning"
-                             State="KpiState.Loading" />
-                </MudItem>
+                @if (_kaiaCost is not null)
+                {
+                    <MudItem xs="12" sm="6" md="4" lg="3">
+                        <KpiCard Label="KAIA-kostnad"
+                                 Value="@FormatKaiaTotal(_kaiaCost)"
+                                 SubText="@($"Megler {FormatNok(_kaiaCost.MeglerprovisjonNok)} · Fast {FormatNok(_kaiaCost.FastAvgiftNok)}")"
+                                 Accent="KpiAccent.Warning"
+                                 InfoText="@KaiaTooltip(_kaiaCost)" />
+                    </MudItem>
+                }
+                else
+                {
+                    <MudItem xs="12" sm="6" md="4" lg="3">
+                        <KpiCard Label="KAIA-kostnad"
+                                 Value="—"
+                                 Accent="KpiAccent.Warning"
+                                 State="KpiState.Loading" />
+                    </MudItem>
+                }
             }
         </MudGrid>
     }
@@ -1042,7 +1046,14 @@ async Task GoToReport(string idempotencyKey)
     {
         double? Get(string name) => r.Kpis.FirstOrDefault(k => k.Name == name)?.Value;
 
-        // Drift — timer + andel-KPI-er.
+        // Drifts-leders 2026-05-22-instruksjon (Spec NESTE-CHAT-OKONOMI-
+        // OPPFOLGING-2 Punkt 2): tre seksjoner — Drift / Produksjon / Resultat.
+        // Bud-leveranse flyttes til Produksjon. Tidligere "Marked" og "Økonomi"
+        // er nå slått sammen til Resultat. KAIA-kostnad-kortet legges som
+        // siste kort i Resultat (gjøres i markup siden det lastes asynkront);
+        // den gamle separate "Megler & avgifter"-overskriften er fjernet.
+
+        // Drift — operasjonelle timer + tilgjengelighet.
         yield return new HighlightSection("Drift", new[]
         {
             new HighlightCard("Drift-timer", FormatNumber(Get("ServiceHours_SH"), "F0") + " t",
@@ -1051,22 +1062,26 @@ async Task GoToReport(string idempotencyKey)
                 "Forpliktet, men ikke produsert", KpiAccent.Negative, null),
             new HighlightCard("Tilgjengelighet", FormatRatio(Get("AvailabilityFactor_AF")),
                 "Drift-timer / (Drift + Nedetid)", KpiAccent.Neutral, null),
-            new HighlightCard("Bud-leveranse", FormatRatio(Get("BidDelivery")),
-                "Σ Elhub / Σ Spotbud", KpiAccent.Accent, null),
         });
 
-        // Volum — egen seksjon så det ikke ser ut som naborkortene summerer til det.
-        // "Produksjon i perioden" (ikke "Total produksjon") — Spec Del 4: ordet
-        // "Total" antyder sum av nabokortene som ikke er komponenter.
-        yield return new HighlightSection("Volum", new[]
+        // Produksjon — volum og hvordan vi leverte budet. "Produksjon i
+        // perioden" (ikke "Total produksjon") — Spec FORBEDRINGSFORSLAG-
+        // KPI-KORT-INTEGRITET Del 4: ordet "Total" antyder sum av
+        // nabokortene som ikke er komponenter.
+        yield return new HighlightSection("Produksjon", new[]
         {
             new HighlightCard("Produksjon i perioden",
                 FormatNumber(Get("TotalProduction_MWh"), "F2") + " MWh",
                 "Akkumulert Elhub", KpiAccent.Neutral, null),
+            new HighlightCard("Bud-leveranse", FormatRatio(Get("BidDelivery")),
+                "Σ Elhub / Σ Spotbud", KpiAccent.Accent, null),
         });
 
-        // Marked — bruttoinntekter og -kostnader fra spot/ubalanse.
-        yield return new HighlightSection("Marked", new[]
+        // Resultat — bruttoinntekter, kostnader, oppgjør og avgifter samlet.
+        // Oppgjør står med eksplisitt komponent-undertekst (Spec Del 2:
+        // 55 273 NOK uforklart avvik tidligere). KAIA-kostnad-kortet
+        // injiseres i markup som siste kort her (asynkron lasting).
+        yield return new HighlightSection("Resultat", new[]
         {
             new HighlightCard("Spotomsetning",
                 FormatNumber(Get("Spotomsetning_NOK"), "N0") + " NOK",
@@ -1074,15 +1089,6 @@ async Task GoToReport(string idempotencyKey)
             new HighlightCard("Ubalansekost",
                 FormatNumber(Get("Ubalansekost_NOK"), "N0") + " NOK",
                 "Total kostnad ved å avvike fra Spotbud", KpiAccent.Accent, null),
-        });
-
-        // Resultat — Oppgjør står for seg selv som SAMLET resultat. Tidligere
-        // sto Oppgjør inntil Spotoms + Ubalanse i samme rad og inviterte til
-        // avstemming som IKKE går opp (Spec Del 2: 55 273 NOK uforklart avvik).
-        // Vi viser nå komponentene EKSPLISITT i undertittelen så regnestykket
-        // kan etterprøves, og legger eventuell rest i en "andre poster"-linje.
-        yield return new HighlightSection("Resultat", new[]
-        {
             new HighlightCard("Oppgjør",
                 FormatNumber(Get("Oppgjor_NOK"), "N0") + " NOK",
                 OppgjorUndertekst(Get("Spotomsetning_NOK"), Get("Ubalansekost_NOK"), Get("Oppgjor_NOK")),

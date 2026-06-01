@@ -40,3 +40,6 @@ logs/
 
 # Live data — ikke committe brukerens KAIA/SCADA-eksporter
 /CSV Eksporter/
+
+# Volum-backup ved flytting til annen PC — store tar-filer
+/_volume-backup/

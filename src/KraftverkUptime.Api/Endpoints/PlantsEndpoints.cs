@@ -137,6 +137,9 @@ public static class PlantsEndpoints
             plant.HeadM,
             plant.EnergyEquivalentKwhPerM3,
             plant.CommissioningYear,
+            plant.StartStoppBudsjettPerAar,
+            plant.StartStoppKostnadPerSyklusNok,
+            plant.StartStoppKilde,
         });
     }
 
@@ -213,6 +216,11 @@ public static class PlantsEndpoints
         plant.HeadM = body.HeadM;
         plant.EnergyEquivalentKwhPerM3 = body.EnergyEquivalentKwhPerM3;
         plant.CommissioningYear = body.CommissioningYear;
+        // Start/stopp-KPI-felt (Spec NESTE-CHAT-START-STOPP-KPI.md, 2026-05-22).
+        plant.StartStoppBudsjettPerAar = body.StartStoppBudsjettPerAar;
+        plant.StartStoppKostnadPerSyklusNok = body.StartStoppKostnadPerSyklusNok;
+        plant.StartStoppKilde = string.IsNullOrWhiteSpace(body.StartStoppKilde)
+            ? null : body.StartStoppKilde.Trim();
 
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
 
@@ -253,6 +261,9 @@ public static class PlantsEndpoints
             plant.HeadM,
             plant.EnergyEquivalentKwhPerM3,
             plant.CommissioningYear,
+            plant.StartStoppBudsjettPerAar,
+            plant.StartStoppKostnadPerSyklusNok,
+            plant.StartStoppKilde,
         });
     }
 
@@ -339,7 +350,10 @@ public sealed record UpdatePlantRequest(
     string? TurbineType = null,
     double? HeadM = null,
     double? EnergyEquivalentKwhPerM3 = null,
-    int? CommissioningYear = null);
+    int? CommissioningYear = null,
+    int? StartStoppBudsjettPerAar = null,
+    double? StartStoppKostnadPerSyklusNok = null,
+    string? StartStoppKilde = null);
 
 /// <summary>Bekreftelses-body for <c>DELETE /api/v1/plants/{plantId}/data</c>.</summary>
 public sealed record ResetPlantDataRequest(string ConfirmText);

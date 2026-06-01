@@ -145,6 +145,14 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<KraftverkUptime.Modules.Reporting.KaiaCost.IKaiaCostQueryService,
                           KraftverkUptime.Infrastructure.Reporting.KaiaCostQueryService>();
 
+        // --- Økonomi-rapport (Spec NESTE-CHAT-OKONOMI-FANE-PDF.md) ---
+        services.AddScoped<KraftverkUptime.Modules.Reporting.Economy.IEconomyReportQueryService,
+                          KraftverkUptime.Infrastructure.Reporting.EconomyReportQueryService>();
+
+        // --- Start/stopp-KPI (Spec NESTE-CHAT-START-STOPP-KPI.md) ---
+        services.AddScoped<KraftverkUptime.Modules.Reporting.StartStopp.IStartStoppQueryService,
+                          KraftverkUptime.Infrastructure.Reporting.StartStoppQueryService>();
+
         // --- Produksjons-analyse (Hydrogrid plan vs. faktisk) ---
         services.AddScoped<KraftverkUptime.Modules.Reporting.Produksjon.IProduksjonAnalyseService,
                           KraftverkUptime.Infrastructure.Reporting.ProduksjonAnalyseQueryService>();
@@ -175,7 +183,12 @@ public static class InfrastructureServiceCollectionExtensions
             // Default localhost:5080 — overstyres via miljøvariabel HotFolder:UploadBaseUrl
             var baseUrl = configuration["HotFolder:UploadBaseUrl"] ?? "http://localhost:5080/";
             c.BaseAddress = new Uri(baseUrl);
-            c.Timeout = TimeSpan.FromMinutes(5);
+            // Store 15-min SCADA-fine-filer (multi-anlegg, titalls MB) sprengte den
+            // gamle 5-min-timeouten og havnet i quarantine (TaskCanceledException).
+            // Default 30 min, overstyrbar via HotFolder:UploadTimeoutMinutes.
+            var timeoutMinutes = int.TryParse(
+                configuration["HotFolder:UploadTimeoutMinutes"], out var m) && m > 0 ? m : 30;
+            c.Timeout = TimeSpan.FromMinutes(timeoutMinutes);
         });
 
         // --- Events ---
