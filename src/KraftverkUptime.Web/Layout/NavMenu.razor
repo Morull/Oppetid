@@ -1,6 +1,8 @@
 @* Rollegruppert meny (SPEC-UI-ROLLEBASERT-2026-06-10 fase 2). Kun etiketter er
    endret/gruppert — rutene er uendret så bokmerker ikke brekker. MudNavGroup
    beholder ikon i mini-drawer (hover-ekspansjon) og grupperer når åpen. *@
+@inject ReportsApi ReportsApi
+
 <MudNavMenu Class="pa-2">
     <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Oversikt</MudNavLink>
     <MudNavLink Href="portefolje" Icon="@Icons.Material.Filled.AccountBalance">Portefølje</MudNavLink>
@@ -19,7 +21,26 @@
     <MudNavGroup Title="Data &amp; admin" Icon="@Icons.Material.Filled.Storage" Expanded="true">
         <MudNavLink Href="reports" Icon="@Icons.Material.Filled.Assessment">Månedsrapporter</MudNavLink>
         <MudNavLink Href="plants" Icon="@Icons.Material.Filled.Factory">Anlegg</MudNavLink>
-        <MudNavLink Href="data-import" Icon="@Icons.Material.Filled.CloudSync">Data-import</MudNavLink>
+        <MudNavLink Href="data-import" Icon="@Icons.Material.Filled.CloudSync">
+            Data-import
+            @if (_pendingCount > 0)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled"
+                         Class="ml-2 my-0">@_pendingCount</MudChip>
+            }
+        </MudNavLink>
         <MudNavLink Href="admin/kategorier" Icon="@Icons.Material.Filled.Category">Kategorier</MudNavLink>
     </MudNavGroup>
 </MudNavMenu>
+
+@code {
+    // Antall importer som venter på klassifisering — vises som badge på «Data-import».
+    // Lastes ÉN gang når menyen rendres (ikke polling). Tellingen er et server-side
+    // skann (SPEC-UI-ROLLEBASERT fase 2), så vi henter den ikke på hver navigasjon.
+    private int _pendingCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _pendingCount = await ReportsApi.GetPendingImportCountAsync();
+    }
+}

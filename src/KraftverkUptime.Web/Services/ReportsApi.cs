@@ -33,6 +33,25 @@ public sealed class ReportsApi
         return env?.Items ?? (IReadOnlyList<PlantDto>)Array.Empty<PlantDto>();
     }
 
+    /// <summary>
+    /// Antall importer uten ferdig-klassifisert rapport (for «Data-import»-badgen).
+    /// Best-effort: feiler stille til 0 så menyen aldri brekker. SPEC-UI-ROLLEBASERT fase 2.
+    /// </summary>
+    public async Task<int> GetPendingImportCountAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await _http
+                .GetFromJsonAsync<PendingImportCountDto>("api/v1/settlements/pending-count", JsonOptions, ct)
+                .ConfigureAwait(false);
+            return resp?.Count ?? 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
     public async Task<PlantDto?> GetPlantAsync(string plantId, CancellationToken ct = default)
     {
         var uri = new Uri($"api/v1/plants/{Uri.EscapeDataString(plantId)}", UriKind.Relative);
@@ -362,6 +381,8 @@ public sealed class ReportsApi
 /// plan-avvik som teller som ForcedDerating; default 0.80 (= 20 % toleranse).
 /// Null fra ListAsync (paginert liste viser kun grunn-felter); satt fra GET.
 /// </summary>
+public sealed record PendingImportCountDto(int Count);
+
 public sealed record PlantDto(
     string Id, string Name, string Type, double InstalledCapacityMw, string TimeZone,
     double? DeratingThreshold = null,

@@ -10,11 +10,13 @@ using KraftverkUptime.Core.Events;
 using KraftverkUptime.Core.Security;
 using KraftverkUptime.Core.Storage;
 using KraftverkUptime.Infrastructure.Persistence;
+using KraftverkUptime.Modules.Reporting.Storage;
 using KraftverkUptime.Modules.Settlement;
 using KraftverkUptime.Modules.Settlement.Jobs;
 using KraftverkUptime.Modules.Settlement.Persistence;
 using KraftverkUptime.Modules.Settlement.Quality;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -70,7 +72,50 @@ public static class MultiPlantSettlementsEndpoints
             .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
             .ProducesProblem(StatusCodes.Status415UnsupportedMediaType);
 
+        group.MapGet("/pending-count", GetPendingCountAsync)
+            .WithName("GetPendingImportCount")
+            .WithSummary("Antall importer uten ferdig-klassifisert rapport, på tvers av anlegg (for meny-badge).")
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
+            .Produces<PendingImportCountResponse>(StatusCodes.Status200OK);
+
         return endpoints;
+    }
+
+    // ---- GET /api/v1/settlements/pending-count --------------------------------
+    // «Rapport finnes» er et blob-oppslag per import (ingen DB-flagg), så vi
+    // sjekker kun de nyeste importene per anlegg — eldre er for lengst klassifisert.
+    // Billig nok for et meny-merke som lastes én gang. (Optimalisering: et
+    // «report_generated»-flagg i settlement_imports ville gjort dette til én DB-telling.)
+    private static async Task<IResult> GetPendingCountAsync(
+        ISettlementImportRecorder recorder,
+        IUptimeReportStore reportStore,
+        KraftverkDbContext db,
+        IQueryContext queryContext,
+        CancellationToken ct)
+    {
+        var plantIds = await queryContext.Apply(db.Plants.AsQueryable())
+            .Select(p => p.Id)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        var pending = 0;
+        foreach (var plantId in plantIds)
+        {
+            var rows = await recorder.ListForPlantAsync(plantId, null, null, limit: 10, ct)
+                .ConfigureAwait(false);
+            foreach (var row in rows)
+            {
+                var hasReport = await reportStore
+                    .GetAsync(row.OwnerOrgId, row.PlantId, row.IdempotencyKey, ct)
+                    .ConfigureAwait(false) is not null;
+                if (!hasReport)
+                {
+                    pending++;
+                }
+            }
+        }
+
+        return Results.Ok(new PendingImportCountResponse(pending));
     }
 
     private static async Task<IResult> UploadMultiPlantAsync(
@@ -432,3 +477,5 @@ public sealed record MultiPlantImportResponse(
     int ImportCount,
     int SkippedCount,
     IReadOnlyList<MultiPlantImportResult> Imports);
+
+public sealed record PendingImportCountResponse(int Count);
