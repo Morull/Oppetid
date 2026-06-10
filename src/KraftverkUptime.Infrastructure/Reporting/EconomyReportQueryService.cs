@@ -256,7 +256,8 @@ public sealed class EconomyReportQueryService : IEconomyReportQueryService
         // (antall klassifiserte timer i hver import) siden ratioene rapporteres
         // pr time.
         double spot = 0, oppgjor = 0, ubalanse = 0, mwh = 0;
-        double afWeightedSum = 0, forWeightedSum = 0, weightHoursSum = 0;
+        double afWeightedSum = 0, forWeightedSum = 0;
+        double afWeightHoursSum = 0, forWeightHoursSum = 0;
         foreach (var import in distinctPerPeriod)
         {
             var report = await _reports
@@ -264,19 +265,36 @@ public sealed class EconomyReportQueryService : IEconomyReportQueryService
                 .ConfigureAwait(false);
             if (report is null) continue;
 
-            var kpis = report.Kpis.ToDictionary(k => k.Name, k => k.Value ?? 0, StringComparer.Ordinal);
-            spot += kpis.GetValueOrDefault("Spotomsetning_NOK");
-            oppgjor += kpis.GetValueOrDefault("Oppgjor_NOK");
-            ubalanse += kpis.GetValueOrDefault("Ubalansekost_NOK");
-            mwh += kpis.GetValueOrDefault("TotalProduction_MWh");
+            // Behold nullbarhet: et KPI som ikke kunne beregnes (null) er noe
+            // annet enn verdien 0. Summene under er additive — der er null→0
+            // riktig — men for de MWh-vektede ratioene (AF/FOR) ville null→0
+            // dratt snittet kunstig ned (FAGVURDERING-KPI-BEREGNINGER #3).
+            var kpis = report.Kpis.ToDictionary(k => k.Name, k => k.Value, StringComparer.Ordinal);
+            spot += kpis.GetValueOrDefault("Spotomsetning_NOK") ?? 0;
+            oppgjor += kpis.GetValueOrDefault("Oppgjor_NOK") ?? 0;
+            ubalanse += kpis.GetValueOrDefault("Ubalansekost_NOK") ?? 0;
+            mwh += kpis.GetValueOrDefault("TotalProduction_MWh") ?? 0;
 
+            // AF/FOR: vekt KUN inn de importene der ratioen faktisk er beregnet.
+            // En datafattig måned (AF=null) skal ikke telle med full PeriodHours
+            // i nevneren — ellers raseres porteføljesnittet. En genuin AF=0
+            // (anlegget nede hele måneden) har HasValue=true og teller normalt.
             var weight = report.PeriodHours;
-            afWeightedSum += kpis.GetValueOrDefault("AvailabilityFactor_AF") * weight;
-            forWeightedSum += kpis.GetValueOrDefault("ForcedOutageRate_FOR") * weight;
-            weightHoursSum += weight;
+            var afVal = kpis.GetValueOrDefault("AvailabilityFactor_AF");
+            if (afVal.HasValue)
+            {
+                afWeightedSum += afVal.Value * weight;
+                afWeightHoursSum += weight;
+            }
+            var forVal = kpis.GetValueOrDefault("ForcedOutageRate_FOR");
+            if (forVal.HasValue)
+            {
+                forWeightedSum += forVal.Value * weight;
+                forWeightHoursSum += weight;
+            }
         }
-        var availabilityFactor = weightHoursSum > 0 ? afWeightedSum / weightHoursSum : 0;
-        var forcedOutageRate = weightHoursSum > 0 ? forWeightedSum / weightHoursSum : 0;
+        var availabilityFactor = afWeightHoursSum > 0 ? afWeightedSum / afWeightHoursSum : 0;
+        var forcedOutageRate = forWeightHoursSum > 0 ? forWeightedSum / forWeightHoursSum : 0;
 
         // Capture rate + merverdi kan feile (mangler market_prices etc.) —
         // konservativt: logg og fortsett med 0 istedenfor å krasje hele

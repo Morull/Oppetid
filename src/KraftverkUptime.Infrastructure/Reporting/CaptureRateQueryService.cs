@@ -75,9 +75,13 @@ public sealed class CaptureRateQueryService : ICaptureRateQueryService
         if (hours.Count == 0) return Array.Empty<DailyCaptureRate>();
 
         var historical = await LoadHistoricalDailyAsync(plantId, ct).ConfigureAwait(false);
+        // Grunnlag = Σ(MWh × spot) / Σ(MWh), IKKE NokDay/MwhDay. Dag-CR-KPI-en
+        // (CaptureRateCalculator.ComputeDagCr) bruker ElhubSpotValueDay; scatter/
+        // histogram må bruke samme teller ellers motsier grafen KPI-kortet
+        // (FAGVURDERING-KPI-BEREGNINGER #4, samme feilklasse som Øgreyfoss ~9 pp).
         var historicalRaws = historical
-            .Where(d => d.MwhDay > 0 && d.NokDay > 0 && d.SpotDayAvg > 0)
-            .Select(d => (d.NokDay / d.MwhDay) / d.SpotDayAvg)
+            .Where(d => d.MwhDay > 0 && d.ElhubSpotValueDay > 0 && d.SpotDayAvg > 0)
+            .Select(d => (d.ElhubSpotValueDay / d.MwhDay) / d.SpotDayAvg)
             .OrderBy(v => v)
             .ToList();
 
@@ -89,14 +93,14 @@ public sealed class CaptureRateQueryService : ICaptureRateQueryService
         var result = new List<DailyCaptureRate>(daily.Count);
         foreach (var d in daily)
         {
-            if (d.MwhDay <= 0 || d.NokDay <= 0 || d.SpotDayAvg <= 0)
+            if (d.MwhDay <= 0 || d.ElhubSpotValueDay <= 0 || d.SpotDayAvg <= 0)
             {
                 result.Add(new DailyCaptureRate(
                     Date: d.Date, MwhDay: d.MwhDay, SpotDayAvgNokMwh: d.SpotDayAvg,
                     OppnaaddNokMwh: 0, RaCr: 0, ErFiltrert: true));
                 continue;
             }
-            var oppnaadd = d.NokDay / d.MwhDay;
+            var oppnaadd = d.ElhubSpotValueDay / d.MwhDay;
             var raw = oppnaadd / d.SpotDayAvg;
             var filtrert = !(raw >= low && raw <= high);
             result.Add(new DailyCaptureRate(

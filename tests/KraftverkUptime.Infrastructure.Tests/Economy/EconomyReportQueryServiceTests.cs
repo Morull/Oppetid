@@ -214,6 +214,33 @@ public class EconomyReportQueryServiceTests
         reddet.Verdi.Should().Be(300);
     }
 
+    [Fact]
+    public async Task PortfoljeAf_UtelaterMaanederUtenBeregnetAf()
+    {
+        // Regresjon FAGVURDERING-KPI-BEREGNINGER #3 (2026-06-10): en datafattig
+        // måned der AF ikke kunne beregnes (KPI = null) skal IKKE vektes inn som
+        // 0 med full PeriodHours og dra MWh-vektet snitt ned. Kun måneder med
+        // faktisk beregnet AF/FOR teller i nevneren.
+        await using var harness = new Harness();
+        harness.AddPlant("a", normalGwh: 10);
+
+        var jan = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var feb = new DateTimeOffset(2026, 2, 1, 0, 0, 0, TimeSpan.Zero);
+        var mar = new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero);
+
+        // Januar: AF beregnet = 0,98 / FOR = 0,02. Februar: AF/FOR mangler (null).
+        harness.Settlement.SetReport("a", jan, feb, spot: 0, oppgjor: 0, ubalanse: 0, mwh: 100, af: 0.98, forr: 0.02);
+        harness.Settlement.SetReport("a", feb, mar, spot: 0, oppgjor: 0, ubalanse: 0, mwh: 100);
+
+        var svc = harness.Build();
+        var rapport = await svc.GetAsync(new[] { "a" }, jan, mar, PeriodKind.YearToDate);
+
+        var perPlant = rapport.PerPlant.Single(p => p.PlantId == "a");
+        // Med bug-en ville februar (AF=0) dratt snittet til ~0,49. Riktig = 0,98.
+        perPlant.AvailabilityFactor.Should().BeApproximately(0.98, 1e-9);
+        perPlant.ForcedOutageRate.Should().BeApproximately(0.02, 1e-9);
+    }
+
     // -------------------------------------------------------------------------
     // Harness — bygger EconomyReportQueryService med stubs som kan settes opp
     // pr test. Hver stub støtter bare det testene faktisk trenger; mer kan
@@ -283,7 +310,8 @@ public class EconomyReportQueryServiceTests
         private readonly Dictionary<(string plant, DateTimeOffset f, DateTimeOffset t), UptimeReport> _reports = new();
 
         public void SetReport(string plantId, DateTimeOffset from, DateTimeOffset to,
-            double spot, double oppgjor, double ubalanse, double mwh)
+            double spot, double oppgjor, double ubalanse, double mwh,
+            double? af = null, double? forr = null)
         {
             var kpis = new List<KpiResult>
             {
@@ -292,6 +320,10 @@ public class EconomyReportQueryServiceTests
                 new("Ubalansekost_NOK", ubalanse, "NOK", 0, 1.0, "okonomi", ""),
                 new("TotalProduction_MWh", mwh, "MWh", 0, 1.0, "okonomi", ""),
             };
+            // AF/FOR legges kun til når de faktisk er beregnet — slik kan en test
+            // simulere en datafattig måned (KPI fraværende = null).
+            if (af.HasValue) kpis.Add(new("AvailabilityFactor_AF", af.Value, "ratio", 0, 1.0, "drift", ""));
+            if (forr.HasValue) kpis.Add(new("ForcedOutageRate_FOR", forr.Value, "ratio", 0, 1.0, "drift", ""));
             _reports[(plantId, from, to)] = new UptimeReport
             {
                 PlantId = plantId,
