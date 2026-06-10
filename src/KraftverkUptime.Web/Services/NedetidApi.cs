@@ -190,6 +190,24 @@ public sealed class NedetidApi
         return resp ?? throw new InvalidOperationException("Tom respons fra /portfolio/vakt-roi.");
     }
 
+    /// <summary>
+    /// Henter de nyeste nedetidshendelsene på tvers av alle anlegg (Oversikt-
+    /// siden, driftsleder-blokken). Ett kall — aggregeringen skjer server-side.
+    /// </summary>
+    public async Task<OversiktNedetidResponse> GetOversiktNedetidHendelserAsync(
+        DateTimeOffset fromUtc, DateTimeOffset toUtc, int limit = 20, CancellationToken ct = default)
+    {
+        var qs = $"from={Uri.EscapeDataString(fromUtc.UtcDateTime.ToString("o"))}"
+               + $"&to={Uri.EscapeDataString(toUtc.UtcDateTime.ToString("o"))}"
+               + $"&limit={limit}";
+        var resp = await _http
+            .GetFromJsonAsync<OversiktNedetidResponse>(
+                $"api/v1/oversikt/nedetid-hendelser?{qs}", JsonOptions, ct)
+            .ConfigureAwait(false);
+        return resp ?? new OversiktNedetidResponse(
+            fromUtc, toUtc, 0, Array.Empty<OversiktNedetidEventDto>());
+    }
+
     public async Task<CaptureRateResultDto> GetCaptureRateAsync(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
     {
@@ -513,6 +531,26 @@ public sealed record NedetidKategoriSummary(
     int Antall,
     double TotalTimer,
     double TotalTapNok);
+
+// Oversikt — tverranleggs nedetidshendelser (speiler API-kontrakten i
+// KraftverkUptime.Api.Contracts.OversiktContracts).
+public sealed record OversiktNedetidEventDto(
+    string PlantId,
+    string PlantName,
+    DateTimeOffset StartUtc,
+    DateTimeOffset EndUtc,
+    double VarighetTimer,
+    string Kategori,
+    string? CauseCode,
+    double TapNok,
+    bool HarOperlogMatch,
+    string? Rationale);
+
+public sealed record OversiktNedetidResponse(
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    int AntallEvents,
+    IReadOnlyList<OversiktNedetidEventDto> Events);
 
 public sealed record NedetidResponse(
     string PlantId,

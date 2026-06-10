@@ -138,7 +138,9 @@
         {
             var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
             if (string.IsNullOrEmpty(path)) path = "/";
-            // / redirecter til /reports → den globale velgeren skjules der.
+            // «/» er Oversikt-landingssiden som alltid viser «nå»-bildet
+            // (inneværende måned + siste 7 dager) uavhengig av global periode —
+            // den globale velgeren gir ingen mening der og skjules.
             if (path == "/") return false;
             // Eksakt-match for definerte unntak.
             if (SuppressedPaths.Contains(path)) return false;

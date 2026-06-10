@@ -164,6 +164,7 @@ app.MapVaktOverridesV1(apiV1);
 app.MapInflowEstimateV1(apiV1);
 app.MapScadaV1(apiV1);
 app.MapNedetidV1(apiV1);
+app.MapOversiktV1(apiV1);
 app.MapEffektivitetV1(apiV1);
 app.MapPortfolioV1(apiV1);
 app.MapMultiPlantOperlogV1(apiV1);

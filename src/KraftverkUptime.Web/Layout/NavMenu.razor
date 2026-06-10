@@ -1,12 +1,25 @@
+@* Rollegruppert meny (SPEC-UI-ROLLEBASERT-2026-06-10 fase 2). Kun etiketter er
+   endret/gruppert — rutene er uendret så bokmerker ikke brekker. MudNavGroup
+   beholder ikon i mini-drawer (hover-ekspansjon) og grupperer når åpen. *@
 <MudNavMenu Class="pa-2">
-    <MudNavLink Href="reports" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Assessment">Rapporter</MudNavLink>
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Oversikt</MudNavLink>
     <MudNavLink Href="portefolje" Icon="@Icons.Material.Filled.AccountBalance">Portefølje</MudNavLink>
-    <MudNavLink Href="nedetid" Icon="@Icons.Material.Filled.ReportProblem">Nedetid</MudNavLink>
-    <MudNavLink Href="vakt-roi" Icon="@Icons.Material.Filled.NotificationsActive">Vakt-ROI</MudNavLink>
-    <MudNavLink Href="capture-rate" Icon="@Icons.Material.Filled.PriceChange">Capture rate</MudNavLink>
-    <MudNavLink Href="produksjon" Icon="@Icons.Material.Filled.WaterDrop">Produksjon</MudNavLink>
-    <MudNavLink Href="effektivitet" Icon="@Icons.Material.Filled.Speed">Effektivitet</MudNavLink>
-    <MudNavLink Href="plants" Icon="@Icons.Material.Filled.Factory">Anlegg</MudNavLink>
-    <MudNavLink Href="data-import" Icon="@Icons.Material.Filled.CloudSync">Data-import</MudNavLink>
-    <MudNavLink Href="admin/kategorier" Icon="@Icons.Material.Filled.Category">Kategorier</MudNavLink>
+
+    <MudNavGroup Title="Drift" Icon="@Icons.Material.Filled.Engineering" Expanded="true">
+        <MudNavLink Href="nedetid" Icon="@Icons.Material.Filled.ReportProblem">Nedetid</MudNavLink>
+        <MudNavLink Href="vakt-roi" Icon="@Icons.Material.Filled.NotificationsActive">Vakt-ROI</MudNavLink>
+    </MudNavGroup>
+
+    <MudNavGroup Title="Marked &amp; vann" Icon="@Icons.Material.Filled.WaterDrop" Expanded="true">
+        <MudNavLink Href="produksjon" Icon="@Icons.Material.Filled.Insights">Produksjon &amp; plan</MudNavLink>
+        <MudNavLink Href="capture-rate" Icon="@Icons.Material.Filled.PriceChange">Capture rate</MudNavLink>
+        <MudNavLink Href="effektivitet" Icon="@Icons.Material.Filled.Speed">Effektivitet</MudNavLink>
+    </MudNavGroup>
+
+    <MudNavGroup Title="Data &amp; admin" Icon="@Icons.Material.Filled.Storage" Expanded="true">
+        <MudNavLink Href="reports" Icon="@Icons.Material.Filled.Assessment">Månedsrapporter</MudNavLink>
+        <MudNavLink Href="plants" Icon="@Icons.Material.Filled.Factory">Anlegg</MudNavLink>
+        <MudNavLink Href="data-import" Icon="@Icons.Material.Filled.CloudSync">Data-import</MudNavLink>
+        <MudNavLink Href="admin/kategorier" Icon="@Icons.Material.Filled.Category">Kategorier</MudNavLink>
+    </MudNavGroup>
 </MudNavMenu>
