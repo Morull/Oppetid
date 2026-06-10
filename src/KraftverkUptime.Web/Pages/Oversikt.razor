@@ -181,10 +181,24 @@
         var syvFra = today.AddDays(-7).ToUtcOffsetSafe();
         var syvTil = today.AddDays(1).ToUtcOffsetSafe();
 
+        // Hver seksjon lastes uavhengig og rendres SÅ SNART den er klar. Ett
+        // tregt kall (typisk det tverranleggs hendelses-kallet som spør 11
+        // anlegg) skal ikke fryse hele siden i «laster» — KPI-strip, banner og
+        // anleggsstatus dukker opp med en gang deres egne kall er ferdige.
         await Task.WhenAll(
-            LoadEconomyAsync(manedFra, manedTil),
-            LoadHendelserAsync(syvFra, syvTil),
-            LoadBannerAsync());
+            RefreshWhenDone(LoadEconomyAsync(manedFra, manedTil)),
+            RefreshWhenDone(LoadHendelserAsync(syvFra, syvTil)),
+            RefreshWhenDone(LoadBannerAsync()));
+    }
+
+    /// <summary>
+    /// Venter på ett seksjons-kall og tvinger en re-render straks det er ferdig,
+    /// uavhengig av de andre. Load-metodene fanger egne feil, så denne kaster ikke.
+    /// </summary>
+    private async Task RefreshWhenDone(Task work)
+    {
+        try { await work; }
+        finally { await InvokeAsync(StateHasChanged); }
     }
 
     private async Task LoadEconomyAsync(DateTimeOffset fra, DateTimeOffset til)
