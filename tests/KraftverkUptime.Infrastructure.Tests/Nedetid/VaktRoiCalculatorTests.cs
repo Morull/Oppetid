@@ -494,9 +494,12 @@ public class VaktRoiCalculatorTests
     }
 
     [Fact]
-    public void V3_Negativ_Ubalansetillegg_Kastes()
+    public void V3_Negativ_Ubalansetillegg_Gir_Negativ_Ubalanse_ROI()
     {
-        // Negativt tillegg er ikke meningsfullt — kontrakten kaster.
+        // Énprismodellen kan gi NEGATIV forventet ubalanse-merkost (ubalanse var i
+        // snitt billigere enn spot, typisk i NO2). Da er ubalanse-komponenten
+        // negativ — kontrakten kaster IKKE lenger.
+        // FAGVURDERING #1 / SPEC-UBALANSE-ENPRIS-FIX.
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
@@ -507,14 +510,67 @@ public class VaktRoiCalculatorTests
             TapMwh = 1.0, TapNok = 850, TimerSettlement = 2,
         };
 
-        var plan = PlanFlat(ev.StartUtc, ev.EndUtc.AddDays(2), 2.2 * 0.5);
+        var counterfactualEnd = OsloLokal(2026, 2, 5, 8);
+        var plan = PlanFlat(ev.StartUtc, counterfactualEnd, 2.2 * 0.5);
 
         var calc = new VaktRoiCalculator();
-        FluentActions.Invoking(() => calc.Calculate(new[] { ev },
+        var roi = calc.Calculate(new[] { ev },
             snittSpotprisNokMwh: 850,
             planByHour: plan,
-            snittUbalansetillegg_NokMwh: -100))
-            .Should().Throw<ArgumentOutOfRangeException>();
+            overflowHours: new HashSet<DateTimeOffset>(),
+            overflowDataAvailable: true,
+            snittUbalansetillegg_NokMwh: -100);
+
+        var r = roi[0];
+        r.ReddetProduksjon_NOK.Should().Be(0); // ingen overløp
+        // Samme 15 timer som positiv-varianten (onsdag → counterfactual før neste
+        // gate closure, så ingen cap), men negativ premie → negativ komponent.
+        r.ReddetUbalanse_NOK.Should().BeApproximately(15 * 2.2 * 0.5 * -100, 1.0);
+        r.ReddetUbalanse_NOK.Should().BeLessThan(0);
+    }
+
+    [Fact]
+    public void V3_GateClosure_Begrenser_Ubalanse_Vindu_For_Helge_Event()
+    {
+        // Helge-event: trip lørdag 13:00, counterfactual = mandag 08:00 (neste
+        // arbeidsdag). Produksjons-komponenten (overløp) gjelder HELE vinduet,
+        // men ubalanse-komponenten stopper ved slutten av siste budte døgn —
+        // her mandag 00:00 (lørdag 13:00 er etter kl. 12, så søndag er budt inn,
+        // men mandag nullstilles ved søndag 12:00-gate). FAGVURDERING #1.
+        var ev = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 2, 7, 13),   // lørdag
+            EndUtc = OsloLokal(2026, 2, 7, 14),     // 1 t outage
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            TapMwh = 1.0, TapNok = 850, TimerSettlement = 1,
+        };
+
+        var counterfactualEnd = OsloLokal(2026, 2, 9, 8);  // mandag 08:00
+        const double p = 2.2 * 0.5;                          // plan MWh/time
+        var plan = PlanFlat(ev.StartUtc, counterfactualEnd, p);
+        var overflow = OverflowAlleTimer(ev.StartUtc, counterfactualEnd);
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { ev },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: overflow,
+            overflowDataAvailable: true,
+            snittUbalansetillegg_NokMwh: 200);
+
+        var r = roi[0];
+
+        // Produksjon dekker hele counterfactual: 42 timer (43 i vinduet − 1 outage).
+        r.ReddetProduksjon_NOK.Should().BeApproximately(42 * p * 850, 1.0);
+
+        // Ubalanse capet ved mandag 00:00: 34 timer (35 fram til cap − 1 outage),
+        // IKKE de 42 timene produksjonen bruker.
+        r.ReddetUbalanse_NOK.Should().BeApproximately(34 * p * 200, 1.0);
+
+        // Bevis at capet faktisk biter: uten cap ville ubalanse vært 42 timer.
+        r.ReddetUbalanse_NOK.Should().BeLessThan(42 * p * 200);
     }
 
     /// <summary>

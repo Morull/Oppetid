@@ -97,11 +97,13 @@ public sealed class VaktRoiCalculator
     /// OverflowFlow-tag, eller når data mangler.
     /// </param>
     /// <param name="snittUbalansetillegg_NokMwh">
-    /// Snitt-tillegg i NOK/MWh som vakten redder ved å unngå ubalanse-gebyr.
-    /// Beregnes typisk som max(0, avg(RkPris − Spotpris)) over perioden:
-    /// hvis RK var dyrere enn spot, så betalte producent denne differansen
-    /// for hver MWh under-leveranse. Default 0 = ingen ubalanse-komponent
-    /// (gir samme oppførsel som v2). Spec: SPEC-VAKT-ROI-UBALANSE.md.
+    /// SIGNERT forventet ubalanse-merkost i NOK/MWh: <c>avg(ubalansepris − spot)</c>
+    /// over ALLE timer i perioden (énprismodell). Kan være negativ når ubalanse i
+    /// snitt var billigere enn spot (typisk i NO2). Default 0 = ingen ubalanse-
+    /// komponent. Ubalanse-komponenten summeres dessuten kun fram til neste
+    /// day-ahead gate closure (se <see cref="UbalanseEksponeringSlutt"/>).
+    /// FAGVURDERING #1 / SPEC-UBALANSE-ENPRIS-FIX (avløser toprismodell-antakelsen
+    /// i SPEC-VAKT-ROI-UBALANSE.md).
     /// </param>
     /// <param name="overrides">
     /// Manuelle overrides per leder-event-StartUtc. Verdier: "HaddeOverlop"
@@ -147,7 +149,8 @@ public sealed class VaktRoiCalculator
     {
         ArgumentNullException.ThrowIfNull(events);
         ArgumentNullException.ThrowIfNull(planByHour);
-        ArgumentOutOfRangeException.ThrowIfNegative(snittUbalansetillegg_NokMwh);
+        // snittUbalansetillegg_NokMwh er en SIGNERT forventningsverdi (énpris) og
+        // kan være negativ — ingen guard. FAGVURDERING #1 / SPEC-UBALANSE-ENPRIS-FIX.
 
         overflowHours ??= new HashSet<DateTimeOffset>();
         overrides ??= new Dictionary<DateTimeOffset, string>();
@@ -267,6 +270,16 @@ public sealed class VaktRoiCalculator
             // for overflow-redning og ubalanse-redning separat.
             var leaderStartHour = FloorToHour(leaderStart);
             var counterfactualHour = FloorToHour(counterfactualEnd);
+
+            // Ubalanse-eksponeringen stopper ved slutten av siste leveringsdøgn
+            // som alt er budt inn (day-ahead gate closure 12:00 lokal). Uten vakt
+            // nullstiller operatøren neste døgns bud, så det påløper ingen ubalanse
+            // etter dette punktet — selv om anlegget «ville stått» helt til neste
+            // arbeidsdag. Produksjons-komponenten under gjelder fortsatt HELE
+            // counterfactual-vinduet (tapt produksjon reddes uansett gate closure).
+            // FAGVURDERING #1 / SPEC-UBALANSE-ENPRIS-FIX.
+            var ubalanseCapHour = FloorToHour(UbalanseEksponeringSlutt(leaderStart));
+
             double reddetMwh = 0;
             double ubalanseMwh = 0;
             var savedOverflowHours = 0;
@@ -278,9 +291,12 @@ public sealed class VaktRoiCalculator
                 if (planForHour < 0) planForHour = 0; // beskytt mot rare verdier
                 if (proxyHours.Contains(h)) anyProxyHour = true;
 
-                // Ubalanse-komponenten gjelder ALLE counterfactual-timer
-                // (uavhengig av overflow) fordi Spotbud-forpliktelsen står.
-                ubalanseMwh += planForHour;
+                // Ubalanse-komponenten gjelder counterfactual-timer FRAM TIL neste
+                // gate closure (Spotbud-forpliktelsen står kun for alt budte døgn).
+                if (h < ubalanseCapHour)
+                {
+                    ubalanseMwh += planForHour;
+                }
 
                 // Produksjons-komponenten gjelder bare timer med overløp.
                 if (overflowHours.Contains(h))
@@ -495,6 +511,26 @@ public sealed class VaktRoiCalculator
     }
 
     /// <summary>
+    /// Slutt på ubalanse-eksponeringen: enden av siste leveringsdøgn som alt er
+    /// budt inn. Day-ahead gate closure er 12:00 lokal og forplikter HELE neste
+    /// døgn. Hendelse før kl. 12 → kun inneværende døgn er forpliktet (bud lagt
+    /// kl. 12 i går); etter kl. 12 → også neste døgn (bud lagt kl. 12 i dag).
+    /// Uten vakt nullstilles påfølgende døgns bud ved neste gate closure, så det
+    /// påløper ingen ubalanse etter slutten av det forpliktede døgnet.
+    /// Returnerer lokal midnatt (UTC-konvertert) ved slutten av det døgnet.
+    /// </summary>
+    private static DateTimeOffset UbalanseEksponeringSlutt(DateTimeOffset startUtc)
+    {
+        var tz = TimeZones.Norway;
+        var local = TimeZoneInfo.ConvertTime(startUtc, tz);
+        var daysCommitted = local.Hour < 12 ? 1 : 2;
+        // Midnatt ligger aldri i DST-overgangen (02–03), så offset er entydig.
+        var endLocal = DateTime.SpecifyKind(local.Date.AddDays(daysCommitted), DateTimeKind.Unspecified);
+        var offset = tz.GetUtcOffset(endLocal);
+        return new DateTimeOffset(endLocal, offset).ToUniversalTime();
+    }
+
+    /// <summary>
     /// Bygger forklaringsteksten ut fra hvilke ROI-komponenter som er ulik 0.
     /// Bruker plan-baserte MWh-tall som basis.
     /// </summary>
@@ -513,8 +549,9 @@ public sealed class VaktRoiCalculator
         }
 
         // Ubalanse-komponenten avhenger ikke av overflow-data, så den kan vises
-        // selv når overflow-data mangler.
-        var hasUbalanse = snittUbalansetillegg > 0 && reddetUbalanseNok > 0;
+        // selv når overflow-data mangler. Premien er signert, så komponenten kan
+        // være negativ (ubalanse var i snitt billigere enn spot) — vis den da også.
+        var hasUbalanse = Math.Abs(snittUbalansetillegg) > 0.01 && Math.Abs(reddetUbalanseNok) >= 0.5;
 
         if (!overflowDataAvailable)
         {
@@ -553,7 +590,7 @@ public sealed class VaktRoiCalculator
             return produksjonsDel;
         }
         return produksjonsDel
-            + $" Ubalanse-gebyr unngått for hele counterfactual: {reddetUbalanseNok:F0} NOK "
+            + $" Ubalanse-gebyr unngått fram til neste gate closure: {reddetUbalanseNok:F0} NOK "
             + $"(≈ {ubalanseMwh:F1} MWh × {snittUbalansetillegg:F0} NOK/MWh). "
             + $"Total reddet: {reddetProduksjonNok + reddetUbalanseNok:F0} NOK.";
     }

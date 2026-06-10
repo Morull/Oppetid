@@ -29,12 +29,17 @@ public interface INedetidQueryService
         CancellationToken ct);
 
     /// <summary>
-    /// Beregner snitt-ubalansetillegg for perioden — gjennomsnittlig RK-pris
-    /// minus spotpris over alle timer der RK var dyrere enn spot. Brukes av
-    /// Vakt-ROI v3 til å verdsette ubalanse-gebyret som vakten redder.
+    /// Beregner SIGNERT forventet ubalanse-merkost for perioden:
+    /// <c>avg(RkPris − Spotpris)</c> over ALLE timer med gyldig prisgrunnlag
+    /// (énprismodell siden nov. 2021). Brukes av Vakt-ROI til å verdsette
+    /// ubalanse-gebyret vakten redder. Verdien kan være NEGATIV når ubalanse i
+    /// snitt var billigere enn spot (typisk i NO2).
     ///
-    /// Returnerer 0 hvis ingen timer har gyldig (RkPris &gt; Spotpris)-data —
-    /// konservativt anslag som unngår å lage tall ut av ingenting.
+    /// Tidligere telte denne kun timer der RK &gt; spot (toprislogikk), noe som
+    /// ga et systematisk overestimat — se FAGVURDERING-KPI-BEREGNINGER #1 /
+    /// SPEC-UBALANSE-ENPRIS-FIX.
+    ///
+    /// Returnerer 0 hvis ingen timer har gyldig pris-data.
     /// </summary>
     Task<double> GetAvgImbalancePremiumAsync(
         string plantId,

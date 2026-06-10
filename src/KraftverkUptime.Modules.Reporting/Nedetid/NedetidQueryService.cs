@@ -241,10 +241,13 @@ public sealed class NedetidQueryService : INedetidQueryService
                 var rk = h.Row.RkPrisNokMwh;
                 if (!spot.HasValue || !rk.HasValue) continue;
 
-                var diff = rk.Value - spot.Value;
-                if (diff <= 0) continue; // bare timer der RK > spot teller (oppregulering)
-
-                sumDiff += diff;
+                // Signert forventningsverdi over ALLE timer med gyldig
+                // prisgrunnlag (énprismodell siden nov. 2021): E[ubalansepris − spot].
+                // Tidligere telte vi bare timer der RK > spot (toprislogikk) →
+                // systematisk overestimat, lett faktor 3–10. Verdien kan nå være
+                // negativ (ubalanse i snitt billigere enn spot, typisk i NO2).
+                // FAGVURDERING-KPI-BEREGNINGER #1 / SPEC-UBALANSE-ENPRIS-FIX.
+                sumDiff += rk.Value - spot.Value;
                 count++;
             }
         }
