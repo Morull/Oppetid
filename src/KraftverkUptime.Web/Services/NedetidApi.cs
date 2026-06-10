@@ -580,7 +580,13 @@ public sealed record VaktRoiEventDto(
     // Spec NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md (2026-05-22):
     // Manuell overstyring av om vakta rykket ut. Auto = bruk
     // EffectiveGuardResponse-logikken (operlog-match for U2-PlanDeviation).
-    GuardResponseOverride GuardResponseOverride = GuardResponseOverride.Auto);
+    GuardResponseOverride GuardResponseOverride = GuardResponseOverride.Auto,
+    // Spec VAKT-ROI-OVERLOP-V2: observert vs estimert (tilsigsmodell) overløp.
+    int SavedOverflowHoursObserved = 0,
+    int SavedOverflowHoursEstimated = 0,
+    bool OverflowEstimateAvailable = false,
+    double? OverflowEstimateHoursToFull = null,
+    string? OverflowEstimateForklaring = null);
 
 /// <summary>
 /// Wire-speil av <c>KraftverkUptime.Core.Domain.GuardResponseOverride</c>.

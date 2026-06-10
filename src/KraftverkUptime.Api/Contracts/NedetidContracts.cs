@@ -65,7 +65,14 @@ public sealed record VaktRoiEventDto(
     // Spec NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md (2026-05-22):
     // Manuell overstyring av om vakta rykket ut. Default Auto for events
     // uten override-rad. UI viser dette i ny «Vakt utrykt»-kolonne.
-    GuardResponseOverride GuardResponseOverride = GuardResponseOverride.Auto);
+    GuardResponseOverride GuardResponseOverride = GuardResponseOverride.Auto,
+    // Spec VAKT-ROI-OVERLOP-V2: skill observert SCADA-overløp fra estimert
+    // (tilsigsmodell). OverflowTimerInCounterfactual = sum av begge (uendret).
+    int SavedOverflowHoursObserved = 0,
+    int SavedOverflowHoursEstimated = 0,
+    bool OverflowEstimateAvailable = false,
+    double? OverflowEstimateHoursToFull = null,
+    string? OverflowEstimateForklaring = null);
 
 public sealed record VaktRoiResponse(
     string PlantId,

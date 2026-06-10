@@ -7,6 +7,7 @@ using KraftverkUptime.Core.Domain;
 using KraftverkUptime.Core.Security;
 using KraftverkUptime.Core.Time;
 using KraftverkUptime.Infrastructure.Persistence;
+using KraftverkUptime.Infrastructure.Reporting;
 using KraftverkUptime.Modules.Reporting.Nedetid;
 using Microsoft.EntityFrameworkCore;
 
@@ -100,6 +101,7 @@ public static class NedetidEndpoints
         INedetidQueryService nedetid,
         IOverflowQueryService overflow,
         VaktRoiCalculator calculator,
+        InflowOverflowQueryService inflow,
         KraftverkDbContext db,
         IQueryContext queryContext,
         CancellationToken ct)
@@ -212,6 +214,13 @@ public static class NedetidEndpoints
             .Select(e => e.StartUtc)
             .ToHashSet();
 
+        // Dam-telemetri for tilsig-basert counterfactual-overløp (SPEC-VAKT-ROI-
+        // OVERLOP-V2). Null hvis anlegget mangler magasin-telemetri → kalkulatoren
+        // bruker kun observert overløp (uendret oppførsel).
+        var damTelemetry = await inflow
+            .GetDamTelemetryAsync(plantId, fromUtc, toUtc, ct)
+            .ConfigureAwait(false);
+
         var roi = calculator.Calculate(
             events, snittSpot, planResult.PlanByHour,
             dataset.OverflowHours, overflowDataAvailable: dataset.DataAvailable,
@@ -219,7 +228,10 @@ public static class NedetidEndpoints
             overrides: overrides,
             proxyHours: planResult.ProxyHours,
             vaktOptions: vaktOptions,
-            excludeFromReddbar: excludeFromReddbar);
+            excludeFromReddbar: excludeFromReddbar,
+            damSamples: damTelemetry?.Samples,
+            maxVolumeM3: damTelemetry?.MaxVolumeM3 ?? 0,
+            fillRateByHour: damTelemetry?.FillRateByHour);
         var effectiveVakt = vaktOptions ?? VaktTidsmodellOptions.Default;
         var response = BuildVaktRoiResponse(plantId, fromUtc, toUtc, plant.InstalledCapacityMw,
             snittSpot, snittUbalansetillegg, effectiveVakt, roi, guardOverridesByEventStart);
@@ -331,7 +343,12 @@ public static class NedetidEndpoints
             PlanDataPartial: r.PlanDataPartial,
             Forklaring: r.Forklaring,
             GuardResponseOverride: guardOverrides.TryGetValue(r.Event.StartUtc, out var g)
-                ? g : GuardResponseOverride.Auto)).ToList();
+                ? g : GuardResponseOverride.Auto,
+            SavedOverflowHoursObserved: r.SavedOverflowHoursObserved,
+            SavedOverflowHoursEstimated: r.SavedOverflowHoursEstimated,
+            OverflowEstimateAvailable: r.OverflowEstimateAvailable,
+            OverflowEstimateHoursToFull: r.OverflowEstimateHoursToFull,
+            OverflowEstimateForklaring: r.OverflowEstimateForklaring)).ToList();
 
         var reddbareInnenfor = roi.Count(r => r.ErInnenforVakt && r.ErReddbar);
         var totalReddetMwh = roi.Sum(r => r.ReddetMwh);

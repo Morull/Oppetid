@@ -80,8 +80,14 @@
                 <MudText>@(RoiEvent.ErInnenforVakt && RoiEvent.ErReddbar ? RoiEvent.EkstraTimerSpart.ToString("F1") + " t" : "–")</MudText>
             </MudItem>
             <MudItem xs="12" sm="4">
-                <MudText Typo="Typo.caption" Color="Color.Secondary">Overløps-timer (counterfactual)</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Overløp (counterfactual)</MudText>
                 <MudText>@DisplayOverflow(RoiEvent)</MudText>
+                @if (RoiEvent.OverflowEstimateAvailable && !string.IsNullOrWhiteSpace(RoiEvent.OverflowEstimateForklaring))
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Style="display:block; opacity:0.75;">
+                        ~ Tilsigsmodell: @RoiEvent.OverflowEstimateForklaring
+                    </MudText>
+                }
             </MudItem>
             <MudItem xs="12" sm="4">
                 <MudText Typo="Typo.caption" Color="Color.Secondary">Plan-data</MudText>
@@ -90,8 +96,16 @@
 
             <MudItem xs="12" sm="4">
                 <MudPaper Class="pa-2" Outlined="true">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">Reddet produksjon</MudText>
-                    <MudText Typo="Typo.h6">@FormatNok(RoiEvent.ReddetProduksjon_NOK)</MudText>
+                    <div class="d-flex align-center" style="gap:4px;">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Reddet produksjon</MudText>
+                        @if (RoiEvent.SavedOverflowHoursEstimated > 0)
+                        {
+                            <MudTooltip Text="Helt eller delvis basert på tilsigsmodellens estimat for counterfactual-overløp (merket «~»). Override er driftsleders fasit.">
+                                <MudIcon Icon="@Icons.Material.Outlined.Info" Size="Size.Small" Style="opacity:0.6; cursor:help;" />
+                            </MudTooltip>
+                        }
+                    </div>
+                    <MudText Typo="Typo.h6">@(RoiEvent.SavedOverflowHoursEstimated > 0 ? "~" : "")@FormatNok(RoiEvent.ReddetProduksjon_NOK)</MudText>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" sm="4">
@@ -335,8 +349,13 @@
     private static string DisplayOverflow(VaktRoiEventDto e)
     {
         if (!e.ErInnenforVakt || !e.ErReddbar) return "–";
-        if (e.OverflowDataMissing) return "Mangler data";
-        if (e.OverflowTimerInCounterfactual <= 0) return "0 t";
-        return $"{e.OverflowTimerInCounterfactual} t";
+        var obs = e.SavedOverflowHoursObserved;
+        var est = e.SavedOverflowHoursEstimated;
+        // Mangler SCADA-overflow OG ingen estimat → som før.
+        if (e.OverflowDataMissing && est <= 0) return "Mangler data";
+        if (obs <= 0 && est <= 0) return "0 t";
+        if (obs > 0 && est > 0) return $"{obs} t observert + ~{est} t estimert";
+        if (est > 0) return $"~{est} t estimert (tilsigsmodell)";
+        return $"{obs} t observert";
     }
 }

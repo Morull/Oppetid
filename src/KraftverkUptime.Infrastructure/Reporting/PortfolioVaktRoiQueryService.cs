@@ -24,6 +24,7 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
     private readonly INedetidQueryService _nedetid;
     private readonly IOverflowQueryService _overflow;
     private readonly VaktRoiCalculator _calculator;
+    private readonly InflowOverflowQueryService _inflow;
     private readonly ILogger<PortfolioVaktRoiQueryService> _log;
 
     public PortfolioVaktRoiQueryService(
@@ -31,12 +32,14 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
         INedetidQueryService nedetid,
         IOverflowQueryService overflow,
         VaktRoiCalculator calculator,
+        InflowOverflowQueryService inflow,
         ILogger<PortfolioVaktRoiQueryService> log)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _nedetid = nedetid ?? throw new ArgumentNullException(nameof(nedetid));
         _overflow = overflow ?? throw new ArgumentNullException(nameof(overflow));
         _calculator = calculator ?? throw new ArgumentNullException(nameof(calculator));
+        _inflow = inflow ?? throw new ArgumentNullException(nameof(inflow));
         _log = log ?? throw new ArgumentNullException(nameof(log));
     }
 
@@ -136,6 +139,12 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
                 .Select(e => e.StartUtc)
                 .ToHashSet();
 
+            // Dam-telemetri for tilsig-basert counterfactual-overløp (SPEC-VAKT-
+            // ROI-OVERLOP-V2). Null for anlegg uten magasin-telemetri → kun observert.
+            var damTelemetry = await _inflow
+                .GetDamTelemetryAsync(plant.Id, fromUtc, toUtc, ct)
+                .ConfigureAwait(false);
+
             var roi = _calculator.Calculate(
                 events, snittSpot, planResult.PlanByHour,
                 dataset.OverflowHours, overflowDataAvailable: dataset.DataAvailable,
@@ -143,7 +152,10 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
                 overrides: overrides,
                 proxyHours: planResult.ProxyHours,
                 vaktOptions: vaktOptions,
-                excludeFromReddbar: excludeFromReddbar);
+                excludeFromReddbar: excludeFromReddbar,
+                damSamples: damTelemetry?.Samples,
+                maxVolumeM3: damTelemetry?.MaxVolumeM3 ?? 0,
+                fillRateByHour: damTelemetry?.FillRateByHour);
 
             var plantReddetNok = roi.Sum(r => r.ReddetNok);
             var plantReddetProduksjon = roi.Sum(r => r.ReddetProduksjon_NOK);

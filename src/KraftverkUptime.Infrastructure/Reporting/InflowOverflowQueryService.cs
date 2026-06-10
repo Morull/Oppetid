@@ -156,12 +156,100 @@ public sealed class InflowOverflowQueryService
             Forklaring: result.Forklaring);
     }
 
+    /// <summary>
+    /// Henter time-pivoterte dam-samples + maks-volum + fyllgrad-per-time for
+    /// [<paramref name="windowFrom"/> − 24 t, <paramref name="windowTo"/>], til
+    /// bruk i Vakt-ROI counterfactual-overløp (SPEC-VAKT-ROI-OVERLOP-V2).
+    /// <see cref="VaktRoiCalculator"/> slicer selv lookback + fyllgrad per
+    /// leder-gruppe. Returnerer null hvis terminal-dam, ReservoirVolume+
+    /// TotalDamFlow-tagger eller <c>VolumeMm3</c> mangler — da faller Vakt-ROI
+    /// tilbake til kun observert overløp (dagens oppførsel).
+    /// </summary>
+    public async Task<DamTelemetry?> GetDamTelemetryAsync(
+        string plantId, DateTimeOffset windowFrom, DateTimeOffset windowTo, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+
+        var terminalDam = await _dams.GetTerminalDamAsync(plantId, ct).ConfigureAwait(false);
+        if (terminalDam is null) return null;
+
+        var maxVolumeM3 = (terminalDam.VolumeMm3 ?? 0) * 1_000_000;
+        if (maxVolumeM3 <= 0) return null;
+
+        var volumeSignals = await _signalMaps.GetByPlantDamAndRoleAsync(
+            plantId, terminalDam.DamId, SignalRole.ReservoirVolume, ct).ConfigureAwait(false);
+        var totalDamFlowSignals = await _signalMaps.GetByPlantDamAndRoleAsync(
+            plantId, terminalDam.DamId, SignalRole.TotalDamFlow, ct).ConfigureAwait(false);
+        if (volumeSignals.Count == 0 || totalDamFlowSignals.Count == 0) return null;
+
+        var fillRateSignals = await _signalMaps.GetByPlantDamAndRoleAsync(
+            plantId, terminalDam.DamId, SignalRole.ReservoirFillFactor, ct).ConfigureAwait(false);
+        var turbineFlowSignal = await _signalMaps.GetSignalIdForRoleAsync(
+            plantId, SignalRole.TurbineWaterFlow, ct).ConfigureAwait(false);
+
+        var lookbackFrom = windowFrom.AddHours(-LookbackHours);
+        var allSignalIds = volumeSignals.Select(s => s.SignalId)
+            .Concat(totalDamFlowSignals.Select(s => s.SignalId))
+            .Concat(fillRateSignals.Select(s => s.SignalId))
+            .Concat(turbineFlowSignal is null ? Array.Empty<string>() : new[] { turbineFlowSignal })
+            .Distinct()
+            .ToArray();
+
+        var samples = await _samples
+            .ListAsync(plantId, allSignalIds, lookbackFrom, windowTo, ct)
+            .ConfigureAwait(false);
+
+        var volTagId = volumeSignals[0].SignalId;
+        var totDamTagId = totalDamFlowSignals[0].SignalId;
+        var fillTagId = fillRateSignals.Count > 0 ? fillRateSignals[0].SignalId : null;
+        var turbTagId = turbineFlowSignal;
+
+        // NB: pivot-logikken speiler EstimateAsync (ReservoirVolume Mill.m³ → m³,
+        // fyllgrad % → ratio). Hold dem i synk.
+        var byHour = new Dictionary<DateTimeOffset, (double? Vol, double? TotDam, double? Turb, double? Fill)>();
+        foreach (var s in samples)
+        {
+            var hour = TruncateToHour(s.TimeUtc);
+            byHour.TryGetValue(hour, out var row);
+            if (s.SignalId == volTagId && s.Value.HasValue)
+                row = (s.Value.Value * 1_000_000, row.TotDam, row.Turb, row.Fill);
+            else if (s.SignalId == totDamTagId)
+                row = (row.Vol, s.Value, row.Turb, row.Fill);
+            else if (s.SignalId == turbTagId)
+                row = (row.Vol, row.TotDam, s.Value, row.Fill);
+            else if (fillTagId is not null && s.SignalId == fillTagId)
+                row = (row.Vol, row.TotDam, row.Turb, s.Value);
+            byHour[hour] = row;
+        }
+
+        var hourly = byHour
+            .OrderBy(kv => kv.Key)
+            .Select(kv => new InflowOverflowEstimator.HourlySample(
+                kv.Key, kv.Value.Vol, kv.Value.TotDam, kv.Value.Turb))
+            .ToList();
+
+        var fillByHour = byHour
+            .Where(kv => kv.Value.Fill.HasValue)
+            .ToDictionary(kv => kv.Key, kv => kv.Value.Fill!.Value / 100.0);
+
+        return new DamTelemetry(hourly, maxVolumeM3, fillByHour);
+    }
+
     private static DateTimeOffset TruncateToHour(DateTimeOffset t)
     {
         var u = t.UtcDateTime;
         return new DateTimeOffset(u.Year, u.Month, u.Day, u.Hour, 0, 0, TimeSpan.Zero);
     }
 }
+
+/// <summary>
+/// Dam-telemetri for Vakt-ROI counterfactual-overløp: time-pivoterte samples,
+/// maks magasin-volum (m³) og fyllgrad (ratio 0..1) per UTC-time.
+/// </summary>
+public sealed record DamTelemetry(
+    IReadOnlyList<InflowOverflowEstimator.HourlySample> Samples,
+    double MaxVolumeM3,
+    IReadOnlyDictionary<DateTimeOffset, double> FillRateByHour);
 
 public sealed record InflowEstimateResponse(
     string PlantId,
