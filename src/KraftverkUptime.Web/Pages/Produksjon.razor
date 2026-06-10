@@ -103,6 +103,15 @@ else if (_data is not null)
                          HigherIsBetter="true"
                          InfoText="Hva planens timing isolert sett ga i merverdi over flat baseline. Plan-kvalitetsmål — beslektet med, men IKKE samme som, faktisk Timing-merverdi (som måles på Capture rate-fanen)." />
             </MudItem>
+            @* Start/stopp-sykler (SPEC-UI-ROLLEBASERT 3.4) — gjenbruk av kortet fra
+               rapport-detalj, nå for valgt periode. Vannkraft sliter/sløser vann ved
+               hyppig sykling, så produksjonsleder bør se dette. *@
+            @if (_startStopp is not null)
+            {
+                <MudItem xs="12" sm="6" md="3">
+                    <StartStoppKort Data="@_startStopp" PlantId="@Filter.PlantId" />
+                </MudItem>
+            }
         </MudGrid>
 
         @* ---- Resultat mot plan (Spec ANBEFALING-TAPSREGNSKAP.md punkt 1) ----
@@ -445,6 +454,7 @@ else if (_data is not null)
     private ProduksjonAnalyseDto? _data;
     private ProduksjonAnalyseDto? _previous;
     private DataQualitySummaryDto? _dataQuality;
+    private StartStoppDto? _startStopp;
 
     // Plant-detalj for å få NormalAarsproduksjonGwh til normalår-KPI.
     // Lastes parallelt med Produksjon-data.
@@ -524,6 +534,7 @@ else if (_data is not null)
         _previous = null;
         _dataQuality = null;
         _plant = null;
+        _startStopp = null;
         await InvokeAsync(StateHasChanged);
         try
         {
@@ -548,6 +559,10 @@ else if (_data is not null)
             // Plant-detalj for NormalAarsproduksjonGwh — feiler stille.
             try { _plant = await ReportsApi.GetPlantAsync(Filter.PlantId); }
             catch { _plant = null; }
+
+            // Start/stopp-sykler for perioden (SPEC-UI-ROLLEBASERT 3.4) — best-effort.
+            try { _startStopp = await NedetidApi.GetStartStoppAsync(Filter.PlantId, fromUtc, toUtc); }
+            catch { _startStopp = null; }
 
             BuildDailyPoints();
             _chartVersion++;

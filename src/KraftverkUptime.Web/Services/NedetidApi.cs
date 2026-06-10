@@ -208,6 +208,24 @@ public sealed class NedetidApi
             fromUtc, toUtc, 0, Array.Empty<OversiktNedetidEventDto>());
     }
 
+    /// <summary>
+    /// Start/stopp-sykler for et anlegg i vilkårlig periode (SPEC-UI-ROLLEBASERT 3.4).
+    /// Returnerer null hvis anlegget mangler nok data (endepunktet svarer 204).
+    /// </summary>
+    public async Task<StartStoppDto?> GetStartStoppAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
+    {
+        var url = BuildUrl(plantId, "start-stopp", fromUtc, toUtc, format: null);
+        try
+        {
+            return await _http.GetFromJsonAsync<StartStoppDto>(url, JsonOptions, ct).ConfigureAwait(false);
+        }
+        catch (HttpRequestException)
+        {
+            return null; // nettverks-/serverfeil → skjul kortet
+        }
+    }
+
     public async Task<CaptureRateResultDto> GetCaptureRateAsync(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct = default)
     {

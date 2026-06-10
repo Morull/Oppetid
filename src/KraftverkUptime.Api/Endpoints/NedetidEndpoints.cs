@@ -9,6 +9,7 @@ using KraftverkUptime.Core.Time;
 using KraftverkUptime.Infrastructure.Persistence;
 using KraftverkUptime.Infrastructure.Reporting;
 using KraftverkUptime.Modules.Reporting.Nedetid;
+using KraftverkUptime.Modules.Reporting.StartStopp;
 using Microsoft.EntityFrameworkCore;
 
 namespace KraftverkUptime.Api.Endpoints;
@@ -47,6 +48,14 @@ public static class NedetidEndpoints
             .Produces<VaktRoiResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapGet("/start-stopp", GetStartStoppAsync)
+            .WithName("GetStartStopp")
+            .WithSummary("Start/stopp-sykler for et anlegg i gitt periode (vilkårlig fra/til).")
+            .RequireAuthorization(AuthorizationPolicies.PlantReader)
+            .Produces<StartStoppDto>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest);
 
         return endpoints;
     }
@@ -245,6 +254,23 @@ public static class NedetidEndpoints
         }
 
         return Results.Ok(response);
+    }
+
+    private static async Task<IResult> GetStartStoppAsync(
+        string plantId,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        IStartStoppQueryService startStopp,
+        CancellationToken ct)
+    {
+        if (!TryValidatePeriod(from, to, out var fromUtc, out var toUtc, out var problem))
+        {
+            return problem!;
+        }
+
+        var dto = await startStopp.BuildAsync(plantId, fromUtc, toUtc, ct).ConfigureAwait(false);
+        // Null = anlegg uten nok data til å telle starter → 204 (UI skjuler kortet).
+        return dto is null ? Results.NoContent() : Results.Ok(dto);
     }
 
     // ---- helpers --------------------------------------------------------------
