@@ -70,6 +70,7 @@ public sealed record PerPlantEconomyDto(
     double TotalProductionMwh,
     double MerverdiNok,
     double AvailabilityFactor,
+    double AvailabilityFactorIeee,
     double ForcedOutageRate,
     // Nedetid + Vakt-ROI per anlegg for Sammendrag-kortene.
     double NedetidTimer,

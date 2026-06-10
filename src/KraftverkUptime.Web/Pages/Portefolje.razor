@@ -246,7 +246,7 @@ else if (_rows is not null)
                             </MudTooltip>
                         </MudTh>
                         <MudTh Class="num">
-                            <MudTooltip Text="Availability Factor — andel av perioden anlegget var tilgjengelig for produksjon (uten planlagt/uplanlagt nedetid). Høyt tall = bra.">
+                            <MudTooltip Text="Availability Factor (IEEE 762 / NERC GADS) = tilgjengelige timer / kalendertimer. Reservestopp, vannmangel og derating teller som tilgjengelig; kun tvungne/planlagte/vedlikeholds-utfall trekker ned. Sammenlignbar med bransjetall. Høyt = bra.">
                                 <MudTableSortLabel SortBy="@SortByAf">AF</MudTableSortLabel>
                             </MudTooltip>
                         </MudTh>
@@ -332,7 +332,7 @@ else if (_rows is not null)
                             }
                             else { @context.InstalledCapacityMw.ToString("F1", NumberFormat.Norsk) }
                         </MudTd>
-                        <MudTd Class="num">@FormatRatio(context.AvailabilityFactor)</MudTd>
+                        <MudTd Class="num">@FormatRatio(context.AvailabilityFactorIeee)</MudTd>
                         <MudTd Class="num">@FormatRatio(context.ForcedOutageRate)</MudTd>
                         <MudTd Class="num">@FormatMwh(context.TotalProductionMwh)</MudTd>
                         <MudTd Class="num">@FormatNormalAarsAndel(NormalAarsAndel(context))</MudTd>
@@ -473,6 +473,7 @@ else if (_rows is not null)
         string PlantName,
         double InstalledCapacityMw,
         double AvailabilityFactor,
+        double AvailabilityFactorIeee,
         double ForcedOutageRate,
         double TotalProductionMwh,
         double SpotomsetningNok,
@@ -615,6 +616,7 @@ else if (_rows is not null)
             PlantName: p.PlantName,
             InstalledCapacityMw: p.InstalledCapacityMw,
             AvailabilityFactor: p.AvailabilityFactor,
+            AvailabilityFactorIeee: p.AvailabilityFactorIeee,
             ForcedOutageRate: p.ForcedOutageRate,
             TotalProductionMwh: p.TotalProductionMwh,
             SpotomsetningNok: p.SpotomsetningNok,
@@ -714,7 +716,7 @@ else if (_rows is not null)
     // -- Sort-funksjoner --
     private static readonly Func<Row, object> SortByName     = r => r.PlantName;
     private static readonly Func<Row, object> SortByCapacity = r => r.InstalledCapacityMw;
-    private static readonly Func<Row, object> SortByAf       = r => r.AvailabilityFactor;
+    private static readonly Func<Row, object> SortByAf       = r => r.AvailabilityFactorIeee;
     private static readonly Func<Row, object> SortByFor      = r => r.ForcedOutageRate;
     private static readonly Func<Row, object> SortByMwh      = r => r.TotalProductionMwh;
     private static readonly Func<Row, object> SortByNormalAar = r => r.NormalAarsproduksjonGwh ?? 0;

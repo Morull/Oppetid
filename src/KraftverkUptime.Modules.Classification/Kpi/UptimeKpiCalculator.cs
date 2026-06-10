@@ -74,15 +74,28 @@ public sealed class UptimeKpiCalculator
             "Timer uten produksjon og uten markedsforpliktelse (kan være planlagt stans, vannmangel, etc.)"));
         kpis.Add(new("InformationUnavailable_Hours", iuh, "hours", ph, 1.0, "drift",
             "Timer uten gyldige data (manglende eller negativ Elhub)"));
+        // «Leveringsgrad i forpliktede timer» = SH/(SH+FOH) = 1 − FOR. Dette er
+        // IKKE bransjestandard AF (se AvailabilityFactorIeee_AF) — beholdt under
+        // samme nøkkel for bakoverkompatibilitet. FAGVURDERING-KPI-BEREGNINGER #2.
         kpis.Add(new("AvailabilityFactor_AF",
             SafeRatio(sh, sh + foh), "ratio", sh + foh, avgConf, "drift",
-            "AF = SH / (SH + FOH). Andel av forpliktede timer hvor verket faktisk leverte."));
+            "Leveringsgrad i forpliktede timer = SH / (SH + FOH) = 1 − FOR. Andel av timer med markedsforpliktelse der verket faktisk leverte. NB: ikke bransjestandard AF — se IEEE-AF."));
+
+        // Ekte IEEE 762 / NERC GADS availability factor: AH / PH. ReserveShutdown,
+        // ResourceUnavailable (vannmangel) og derating teller som TILGJENGELIG
+        // (enheten kunne kjørt); kun FOH + POH + MOH er utilgjengelig. Datahull
+        // (IU) ekskluderes fra både teller og nevner. Sammenlignbart med NVE/GADS.
+        var phMinusIu = ph - iuh;
+        kpis.Add(new("AvailabilityFactorIeee_AF",
+            SafeRatio(phMinusIu - foh - poh - moh, phMinusIu), "ratio", phMinusIu, avgConf, "drift",
+            "IEEE-AF = (PH − datahull − FOH − POH − MOH) / (PH − datahull). Bransjestandard tilgjengelighet: reservestopp, vannmangel og derating teller som tilgjengelig; kun tvungne/planlagte/vedlikeholds-utfall er utilgjengelig."));
 
         // -------------------------------------------------------------------
         // EVENT-BASERTE KPI-er (Steg 4 i veikartet) — MTBF/MTTR/FOR/EAF
         // -------------------------------------------------------------------
-        // FOR (Forced Outage Rate) = FOH / (FOH + SH) per IEEE 762.
-        // Skiller seg fra (1 − AF) ved at den ikke teller med Reserve/Planned/Maintenance.
+        // FOR (Forced Outage Rate) = FOH / (FOH + SH) per IEEE 762. Merk: dette er
+        // nøyaktig 1 − AvailabilityFactor_AF (samme to tall) — «leveringsgrad» og
+        // FOR er komplementære. Ekte tilgjengelighet er AvailabilityFactorIeee_AF.
         kpis.Add(new("ForcedOutageRate_FOR",
             SafeRatio(foh, foh + sh), "ratio", foh + sh, avgConf, "drift",
             "FOR = FOH / (FOH + SH). Andel av forpliktede timer som var uvarslede stopp."));

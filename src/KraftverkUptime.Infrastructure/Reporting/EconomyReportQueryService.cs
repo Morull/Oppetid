@@ -256,8 +256,8 @@ public sealed class EconomyReportQueryService : IEconomyReportQueryService
         // (antall klassifiserte timer i hver import) siden ratioene rapporteres
         // pr time.
         double spot = 0, oppgjor = 0, ubalanse = 0, mwh = 0;
-        double afWeightedSum = 0, forWeightedSum = 0;
-        double afWeightHoursSum = 0, forWeightHoursSum = 0;
+        double afWeightedSum = 0, forWeightedSum = 0, afIeeeWeightedSum = 0;
+        double afWeightHoursSum = 0, forWeightHoursSum = 0, afIeeeWeightHoursSum = 0;
         foreach (var import in distinctPerPeriod)
         {
             var report = await _reports
@@ -292,9 +292,17 @@ public sealed class EconomyReportQueryService : IEconomyReportQueryService
                 forWeightedSum += forVal.Value * weight;
                 forWeightHoursSum += weight;
             }
+            // Ekte IEEE-AF (FAGVURDERING #2) — samme null-bevisste vekting.
+            var afIeeeVal = kpis.GetValueOrDefault("AvailabilityFactorIeee_AF");
+            if (afIeeeVal.HasValue)
+            {
+                afIeeeWeightedSum += afIeeeVal.Value * weight;
+                afIeeeWeightHoursSum += weight;
+            }
         }
         var availabilityFactor = afWeightHoursSum > 0 ? afWeightedSum / afWeightHoursSum : 0;
         var forcedOutageRate = forWeightHoursSum > 0 ? forWeightedSum / forWeightHoursSum : 0;
+        var availabilityFactorIeee = afIeeeWeightHoursSum > 0 ? afIeeeWeightedSum / afIeeeWeightHoursSum : 0;
 
         // Capture rate + merverdi kan feile (mangler market_prices etc.) —
         // konservativt: logg og fortsett med 0 istedenfor å krasje hele
@@ -346,6 +354,7 @@ public sealed class EconomyReportQueryService : IEconomyReportQueryService
             ReddetAvVaktNok: 0,
             VaktKostAndelNok: 0,
             AvailabilityFactor: availabilityFactor,
+            AvailabilityFactorIeee: availabilityFactorIeee,
             ForcedOutageRate: forcedOutageRate,
             NedetidTimer: nedetidTimer,
             AntallEvents: antallEvents,
@@ -492,6 +501,7 @@ public sealed class EconomyReportQueryService : IEconomyReportQueryService
                 TotalProductionMwh: s.TotalProductionMwh,
                 MerverdiNok: s.MerverdiNok,
                 AvailabilityFactor: s.AvailabilityFactor,
+                AvailabilityFactorIeee: s.AvailabilityFactorIeee,
                 ForcedOutageRate: s.ForcedOutageRate,
                 NedetidTimer: s.NedetidTimer,
                 NedetidstapNok: s.NedetidstapNok,
@@ -601,6 +611,7 @@ public sealed class EconomyReportQueryService : IEconomyReportQueryService
         // Sammendrag-felt (Spec MASTERPLAN-CODE-2026-05-22 § «Sammendrag
         // reuser /economy», 2026-05-22).
         double AvailabilityFactor,
+        double AvailabilityFactorIeee,
         double ForcedOutageRate,
         double NedetidTimer,
         int AntallEvents,

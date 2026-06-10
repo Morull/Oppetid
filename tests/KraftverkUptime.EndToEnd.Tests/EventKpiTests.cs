@@ -165,6 +165,34 @@ public class EventKpiTests
         };
         var r = Compute(rows);
         GetKpiValue(r, "EquivalentAvailabilityFactor_EAF").Should().BeApproximately(0.4, 1e-9);
+
+        // IEEE-AF på samme datasett (FAGVURDERING #2): reservestopp/vannmangel/
+        // derating teller som tilgjengelig; kun FOH+POH+MOH er utilgjengelig.
+        // (10 − 0 datahull − 2 FOH − 1 POH − 1 MOH) / 10 = 6/10 = 0,6.
+        GetKpiValue(r, "AvailabilityFactorIeee_AF").Should().BeApproximately(0.6, 1e-9);
+        // Gammel «leveringsgrad» (SH/(SH+FOH)) er uendret: 3/(3+2) = 0,6 her tilfeldigvis.
+        GetKpiValue(r, "AvailabilityFactor_AF").Should().BeApproximately(3.0 / 5.0, 1e-9);
+    }
+
+    [Fact]
+    public void IeeeAf_EkskludererDatahull_OgTellerReserveSomTilgjengelig()
+    {
+        // 8 timer: 3 InService, 1 ForcedOutage, 2 ReserveShutdown, 2 datahull (IU).
+        // IEEE-AF = (8 − 2 IU − 1 FOH) / (8 − 2 IU) = 5/6 ≈ 0,8333.
+        // (Reservestopp teller som tilgjengelig; datahull ekskluderes.)
+        var rows = new[]
+        {
+            Row(0, UnitState.InService),
+            Row(1, UnitState.InService),
+            Row(2, UnitState.InService),
+            Row(3, UnitState.ForcedOutage),
+            Row(4, UnitState.ReserveShutdown),
+            Row(5, UnitState.ReserveShutdown),
+            Row(6, UnitState.InformationUnavailable),
+            Row(7, UnitState.InformationUnavailable),
+        };
+        var r = Compute(rows);
+        GetKpiValue(r, "AvailabilityFactorIeee_AF").Should().BeApproximately(5.0 / 6.0, 1e-9);
     }
 
     [Fact]

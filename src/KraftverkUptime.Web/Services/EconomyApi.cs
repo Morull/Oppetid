@@ -160,6 +160,7 @@ public sealed record PerPlantEconomyDto(
     double TotalProductionMwh,
     double MerverdiNok,
     double AvailabilityFactor,
+    double AvailabilityFactorIeee,
     double ForcedOutageRate,
     double NedetidTimer,
     double NedetidstapNok,

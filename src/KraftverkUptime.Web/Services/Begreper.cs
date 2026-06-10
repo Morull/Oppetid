@@ -45,8 +45,11 @@ public static class Begreper
         ["TaptVerdi"] = "Tapt energi × spotpris (NOK/MWh) for samme klokketime.",
 
         // ----- KPI-er fra rapport-katalogen -----
-        ["AF"] = "Availability Factor — tilgjengelighetsfaktor. Andel av tiden anlegget var driftsklart.",
-        ["AvailabilityFactor_AF"] = "Availability Factor — tilgjengelighetsfaktor. Andel av tiden anlegget var driftsklart.",
+        ["AF"] = "Availability Factor (IEEE 762 / NERC GADS) — tilgjengelige timer / kalendertimer. Reservestopp, vannmangel og derating teller som tilgjengelig; kun tvungne/planlagte/vedlikeholds-utfall trekker ned. Sammenlignbar med NVE/bransjetall.",
+        ["AvailabilityFactorIeee_AF"] = "Availability Factor (IEEE 762 / NERC GADS) — tilgjengelige timer / kalendertimer. Sammenlignbar med NVE/bransjetall.",
+        // Gammel «AF»-nøkkel peker nå på leveringsgrad (= 1 − FOR), ikke ekte AF.
+        ["AvailabilityFactor_AF"] = "Leveringsgrad i forpliktede timer = SH / (SH + FOH) = 1 − FOR. Ikke bransjestandard AF — se «AF» (IEEE).",
+        ["Leveringsgrad"] = "Leveringsgrad i forpliktede timer = SH / (SH + FOH). Andel av timene med markedsforpliktelse der verket faktisk leverte. Er nøyaktig 1 − FOR.",
         ["FOR"] = "Forced Outage Rate — tvungen utfallsrate. Andel av tiden ute pga. uplanlagt feil.",
         ["ForcedOutageRate_FOR"] = "Forced Outage Rate — tvungen utfallsrate. Andel av tiden ute pga. uplanlagt feil.",
         ["ServiceHours_SH"] = "Drifts-timer (Service Hours) — antall timer i drift i perioden.",
