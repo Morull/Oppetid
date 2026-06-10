@@ -781,6 +781,186 @@ public class VaktRoiCalculatorTests
             TapMwh = 1.0, TapNok = 850, TimerSettlement = 1,
         };
 
+    // ---- v2: counterfactual-overløp via tilsigsmodell (SPEC-VAKT-ROI-OVERLOP-V2) ----
+
+    private static IReadOnlyList<InflowOverflowEstimator.HourlySample> DamSamples(
+        DateTimeOffset fromUtc, int hours, double startVolumeM3, double dVolumePerHourM3,
+        double totalDamFlow = 0, double turbineFlow = 0)
+    {
+        var list = new List<InflowOverflowEstimator.HourlySample>();
+        var u = fromUtc.UtcDateTime;
+        var startHour = new DateTimeOffset(u.Year, u.Month, u.Day, u.Hour, 0, 0, TimeSpan.Zero);
+        for (var i = 0; i < hours; i++)
+        {
+            list.Add(new InflowOverflowEstimator.HourlySample(
+                HourUtc: startHour.AddHours(i),
+                VolumeM3: startVolumeM3 + i * dVolumePerHourM3,
+                TotalDamFlowM3PerS: totalDamFlow,
+                TurbineFlowM3PerS: turbineFlow));
+        }
+        return list;
+    }
+
+    private static IReadOnlyDictionary<DateTimeOffset, double> FillFlat(
+        DateTimeOffset fromUtc, int hours, double fill)
+    {
+        var dict = new Dictionary<DateTimeOffset, double>();
+        var u = fromUtc.UtcDateTime;
+        var startHour = new DateTimeOffset(u.Year, u.Month, u.Day, u.Hour, 0, 0, TimeSpan.Zero);
+        for (var i = 0; i < hours; i++) dict[startHour.AddHours(i)] = fill;
+        return dict;
+    }
+
+    [Fact]
+    public void V2_Estimat_Gir_Produksjonskreditt_Uten_Observert_Overlop_Regresjon_Skjermbilde()
+    {
+        // Regresjonscase fra skjermbildet: trip fredag 2026-04-10 22:00 (3 t outage),
+        // counterfactual mandag 08:00, NULL observerte overløpstimer. Med tilsig i
+        // april fyller magasinet seg → estimert overløp → Reddet produksjon > 0.
+        var ev = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 4, 10, 22),
+            EndUtc = OsloLokal(2026, 4, 11, 1),    // 3 t outage
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            TapMwh = 6.6, TapNok = 5610, TimerSettlement = 3,
+        };
+
+        var counterfactualEnd = OsloLokal(2026, 4, 13, 8);   // mandag 08:00
+        const double p = 2.2 * 0.5;
+        var plan = PlanFlat(ev.StartUtc, counterfactualEnd, p);
+
+        // Lookback 24 t: stigende volum +3600 m³/t = netto inn 1 m³/s (dam/turbin 0).
+        var damSamples = DamSamples(OsloLokal(2026, 4, 9, 22), hours: 24,
+            startVolumeM3: 1_000_000, dVolumePerHourM3: 3600);
+        // Fyllgrad 90 % → ledig 0,1 × 360 000 = 36 000 m³ → fullt etter 10 t.
+        var fill = FillFlat(OsloLokal(2026, 4, 9, 22), hours: 24, fill: 0.90);
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { ev },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: new HashSet<DateTimeOffset>(),   // INGEN observert overløp
+            overflowDataAvailable: true,
+            damSamples: damSamples,
+            maxVolumeM3: 360_000,
+            fillRateByHour: fill);
+
+        var r = roi[0];
+        r.OverflowEstimateAvailable.Should().BeTrue();
+        r.SavedOverflowHoursObserved.Should().Be(0);
+        r.SavedOverflowHoursEstimated.Should().BeGreaterThan(0);
+        r.ReddetProduksjon_NOK.Should().BeGreaterThan(0);
+        r.OverflowEstimateHoursToFull.Should().BeApproximately(10.0, 0.5);
+        // Ingen dobbelttelling: reddet MWh = (observert + estimert) timer × plan.
+        r.ReddetMwh.Should().BeApproximately(
+            (r.SavedOverflowHoursObserved + r.SavedOverflowHoursEstimated) * p, 0.01);
+        r.Forklaring.Should().Contain("estimert");
+    }
+
+    [Fact]
+    public void V2_Uten_DamSamples_Beholder_Dagens_Oppforsel()
+    {
+        // Ingen dam-samples → estimat ikke tilgjengelig, kun observert overløp.
+        var ev = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 2, 4, 16),
+            EndUtc = OsloLokal(2026, 2, 4, 17, 30),
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            TapMwh = 1.0, TapNok = 850, TimerSettlement = 2,
+        };
+        var counterfactualEnd = OsloLokal(2026, 2, 5, 8);
+        var plan = PlanFlat(ev.StartUtc, counterfactualEnd, 2.2 * 0.5);
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { ev },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: OverflowAlleTimer(ev.StartUtc, counterfactualEnd),
+            overflowDataAvailable: true);
+
+        var r = roi[0];
+        r.OverflowEstimateAvailable.Should().BeFalse();
+        r.SavedOverflowHoursEstimated.Should().Be(0);
+        r.SavedOverflowHoursObserved.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public void V2_Override_IkkeOverlop_Trumfer_Estimat()
+    {
+        // Samme oppsett som regresjonscaset, men drifts-leder har satt IkkeOverlop
+        // → ingen produksjonskreditt, estimatet trumfes.
+        var ev = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 4, 10, 22),
+            EndUtc = OsloLokal(2026, 4, 11, 1),
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            TapMwh = 6.6, TapNok = 5610, TimerSettlement = 3,
+        };
+        var counterfactualEnd = OsloLokal(2026, 4, 13, 8);
+        var plan = PlanFlat(ev.StartUtc, counterfactualEnd, 2.2 * 0.5);
+        var damSamples = DamSamples(OsloLokal(2026, 4, 9, 22), 24, 1_000_000, 3600);
+        var fill = FillFlat(OsloLokal(2026, 4, 9, 22), 24, 0.90);
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { ev },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: new HashSet<DateTimeOffset>(),
+            overflowDataAvailable: true,
+            overrides: new Dictionary<DateTimeOffset, string> { [ev.StartUtc] = "IkkeOverlop" },
+            damSamples: damSamples,
+            maxVolumeM3: 360_000,
+            fillRateByHour: fill);
+
+        var r = roi[0];
+        r.ReddetProduksjon_NOK.Should().Be(0);
+        r.SavedOverflowHoursEstimated.Should().Be(0);
+        r.SavedOverflowHoursObserved.Should().Be(0);
+    }
+
+    [Fact]
+    public void V2_NettoInn_Negativ_Gir_Ingen_Estimerte_Timer()
+    {
+        // Fallende volum (netto inn ≤ 0) → magasinet fylles ikke → 0 estimerte timer,
+        // men estimatet er likevel «tilgjengelig» (DataAvailable=true).
+        var ev = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 4, 10, 22),
+            EndUtc = OsloLokal(2026, 4, 11, 1),
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            TapMwh = 6.6, TapNok = 5610, TimerSettlement = 3,
+        };
+        var counterfactualEnd = OsloLokal(2026, 4, 13, 8);
+        var plan = PlanFlat(ev.StartUtc, counterfactualEnd, 2.2 * 0.5);
+        // Fallende volum −3600 m³/t → netto inn −1 m³/s.
+        var damSamples = DamSamples(OsloLokal(2026, 4, 9, 22), 24, 1_000_000, -3600);
+        var fill = FillFlat(OsloLokal(2026, 4, 9, 22), 24, 0.50);
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { ev },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: new HashSet<DateTimeOffset>(),
+            overflowDataAvailable: true,
+            damSamples: damSamples,
+            maxVolumeM3: 360_000,
+            fillRateByHour: fill);
+
+        var r = roi[0];
+        r.OverflowEstimateAvailable.Should().BeTrue();
+        r.SavedOverflowHoursEstimated.Should().Be(0);
+        r.OverflowEstimateHoursToFull.Should().BeNull();
+        r.ReddetProduksjon_NOK.Should().Be(0);
+    }
+
     /// <summary>
     /// B1 (2026-05-20): <c>ActualEndOverrideUtc</c> anvendes oppstrøms for
     /// <see cref="VaktRoiCalculator"/> ved at endepunktet bygger om event-listen

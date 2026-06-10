@@ -51,12 +51,35 @@ public sealed record VaktRoiResultat
     public required double ReddetUbalanse_NOK { get; init; }
 
     /// <summary>
-    /// Antall timer i counterfactual-perioden der det var overløp i magasinet.
-    /// Det er disse timene vakt-tjenesten faktisk reddet produksjon for —
-    /// ellers ville vannet rent forbi turbinen og kunne ikke vært utnyttet
-    /// uavhengig av om turbinen kjørte.
+    /// Antall timer i counterfactual-perioden der det var overløp i magasinet
+    /// (observert SCADA-overløp ∪ estimert via tilsigsmodell). Det er disse
+    /// timene vakt-tjenesten faktisk reddet produksjon for — ellers ville vannet
+    /// rent forbi turbinen og kunne ikke vært utnyttet uavhengig av om turbinen
+    /// kjørte. Lik <see cref="SavedOverflowHoursObserved"/> + <see cref="SavedOverflowHoursEstimated"/>.
     /// </summary>
     public required int OverflowTimerInCounterfactual { get; init; }
+
+    /// <summary>
+    /// Overløpstimer fra OBSERVERT SCADA-data (nedre grense). SPEC-VAKT-ROI-OVERLOP-V2.
+    /// </summary>
+    public int SavedOverflowHoursObserved { get; init; }
+
+    /// <summary>
+    /// Overløpstimer som kommer i TILLEGG fra tilsigsmodellen
+    /// (<c>InflowOverflowEstimator</c>) — timer der magasinet ville vært fullt i
+    /// counterfactual-vinduet, men der SCADA ikke registrerte overløp (fordi
+    /// turbinen faktisk kjørte). Disse er ESTIMAT og bør merkes «~» i UI.
+    /// </summary>
+    public int SavedOverflowHoursEstimated { get; init; }
+
+    /// <summary>True hvis tilsigsmodellen kunne kjøres for denne gruppen (magasin-telemetri + maks-volum + fyllgrad fantes).</summary>
+    public bool OverflowEstimateAvailable { get; init; }
+
+    /// <summary>Estimert timer til magasinet er fullt fra hendelsesstart, eller null (aldri fullt / utilgjengelig).</summary>
+    public double? OverflowEstimateHoursToFull { get; init; }
+
+    /// <summary>Tilsigsmodellens forklaringsstreng (snitt-tilsig, ledig kapasitet, tid til fullt), eller null.</summary>
+    public string? OverflowEstimateForklaring { get; init; }
 
     /// <summary>True hvis SCADA-data manglet for hele eller deler av counterfactual-perioden.</summary>
     public required bool OverflowDataMissing { get; init; }

@@ -135,6 +135,21 @@ public sealed class VaktRoiCalculator
     /// monoton-invarianten). Selve EffectiveGuardResponse-logikken sitter
     /// utenfor kalkulatoren i <c>EffectiveGuardResponseEvaluator</c>.
     /// </param>
+    /// <param name="damSamples">
+    /// Time-pivoterte magasin-samples (volum/dam-flow/turbin-flow) som dekker
+    /// minst 24 t før tidligste leder-event og fram til seneste counterfactual-
+    /// slutt. Brukes til tilsig-basert estimat av counterfactual-overløp
+    /// (SPEC-VAKT-ROI-OVERLOP-V2). Null = ingen estimat-kilde → kun observert
+    /// overløp (dagens oppførsel).
+    /// </param>
+    /// <param name="maxVolumeM3">
+    /// Maks magasin-volum (m³) for terminal-dammen. 0 = estimat ikke tilgjengelig.
+    /// </param>
+    /// <param name="fillRateByHour">
+    /// Fyllgrad (ratio 0..1) per UTC-time. Kalkulatoren bruker siste verdi før
+    /// hver leder-gruppes start som fyllgrad ved hendelsesstart. Null = ingen
+    /// fyllgrad → estimatoren returnerer DataAvailable=false.
+    /// </param>
     public IReadOnlyList<VaktRoiResultat> Calculate(
         IReadOnlyList<DowntimeEvent> events,
         double snittSpotprisNokMwh,
@@ -145,7 +160,10 @@ public sealed class VaktRoiCalculator
         IReadOnlyDictionary<DateTimeOffset, string>? overrides = null,
         IReadOnlySet<DateTimeOffset>? proxyHours = null,
         VaktTidsmodellOptions? vaktOptions = null,
-        IReadOnlySet<DateTimeOffset>? excludeFromReddbar = null)
+        IReadOnlySet<DateTimeOffset>? excludeFromReddbar = null,
+        IReadOnlyList<InflowOverflowEstimator.HourlySample>? damSamples = null,
+        double maxVolumeM3 = 0,
+        IReadOnlyDictionary<DateTimeOffset, double>? fillRateByHour = null)
     {
         ArgumentNullException.ThrowIfNull(events);
         ArgumentNullException.ThrowIfNull(planByHour);
@@ -280,9 +298,24 @@ public sealed class VaktRoiCalculator
             // FAGVURDERING #1 / SPEC-UBALANSE-ENPRIS-FIX.
             var ubalanseCapHour = FloorToHour(UbalanseEksponeringSlutt(leaderStart));
 
+            // Tilsig-basert estimat av counterfactual-overløp (SPEC-VAKT-ROI-
+            // OVERLOP-V2). Observert SCADA-overløp er bare en NEDRE grense: i
+            // counterfactual-scenariet står turbinen i hele vinduet og magasinet
+            // fylles. Estimatoren sier når magasinet ville vært fullt; fra det
+            // punktet krediteres produksjon i TILLEGG til observerte overløpstimer.
+            // Kjøres kun når dam-telemetri (samples + maks-volum + fyllgrad) finnes;
+            // ellers DataAvailable=false og oppførselen er uendret (kun observert).
+            var estimate = EstimerCounterfactualOverlop(
+                damSamples, maxVolumeM3, fillRateByHour, leaderStart, counterfactualEnd);
+            var fullAtUtc = (estimate?.DataAvailable == true
+                    && !double.IsPositiveInfinity(estimate.HoursToFull))
+                ? leaderStart.AddHours(estimate.HoursToFull)
+                : (DateTimeOffset?)null;
+
             double reddetMwh = 0;
             double ubalanseMwh = 0;
-            var savedOverflowHours = 0;
+            var savedOverflowObserved = 0;
+            var savedOverflowEstimated = 0;
             var anyProxyHour = false;
             for (var h = leaderStartHour; h < counterfactualHour; h = h.AddHours(1))
             {
@@ -298,17 +331,25 @@ public sealed class VaktRoiCalculator
                     ubalanseMwh += planForHour;
                 }
 
-                // Produksjons-komponenten gjelder bare timer med overløp.
+                // Produksjons-komponenten: observert overløp (nedre grense) ELLER
+                // estimert fullt magasin fra og med fullAtUtc. else-if-en sikrer at
+                // en time som er BÅDE observert og estimert kun telles én gang.
                 if (overflowHours.Contains(h))
                 {
                     reddetMwh += planForHour;
-                    savedOverflowHours++;
+                    savedOverflowObserved++;
+                }
+                else if (fullAtUtc.HasValue && h >= fullAtUtc.Value)
+                {
+                    reddetMwh += planForHour;
+                    savedOverflowEstimated++;
                 }
             }
 
             // Manuell override per leder-event: drifts-leder kan tvinge full
-            // overflow-kreditt eller null kreditt uavhengig av SCADA-data.
+            // overflow-kreditt eller null kreditt uavhengig av SCADA/estimat.
             // Lagres i core.vakt_event_overrides per (plant_id, event_start_utc).
+            // Override TRUMFER estimatet.
             var overrideClassification = overrides.TryGetValue(leaderStart, out var oc) ? oc : null;
             var overflowOverridden = false;
             switch (overrideClassification)
@@ -317,20 +358,22 @@ public sealed class VaktRoiCalculator
                     // Tving full produksjons-redding: alle ekstra-timer regnes
                     // som overflow (counterfactual-vindu minus outage, gulv-kvantisert).
                     reddetMwh = 0;
-                    savedOverflowHours = 0;
+                    savedOverflowObserved = 0;
+                    savedOverflowEstimated = 0;
                     for (var h = leaderStartHour; h < counterfactualHour; h = h.AddHours(1))
                     {
                         if (outageHourSet.Contains(h)) continue;
                         var planForHour = planByHour.TryGetValue(h, out var pv) ? pv : 0.0;
                         if (planForHour < 0) planForHour = 0;
                         reddetMwh += planForHour;
-                        savedOverflowHours++;
+                        savedOverflowObserved++;
                     }
                     overflowOverridden = true;
                     break;
                 case "IkkeOverlop":
                     reddetMwh = 0;
-                    savedOverflowHours = 0;
+                    savedOverflowObserved = 0;
+                    savedOverflowEstimated = 0;
                     overflowOverridden = true;
                     break;
             }
@@ -340,10 +383,16 @@ public sealed class VaktRoiCalculator
                 LeaderStart: leaderStart,
                 CounterfactualEnd: counterfactualEnd,
                 SavedHours: savedHours,
-                SavedOverflowHours: savedOverflowHours,
+                SavedOverflowHoursObserved: savedOverflowObserved,
+                SavedOverflowHoursEstimated: savedOverflowEstimated,
                 ReddetMwh: reddetMwh,
                 UbalanseMwh: ubalanseMwh,
                 OverflowOverridden: overflowOverridden,
+                OverflowEstimateAvailable: estimate?.DataAvailable == true,
+                OverflowEstimateHoursToFull: (estimate?.DataAvailable == true
+                        && !double.IsPositiveInfinity(estimate.HoursToFull))
+                    ? estimate.HoursToFull : (double?)null,
+                OverflowEstimateForklaring: estimate?.DataAvailable == true ? estimate.Forklaring : null,
                 PlanDataPartial: anyProxyHour);
         }
 
@@ -435,7 +484,7 @@ public sealed class VaktRoiCalculator
 
             // Leder — får full gruppe-ROI.
             var ekstraTimer = group.SavedHours;
-            var overflowTimer = group.SavedOverflowHours;
+            var overflowTimer = group.SavedOverflowHoursObserved + group.SavedOverflowHoursEstimated;
 
             var reddetMwh = group.ReddetMwh;
             var reddetProduksjonNok = reddetMwh * snittSpotprisNokMwh;
@@ -449,7 +498,9 @@ public sealed class VaktRoiCalculator
                 e, ekstraTimer, overflowTimer, overflowDataAvailable,
                 reddetMwh, snittSpotprisNokMwh,
                 ubalanseMwh, snittUbalansetillegg_NokMwh,
-                reddetProduksjonNok, reddetUbalanseNok);
+                reddetProduksjonNok, reddetUbalanseNok,
+                group.SavedOverflowHoursObserved, group.SavedOverflowHoursEstimated,
+                group.OverflowEstimateAvailable, group.OverflowEstimateForklaring);
 
             if (group.Members.Count > 1)
             {
@@ -481,6 +532,11 @@ public sealed class VaktRoiCalculator
                 ReddetProduksjon_NOK = reddetProduksjonNok,
                 ReddetUbalanse_NOK = reddetUbalanseNok,
                 OverflowTimerInCounterfactual = overflowTimer,
+                SavedOverflowHoursObserved = group.SavedOverflowHoursObserved,
+                SavedOverflowHoursEstimated = group.SavedOverflowHoursEstimated,
+                OverflowEstimateAvailable = group.OverflowEstimateAvailable,
+                OverflowEstimateHoursToFull = group.OverflowEstimateHoursToFull,
+                OverflowEstimateForklaring = group.OverflowEstimateForklaring,
                 // Hvis override er aktiv, regnes ikke data som "missing" uansett.
                 OverflowDataMissing = !group.OverflowOverridden && !overflowDataAvailable && ekstraTimer > 0,
                 PlanDataPartial = group.PlanDataPartial,
@@ -498,11 +554,54 @@ public sealed class VaktRoiCalculator
         DateTimeOffset LeaderStart,
         DateTimeOffset CounterfactualEnd,
         double SavedHours,
-        int SavedOverflowHours,
+        int SavedOverflowHoursObserved,
+        int SavedOverflowHoursEstimated,
         double ReddetMwh,
         double UbalanseMwh,
         bool OverflowOverridden,
+        bool OverflowEstimateAvailable,
+        double? OverflowEstimateHoursToFull,
+        string? OverflowEstimateForklaring,
         bool PlanDataPartial);
+
+    private const int EstimatLookbackHours = 24;
+
+    /// <summary>
+    /// Kjører <see cref="InflowOverflowEstimator"/> for én leder-gruppe: slicer
+    /// 24 t lookback før <paramref name="leaderStart"/> og bruker siste fyllgrad
+    /// før start. Returnerer null hvis dam-telemetri mangler (kalleren har ikke
+    /// sendt samples / maks-volum) — da krediteres kun observert overløp.
+    /// </summary>
+    private static InflowOverflowEstimator.EstimateResult? EstimerCounterfactualOverlop(
+        IReadOnlyList<InflowOverflowEstimator.HourlySample>? damSamples,
+        double maxVolumeM3,
+        IReadOnlyDictionary<DateTimeOffset, double>? fillRateByHour,
+        DateTimeOffset leaderStart,
+        DateTimeOffset counterfactualEnd)
+    {
+        if (damSamples is null || maxVolumeM3 <= 0)
+        {
+            return null;
+        }
+
+        var lookbackStart = leaderStart.AddHours(-EstimatLookbackHours);
+        var lookback = damSamples
+            .Where(s => s.HourUtc >= lookbackStart && s.HourUtc < leaderStart)
+            .ToList();
+
+        double? fillAtStart = null;
+        if (fillRateByHour is not null)
+        {
+            fillAtStart = fillRateByHour
+                .Where(kv => kv.Key < leaderStart)
+                .OrderByDescending(kv => kv.Key)
+                .Select(kv => (double?)kv.Value)
+                .FirstOrDefault();
+        }
+
+        return InflowOverflowEstimator.Estimate(
+            lookback, leaderStart, counterfactualEnd, maxVolumeM3, fillAtStart);
+    }
 
     private static DateTimeOffset FloorToHour(DateTimeOffset t)
     {
@@ -541,7 +640,9 @@ public sealed class VaktRoiCalculator
         bool overflowDataAvailable,
         double reddetMwh, double snittSpot,
         double ubalanseMwh, double snittUbalansetillegg,
-        double reddetProduksjonNok, double reddetUbalanseNok)
+        double reddetProduksjonNok, double reddetUbalanseNok,
+        int savedOverflowObserved, int savedOverflowEstimated,
+        bool overflowEstimateAvailable, string? estimateForklaring)
     {
         if (ekstraTimer == 0)
         {
@@ -569,6 +670,11 @@ public sealed class VaktRoiCalculator
         {
             var msg = $"Vakt løste på {e.VarighetTimer:F1} t. Counterfactual = {ekstraTimer:F1} t, "
                 + "men ingen overløp i perioden — vannet ville vært magasinert.";
+            // Estimatoren kjørte, men sa at magasinet ikke ville fylles i vinduet.
+            if (overflowEstimateAvailable && estimateForklaring is not null)
+            {
+                msg += $" Tilsigsmodell: {estimateForklaring}";
+            }
             if (hasUbalanse)
             {
                 msg += $" Vakten reddet bare ubalanse-gebyret: ≈ {reddetUbalanseNok:F0} NOK "
@@ -581,10 +687,29 @@ public sealed class VaktRoiCalculator
             return msg;
         }
 
-        // overflowTimer > 0
+        // overflowTimer > 0 — skill observert (SCADA) fra estimert (tilsigsmodell).
+        // Estimerte timer merkes «~» for å signalisere at de er modell-anslag.
+        string overlopBeskrivelse;
+        if (savedOverflowEstimated > 0 && savedOverflowObserved > 0)
+        {
+            overlopBeskrivelse = $"{savedOverflowObserved} t observert + ~{savedOverflowEstimated} t estimert (tilsigsmodell)";
+        }
+        else if (savedOverflowEstimated > 0)
+        {
+            overlopBeskrivelse = $"~{savedOverflowEstimated} t estimert overløp (tilsigsmodell)";
+        }
+        else
+        {
+            overlopBeskrivelse = $"{overflowTimer} t overløp i magasinet";
+        }
+
         var produksjonsDel = $"Vakt løste på {e.VarighetTimer:F1} t. Counterfactual = {ekstraTimer:F1} t. "
-            + $"Av disse hadde {overflowTimer} t overløp i magasinet → "
+            + $"Av disse: {overlopBeskrivelse} → "
             + $"{reddetMwh:F1} MWh fra plan × {snittSpot:F0} NOK/MWh = {reddetProduksjonNok:F0} NOK.";
+        if (savedOverflowEstimated > 0 && estimateForklaring is not null)
+        {
+            produksjonsDel += $" [{estimateForklaring}]";
+        }
         if (!hasUbalanse)
         {
             return produksjonsDel;
