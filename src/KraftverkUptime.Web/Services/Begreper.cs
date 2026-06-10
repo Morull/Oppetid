@@ -66,7 +66,10 @@ public static class Begreper
         ["DagCr"] = "Capture rate mot dag-baseline — sammenligner mot dagens snitt-spotpris.",
         ["RaCr"] = "Rå capture rate — før filtrering eller justering.",
         ["CapturePris"] = "Capture-pris — anleggets oppnådde snittpris i NOK/MWh.",
-        ["Merverdi"] = "Merverdi — NOK tjent ut over baseline-prisen.",
+        // Samleforklaring (SPEC-UI-ROLLEBASERT 3.6): «merverdi» har vært brukt om
+        // flere ulike størrelser. Slik henger de sammen:
+        ["Merverdi"] = "Merverdi-begrepene henger sammen slik: «Timing-merverdi» (krone-tvillingen til CR) = Σ(MWh×spot) − Σ(MWh)×snittspot — gevinsten av god pris-timing på FAKTISK produksjon. «Hydrogrid plan-merverdi» er samme regnestykke på PLANEN (plan-kvalitet, ikke realisert inntekt). «Netto mot plan» måler noe annet: lønnsomheten av å avvike fra planen (timing-gap minus ubalansekost). «Realisert vs spot» er utførelses-gapet (fikk vi spotverdien av det vi faktisk leverte?).",
+        ["TimingMerverdi"] = "Timing-merverdi — krone-tvillingen til Capture rate: Σ(MWh×spot) − Σ(MWh)×snittspot på faktisk produksjon. Positiv ⟺ CR > 1 (timingen var bedre enn en jevn fordeling).",
         ["TimesBaseline"] = "Times-baseline — referansepris (vektet times-spotpris) capture rate måles mot.",
         ["DagBaseline"] = "Dag-baseline — referansepris (dagens snitt-spotpris) capture rate måles mot.",
 

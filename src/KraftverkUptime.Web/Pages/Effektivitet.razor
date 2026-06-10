@@ -105,7 +105,8 @@ else if (_response is not null)
                     <KpiCard Label="Timing-merverdi"
                              Value="@FormatNok(_captureRate.TimingMerverdiNok)"
                              SubText="krone-tvilling til CR"
-                             Accent="@MerverdiAccent(_captureRate.TimingMerverdiNok)" />
+                             Accent="@MerverdiAccent(_captureRate.TimingMerverdiNok)"
+                             InfoText="Σ(MWh × spot) − Σ(MWh) × snittspot på faktisk produksjon. Krone-tvillingen til CR (positiv ⟺ CR > 1) — samme størrelse som «Timing-merverdi» på Capture rate-fanen." />
                 </MudItem>
             </MudGrid>
         }
