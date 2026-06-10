@@ -6,6 +6,7 @@
 @inject ReportsApi ReportsApi
 @inject FilterState Filter
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Portefølje-rapport</PageTitle>
 
@@ -226,7 +227,7 @@ else if (_rows is not null)
                                 Beskrivelse="Én rad per anlegg med drift- og økonomi-KPI for valgt periode. Klikk en rad for å åpne anleggets rapport-detalj. Hold musepekeren over kolonneoverskriftene for forklaringer."
                                 Begreper="@(new[] { "MW", "AF", "FOR", "MWh", "NOK", "CR", "Merverdi" })" />
                 </div>
-                <MudSwitch T="bool" @bind-Value="_showAllColumns"
+                <MudSwitch T="bool" @bind-Value="ShowAllColumns"
                            Color="MudBlazor.Color.Primary"
                            Size="MudBlazor.Size.Small">
                     Vis alle kolonner (@(_showAllColumns ? "13" : "7") synlige)
@@ -408,7 +409,48 @@ else if (_rows is not null)
     // Kolonnesynlighet: default = kjerne-KPI-er (7 kolonner). Bruker kan toggle
     // til alle 13 hvis hen vil se hele bildet. Resten tilgjengelig via klikk
     // på rad → /anlegg/{id}. UI-gjennomgang 2026-05-20 tiltak 3.
+    private const string ShowAllColumnsKey = "dk_portefolje_cols_v1";
     private bool _showAllColumns;
+
+    /// <summary>
+    /// «Vis alle kolonner»-bryteren. Persisteres i localStorage (samme
+    /// mekanisme som FilterState) så valget overlever reload. SPEC-UI-ROLLEBASERT 3.3.
+    /// </summary>
+    private bool ShowAllColumns
+    {
+        get => _showAllColumns;
+        set
+        {
+            if (_showAllColumns == value) return;
+            _showAllColumns = value;
+            _ = PersistShowAllColumnsAsync(value);
+        }
+    }
+
+    private async Task LoadShowAllColumnsAsync()
+    {
+        try
+        {
+            var stored = await JS.InvokeAsync<string?>("localStorage.getItem", ShowAllColumnsKey);
+            _showAllColumns = stored == "true";
+        }
+        catch
+        {
+            // localStorage utilgjengelig → behold default (kompakt).
+        }
+    }
+
+    private async Task PersistShowAllColumnsAsync(bool value)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", ShowAllColumnsKey, value ? "true" : "false");
+        }
+        catch
+        {
+            // Best-effort — worst case: valget tapes ved reload.
+        }
+    }
 
     // KAIA-kostnad (Spec KAIA-KOSTNAD). Lastes parallelt med portefølje-KPI-ene
     // — én HTTP-call returnerer alle anlegg for perioden.
@@ -448,6 +490,7 @@ else if (_rows is not null)
     protected override async Task OnInitializedAsync()
     {
         Filter.OnChange += OnFilterChanged;
+        await LoadShowAllColumnsAsync();
         await LoadAsync();
     }
 

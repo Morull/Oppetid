@@ -15,5 +15,10 @@ public enum PeriodGranularity
     Kvartal,
     Ar,
     HittilIAr,
-    Egendefinert
+    Egendefinert,
+    // Korte hurtigvalg for drifts-leders morgensjekk (SPEC-UI-ROLLEBASERT 3.1).
+    // Lagt til SIST så lagrede enum-ordinaler i localStorage ikke forskyves.
+    // Arrows steg ikke disse (de er forankret til «i dag»), som HittilIAr.
+    Siste7Dager,
+    IGar
 }

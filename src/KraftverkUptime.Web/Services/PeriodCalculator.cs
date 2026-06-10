@@ -33,10 +33,29 @@ public static class PeriodCalculator
             PeriodGranularity.Kvartal => ForrigeKvartal(today),
             PeriodGranularity.Ar => ForrigeAr(today),
             PeriodGranularity.HittilIAr => HittilIAr(today),
+            PeriodGranularity.Siste7Dager => Siste7Dager(today),
+            PeriodGranularity.IGar => IGar(today),
             // Egendefinert: vi har ingen mening — beholder eksisterende periode.
             // Caller må sørge for at de faktisk har et range satt.
             _ => ForrigeManed(today),
         };
+
+    /// <summary>
+    /// Siste 7 hele døgn fram til (men ikke med) i dag. Til-dato er eksklusiv.
+    /// 10.6 → 3.6..10.6 (3.–9. juni inklusive). For drifts-leders ukessjekk.
+    /// </summary>
+    public static (DateTime From, DateTime To) Siste7Dager(DateTime today)
+    {
+        var start = today.Date;
+        return (start.AddDays(-7), start);
+    }
+
+    /// <summary>I går — ett døgn. Til-dato er eksklusiv (i dag). 10.6 → 9.6..10.6.</summary>
+    public static (DateTime From, DateTime To) IGar(DateTime today)
+    {
+        var start = today.Date;
+        return (start.AddDays(-1), start);
+    }
 
     /// <summary>Forrige hele kalenderkvartal. Mai 2026 → Q1 2026 (jan-mar).</summary>
     public static (DateTime From, DateTime To) ForrigeKvartal(DateTime today)
@@ -101,6 +120,8 @@ public static class PeriodCalculator
             PeriodGranularity.Kvartal => FormatQuarter(from),
             PeriodGranularity.Ar => from.Year.ToString(CultureInfo.InvariantCulture),
             PeriodGranularity.HittilIAr => $"Hittil i år ({from.Year})",
+            PeriodGranularity.Siste7Dager => "Siste 7 dager",
+            PeriodGranularity.IGar => "I går",
             _ => FormatRange(from, to),
         };
     }

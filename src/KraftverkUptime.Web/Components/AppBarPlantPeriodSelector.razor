@@ -57,6 +57,16 @@ else
 
         @* ---- Hurtigknapper ---- *@
         <MudButtonGroup Variant="Variant.Outlined" Size="Size.Small">
+            <MudButton OnClick="@(() => SetGranularity(PeriodGranularity.IGar))"
+                       Color="@(Filter.Granularity == PeriodGranularity.IGar ? Color.Primary : Color.Default)"
+                       Variant="@(Filter.Granularity == PeriodGranularity.IGar ? Variant.Filled : Variant.Outlined)">
+                I går
+            </MudButton>
+            <MudButton OnClick="@(() => SetGranularity(PeriodGranularity.Siste7Dager))"
+                       Color="@(Filter.Granularity == PeriodGranularity.Siste7Dager ? Color.Primary : Color.Default)"
+                       Variant="@(Filter.Granularity == PeriodGranularity.Siste7Dager ? Variant.Filled : Variant.Outlined)">
+                Siste 7 d
+            </MudButton>
             <MudButton OnClick="@(() => SetGranularity(PeriodGranularity.Maned))"
                        Color="@(Filter.Granularity == PeriodGranularity.Maned ? Color.Primary : Color.Default)"
                        Variant="@(Filter.Granularity == PeriodGranularity.Maned ? Variant.Filled : Variant.Outlined)">
