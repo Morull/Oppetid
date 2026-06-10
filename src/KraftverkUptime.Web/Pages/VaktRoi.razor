@@ -174,26 +174,23 @@ else if (IsPortfolioMode && _portfolio is not null)
         </MudText>
     </MudPaper>
 
+    @* «Total reddet» vises allerede øverst i vurderings-panelet (der den er
+       grunnlaget for Annualisert/ROI), så headline-strippen starter på
+       reddbare events for å unngå duplikat (SPEC-UI-ROLLEBASERT fase 3.5). *@
     <MudGrid Class="mb-4">
-        <MudItem xs="12" sm="6" md="3">
-            <KpiCard Label="Total reddet"
-                     Value="@FormatNok(_portfolio.TotalReddetNok)"
-                     SubText="@($"NOK på tvers av {_portfolio.PlantsWithData} av {_portfolio.PlantCount} anlegg")"
-                     Accent="KpiAccent.Positive" />
-        </MudItem>
-        <MudItem xs="12" sm="6" md="3">
+        <MudItem xs="12" sm="6" md="4">
             <KpiCard Label="Reddbare events"
                      Value="@_portfolio.TotalReddbareEvents.ToString()"
                      SubText="@($"av {_portfolio.TotalEvents} totale events i perioden")"
                      Accent="KpiAccent.Neutral" />
         </MudItem>
-        <MudItem xs="12" sm="6" md="3">
+        <MudItem xs="12" sm="6" md="4">
             <KpiCard Label="Snitt per anlegg"
                      Value="@FormatNok(SnittPerAnleggMedData())"
                      SubText="NOK reddet per anlegg med data"
                      Accent="KpiAccent.Warning" />
         </MudItem>
-        <MudItem xs="12" sm="6" md="3">
+        <MudItem xs="12" sm="6" md="4">
             <KpiCard Label="Topp-anlegg"
                      Value="@(TopPlant()?.PlantName ?? "—")"
                      SubText="@($"{FormatNok(TopPlant()?.ReddetNok ?? 0)} NOK reddet")"
