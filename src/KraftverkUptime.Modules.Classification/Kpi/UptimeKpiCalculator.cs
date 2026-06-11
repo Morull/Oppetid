@@ -56,7 +56,6 @@ public sealed class UptimeKpiCalculator
         int moh = stateCounts.GetValueOrDefault(UnitState.MaintenanceOutage);
         int forcedDerating = stateCounts.GetValueOrDefault(UnitState.ForcedDerating);
         int plannedDerating = stateCounts.GetValueOrDefault(UnitState.PlannedDerating);
-        int resourceUnavailable = stateCounts.GetValueOrDefault(UnitState.ResourceUnavailable);
 
         // Event-counting for MTBF/MTTR: tell sammenhengende blokker av ForcedOutage-timer.
         var foEvents = CountStateEvents(classified, UnitState.ForcedOutage);
@@ -100,17 +99,18 @@ public sealed class UptimeKpiCalculator
             SafeRatio(foh, foh + sh), "ratio", foh + sh, avgConf, "drift",
             "FOR = FOH / (FOH + SH). Andel av forpliktede timer som var uvarslede stopp."));
 
-        // EAF (Equivalent Availability Factor) korrigert for derating:
-        //   EAF = (AH − POH − MOH − EFDH) / period_hours
-        //   AH = total_period − FOH − ResourceUnavailable
+        // EAF (Equivalent Availability Factor) — IEEE-konsistent (FAGVURDERING #5):
+        //   EAF = (PH − datahull − FOH − POH − MOH − EFDH) / (PH − datahull)
         //   EFDH = 0.5 × (ForcedDerating + PlannedDerating)  (proxy: 50 % effekt-tap)
-        // Hvis vi ikke har derating-data blir EFDH=0 og EAF reduserer naturlig til (AH − POH − MOH) / period.
-        var availableHours = ph - foh - resourceUnavailable;
+        // Vannmangel (RU) trekkes IKKE fra (utenfor management control = tilgjengelig),
+        // og datahull (IU) ekskluderes fra begge ledd — samme behandling som IEEE-AF
+        // (AvailabilityFactorIeee_AF), bare i tillegg justert for derating.
         var efdh = 0.5 * (forcedDerating + plannedDerating);
-        var eaf = ph == 0 ? (double?)null : (availableHours - poh - moh - efdh) / (double)ph;
+        var eaf = phMinusIu <= 0 ? (double?)null
+            : (phMinusIu - foh - poh - moh - efdh) / (double)phMinusIu;
         kpis.Add(new("EquivalentAvailabilityFactor_EAF",
-            eaf, "ratio", ph, avgConf, "drift",
-            "EAF = (AH − POH − MOH − EFDH) / period_hours. Tilgjengelig kapasitet justert for derating."));
+            eaf, "ratio", phMinusIu, avgConf, "drift",
+            "EAF = (PH − datahull − FOH − POH − MOH − EFDH) / (PH − datahull). IEEE-tilgjengelighet justert for derating; vannmangel teller som tilgjengelig, datahull ekskluderes."));
 
         // MTBF (Mean Time Between Failures) = total drift-timer / antall FO-events
         // MTTR (Mean Time To Repair) = total FO-timer / antall FO-events

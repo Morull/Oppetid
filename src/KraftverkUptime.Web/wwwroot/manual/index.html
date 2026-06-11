@@ -643,8 +643,9 @@
     <table class="dk-table">
       <thead><tr><th>KPI</th><th>Formel</th><th>Tolkning</th></tr></thead>
       <tbody>
-        <tr><td><strong>AF</strong> (Availability Factor)</td><td>(InService + PlannedOutage) / TotalHours</td><td>Andel tid anlegget var produksjonsklart</td></tr>
-        <tr><td><strong>EAF</strong> (Equivalent Availability)</td><td>AF korrigert for delredusert kapasitet</td><td>Mer realistisk for delvis utfall</td></tr>
+        <tr><td><strong>AF</strong> (Availability Factor, IEEE 762)</td><td>(PH − datahull − FOH − POH − MOH) / (PH − datahull)</td><td>Bransjestandard tilgjengelighet, sammenlignbar med NVE/GADS. Reservestopp, vannmangel og derating teller som tilgjengelig.</td></tr>
+        <tr><td><strong>Leveringsgrad</strong> (i forpliktede timer)</td><td>SH / (SH + FOH) = 1 − FOR</td><td>Andel av timene med markedsforpliktelse der verket faktisk leverte. Ikke bransjestandard AF.</td></tr>
+        <tr><td><strong>EAF</strong> (Equivalent Availability)</td><td>(PH − datahull − FOH − POH − MOH − EFDH) / (PH − datahull)</td><td>IEEE-AF justert for derating (EFDH = 0,5 × derating-timer).</td></tr>
         <tr><td><strong>FOR</strong> (Forced Outage Rate)</td><td>ForcedOutageHours / (InService + ForcedOutage)</td><td>Andel uplanlagte stopp</td></tr>
         <tr><td><strong>CF</strong> (Capacity Factor)</td><td>FaktiskMWh / (InstalledCapacity × Hours)</td><td>Faktisk vs. teoretisk maks-produksjon</td></tr>
         <tr><td><strong>Plan-treff</strong></td><td>1 − MAE / Σplan</td><td>Hydrogrid-planens treffsikkerhet</td></tr>

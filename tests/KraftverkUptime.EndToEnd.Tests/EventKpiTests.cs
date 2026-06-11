@@ -139,17 +139,17 @@ public class EventKpiTests
     }
 
     [Fact]
-    public void EAF_TrekkerFraPlanlagtVedlikeholdOgRessursMangelOgDerating()
+    public void EAF_TrekkerFraForcedPlanlagtVedlikeholdOgDerating_IkkeVannmangel()
     {
-        // 10 timer total:
+        // 10 timer total (FAGVURDERING #5 — RU teller IKKE lenger som utilgjengelig):
         //   3 InService (SH=3)
         //   2 ForcedOutage (FOH=2)
         //   1 PlannedOutage (POH=1)
         //   1 MaintenanceOutage (MOH=1)
-        //   1 ResourceUnavailable (RU=1) — trekkes fra AH
+        //   1 ResourceUnavailable (RU=1) — teller som TILGJENGELIG (ikke trukket fra)
         //   1 ForcedDerating (EFDH = 0.5 × 1 = 0.5)
         //   1 PlannedDerating (EFDH += 0.5)
-        // AH = 10 − 2 − 1 = 7. EAF = (7 − 1 − 1 − 1) / 10 = 4/10 = 0.4
+        // EAF = (10 − 0 datahull − 2 FOH − 1 POH − 1 MOH − 1 EFDH) / 10 = 5/10 = 0.5
         var rows = new[]
         {
             Row(0, UnitState.InService),
@@ -164,7 +164,7 @@ public class EventKpiTests
             Row(9, UnitState.PlannedDerating),
         };
         var r = Compute(rows);
-        GetKpiValue(r, "EquivalentAvailabilityFactor_EAF").Should().BeApproximately(0.4, 1e-9);
+        GetKpiValue(r, "EquivalentAvailabilityFactor_EAF").Should().BeApproximately(0.5, 1e-9);
 
         // IEEE-AF på samme datasett (FAGVURDERING #2): reservestopp/vannmangel/
         // derating teller som tilgjengelig; kun FOH+POH+MOH er utilgjengelig.

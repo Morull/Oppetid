@@ -179,7 +179,7 @@ Etterpå: legg inn hemmeligheter i Key Vault (connection strings for eksterne sy
 
 **Prompt 2** implementerer domenelogikken i de tre modul-prosjektene:
 - `KraftverkUptime.Modules.Settlement` – `ISettlementDataSource`-implementasjon for Drivdal-filformat
-- `KraftverkUptime.Modules.Classification` – IEEE 762-klassifisering og KPI-beregning (AF, CF, PlanFulfillment, BidAccuracy)
+- `KraftverkUptime.Modules.Classification` – IEEE 762-klassifisering og KPI-beregning (IEEE-AF, leveringsgrad, FOR, EAF, ubalanse, BidDelivery)
 - `KraftverkUptime.Modules.Reporting` – rapportbygger + XLSX-renderer
 
 Fasit ligger i `drivdal-feb2025-fasit.json` og skal matches av regresjonstester.
