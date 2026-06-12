@@ -376,13 +376,13 @@ public sealed class ReportsApi
 
 // --------- DTO-er -----------------------------------------------------------
 
+public sealed record PendingImportCountDto(int Count);
+
 /// <summary>
 /// Plant-grunndata. <see cref="DeratingThreshold"/> er per-anlegg terskel for
 /// plan-avvik som teller som ForcedDerating; default 0.80 (= 20 % toleranse).
 /// Null fra ListAsync (paginert liste viser kun grunn-felter); satt fra GET.
 /// </summary>
-public sealed record PendingImportCountDto(int Count);
-
 public sealed record PlantDto(
     string Id, string Name, string Type, double InstalledCapacityMw, string TimeZone,
     double? DeratingThreshold = null,
