@@ -1,0 +1,138 @@
+@* Månedsrapport-fane på Portefølje (SPEC-PORTEFOLJE-FANER-OG-KPI Steg 1).
+   Forenklet variant av Reports.razor UTEN auto-redirect — brukeren er allerede
+   på Portefølje og forventer å se lista, ikke bli navigert bort. Anlegg + periode
+   styres av den globale AppBar-velgeren (FilterState), som vises på /portefolje. *@
+@implements IDisposable
+@inject ReportsApi Api
+@inject FilterState Filter
+@inject NavigationManager Nav
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+@if (string.IsNullOrWhiteSpace(Filter.PlantId))
+{
+    <MudAlert Severity="Severity.Info">Velg et anlegg i topp-baren for å se importerte avregninger.</MudAlert>
+}
+else if (_items is null)
+{
+    <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+    <MudText Class="ml-2 d-inline">Henter rapporter…</MudText>
+}
+else if (_items.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">Ingen importerte rapporter for valgt anlegg og periode.</MudAlert>
+}
+else
+{
+    <MudTable T="SettlementImportSummary" Items="@_items" Hover="true" Striped="true" Elevation="0" Class="dk-card"
+              OnRowClick="@((TableRowClickEventArgs<SettlementImportSummary> args) => OnRowClick(args.Item))"
+              RowStyle="cursor: pointer;">
+        <HeaderContent>
+            <MudTh>Anlegg</MudTh>
+            <MudTh>Periode</MudTh>
+            <MudTh Style="text-align:right">Timer</MudTh>
+            <MudTh Style="text-align:right">Avvik</MudTh>
+            <MudTh>Importert</MudTh>
+            <MudTh>Status</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Anlegg">@context.PlantName</MudTd>
+            <MudTd DataLabel="Periode">@FormatPeriod(context.PeriodStartUtc, context.PeriodEndUtc)</MudTd>
+            <MudTd DataLabel="Timer" Style="text-align:right">@context.HourCount</MudTd>
+            <MudTd DataLabel="Avvik" Style="text-align:right">
+                @if (context.IssueCount > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Text">@context.IssueCount</MudChip>
+                }
+                else
+                {
+                    <span>0</span>
+                }
+            </MudTd>
+            <MudTd DataLabel="Importert">@context.ImportedAtUtc.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</MudTd>
+            <MudTd DataLabel="Status">
+                @if (context.ReportAvailable)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">Klar</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.HourglassTop">Behandles</MudChip>
+                }
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<SettlementImportSummary>? _items;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Filter.OnChange += OnFilterChanged;
+        await ReloadAsync();
+    }
+
+    public void Dispose() => Filter.OnChange -= OnFilterChanged;
+
+    private async void OnFilterChanged()
+    {
+        try
+        {
+            await ReloadAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Komponenten kan være disponert under navigasjon — ignorer.
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(Filter.PlantId))
+        {
+            _items = null;
+            return;
+        }
+
+        _items = null;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            DateTimeOffset? from = Filter.FromDate.HasValue ? Filter.FromDate.Value.ToUtcOffsetSafe() : null;
+            DateTimeOffset? to = Filter.ToDate.HasValue ? Filter.ToDate.Value.ToUtcOffsetSafe() : null;
+            var result = await Api.ListSettlementsAsync(Filter.PlantId, from, to);
+            _items = result.OrderByDescending(i => i.ImportedAtUtc).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente rapporter: {ex.Message}";
+            _items = new List<SettlementImportSummary>();
+        }
+    }
+
+    // Ingen auto-redirect — bare drill-down til eksisterende rapport-detalj.
+    private void OnRowClick(SettlementImportSummary? row)
+    {
+        if (row is null) return;
+        Nav.NavigateTo($"reports/{row.PlantId}/{row.IdempotencyKey}");
+    }
+
+    private static string FormatPeriod(DateTimeOffset start, DateTimeOffset end)
+    {
+        var s = start.ToLocalTime();
+        var e = end.ToLocalTime();
+        var days = (e - s).TotalDays;
+        if (days is >= 27 and <= 32 && s.Day == 1)
+        {
+            return s.ToString("MMM yyyy");
+        }
+        return $"{s:yyyy-MM-dd} – {e:yyyy-MM-dd}";
+    }
+}
