@@ -154,7 +154,11 @@ public static class NedetidEndpoints
         // perioden i én spørring; calculator filtrerer per event mot settet.
         // DataAvailable=false (tag mangler eller ingen samples i perioden)
         // gir konservativt ROI=0 + flagger eventene som missing data.
-        var dataset = await overflow.GetOverflowDatasetAsync(plantId, fromUtc, toUtc, ct)
+        //
+        // Vinduet utvides med 3 dager fremover slik at counterfactual-timene
+        // for events nær slutten av perioden også dekkes — uten dette vil
+        // overløpstimer etter toUtc aldri telles (stille underestimering).
+        var dataset = await overflow.GetOverflowDatasetAsync(plantId, fromUtc, toUtc.AddDays(3), ct)
             .ConfigureAwait(false);
 
         // Ubalanse-komponent (v3): gjennomsnittlig RK-spot-spread for perioden.

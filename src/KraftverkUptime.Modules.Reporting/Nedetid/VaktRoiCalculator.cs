@@ -339,7 +339,7 @@ public sealed class VaktRoiCalculator
                     reddetMwh += planForHour;
                     savedOverflowObserved++;
                 }
-                else if (fullAtUtc.HasValue && h >= fullAtUtc.Value)
+                else if (fullAtUtc.HasValue && h >= FloorToHour(fullAtUtc.Value))
                 {
                     reddetMwh += planForHour;
                     savedOverflowEstimated++;

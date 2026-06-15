@@ -88,7 +88,11 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
             var sumTapNok = events.Sum(e => e.TapNok);
             if (sumTapMwh > 0 && sumTapNok > 0) snittSpot = sumTapNok / sumTapMwh;
 
-            var dataset = await _overflow.GetOverflowDatasetAsync(plant.Id, fromUtc, toUtc, ct)
+            // Utvid overløps-vinduet med 3 dager for å dekke counterfactual-
+            // utvidelsen for events nær slutten av perioden (samme buffer som
+            // plan-tjenesten bruker). Uten dette telles aldri overløp som
+            // faller etter toUtc, selv om kalkulatoren ser disse timene.
+            var dataset = await _overflow.GetOverflowDatasetAsync(plant.Id, fromUtc, toUtc.AddDays(3), ct)
                 .ConfigureAwait(false);
             var snittUbalansetillegg = await _nedetid.GetAvgImbalancePremiumAsync(plant.Id, fromUtc, toUtc, ct)
                 .ConfigureAwait(false);
