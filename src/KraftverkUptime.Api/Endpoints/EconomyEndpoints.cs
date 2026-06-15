@@ -6,6 +6,7 @@ using KraftverkUptime.Infrastructure.Persistence;
 using KraftverkUptime.Infrastructure.Reporting;
 using KraftverkUptime.Modules.Reporting.Economy;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace KraftverkUptime.Api.Endpoints;
 
@@ -51,6 +52,7 @@ public static class EconomyEndpoints
         DateTimeOffset? to,
         string? kind,
         IEconomyReportQueryService service,
+        IMemoryCache cache,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(plants))
@@ -96,11 +98,29 @@ public static class EconomyEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var report = await service
-            .GetAsync(plantIds, fromUtc, toUtc, periodKind, ct)
-            .ConfigureAwait(false);
+        // Server-side cache: /economy er tungt (~15–55 s for "all" — per-anlegg
+        // capture-rate leser full historikk). Oversikt-landingssiden OG Portefølje
+        // bruker dette; cachen gjør reload/navigasjon momentant. TTL 3 min.
+        // EconomyCacheWarmer holder inneværende-måned-nøkkelen forhåndsberegnet
+        // så første lasting også er rask. (Dypere fiks: lettere capture-rate.)
+        var cacheKey = BuildCacheKey(plantIds, fromUtc, toUtc, periodKind);
+        if (!cache.TryGetValue(cacheKey, out EconomyReportDto? report) || report is null)
+        {
+            report = await service.GetAsync(plantIds, fromUtc, toUtc, periodKind, ct).ConfigureAwait(false);
+            cache.Set(cacheKey, report, TimeSpan.FromMinutes(3));
+        }
         return Results.Ok(report);
     }
+
+    /// <summary>
+    /// Kanonisk cache-nøkkel for økonomi-rapporten. Delt av endepunktet og
+    /// <c>EconomyCacheWarmer</c> så forhåndsvarming treffer samme nøkkel.
+    /// </summary>
+    internal static string BuildCacheKey(
+        IReadOnlyList<string> plantIds, DateTimeOffset fromUtc, DateTimeOffset toUtc, PeriodKind kind)
+        => "economy|"
+            + string.Join(',', plantIds.OrderBy(p => p, StringComparer.Ordinal))
+            + $"|{fromUtc:o}|{toUtc:o}|{kind}";
 
     /// <summary>
     /// Plukker ut anleggs-ID-er fra <c>plants</c>-parameteren. Komma-separert

@@ -310,8 +310,11 @@ public sealed class EconomyReportQueryService : IEconomyReportQueryService
         double cr = 0, merverdi = 0;
         try
         {
+            // Lett capture-rate: økonomi-rapporten bruker kun times-CR + merverdi,
+            // som ikke trenger full-historikk-lesingen. Stor I/O-besparelse for
+            // "all"-rapporten (FAGVURDERING/ytelse — Portefølje + Oversikt).
             var crResult = await _captureRate
-                .GetForPlantAsync(plant.Id, fromUtc, toUtc, ct)
+                .GetTimesCrForPlantAsync(plant.Id, fromUtc, toUtc, ct)
                 .ConfigureAwait(false);
             cr = crResult.TimesCr;
             merverdi = crResult.MerverdiNok;

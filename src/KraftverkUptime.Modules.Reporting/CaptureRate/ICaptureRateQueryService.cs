@@ -9,8 +9,22 @@ namespace KraftverkUptime.Modules.Reporting.CaptureRate;
 /// </summary>
 public interface ICaptureRateQueryService
 {
-    /// <summary>Hovedendepunkt: aggregert CR for perioden.</summary>
+    /// <summary>Hovedendepunkt: aggregert CR for perioden (inkl. dag-CR-persentil).</summary>
     Task<CaptureRateCalculator.CaptureRateResult> GetForPlantAsync(
+        string plantId,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        CancellationToken ct);
+
+    /// <summary>
+    /// LETT variant for aggregat-bruk (Økonomi-rapporten): beregner kun times-CR
+    /// + Timing-merverdi og HOPPER OVER full-historikk-lesingen (opptil 500
+    /// imports/anlegg) som kun dag-CR-persentilet trenger. Times-CR og
+    /// Timing-merverdi avhenger bare av periode-timene, så verdiene er IDENTISKE
+    /// med <see cref="GetForPlantAsync"/> — men uten den tunge per-anlegg
+    /// historikk-I/O-en. Dag-CR-feltene er ikke meningsfulle her.
+    /// </summary>
+    Task<CaptureRateCalculator.CaptureRateResult> GetTimesCrForPlantAsync(
         string plantId,
         DateTimeOffset fromUtc,
         DateTimeOffset toUtc,

@@ -42,6 +42,24 @@ public sealed class CaptureRateQueryService : ICaptureRateQueryService
         return CaptureRateCalculator.Compute(hours, historical);
     }
 
+    /// <inheritdoc />
+    public async Task<CaptureRateCalculator.CaptureRateResult> GetTimesCrForPlantAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        if (toUtc <= fromUtc)
+        {
+            return EmptyResult();
+        }
+
+        // KUN periode-timene — hopper over LoadHistoricalDailyAsync (full historikk,
+        // opptil 500 imports/anlegg) som bare dag-CR-persentilet trenger. Times-CR
+        // og Timing-merverdi avhenger ikke av historikk, så de blir identiske.
+        var hours = await LoadHourlyAsync(plantId, fromUtc, toUtc, ct).ConfigureAwait(false);
+        return CaptureRateCalculator.Compute(
+            hours, Array.Empty<CaptureRateCalculator.DailyInput>());
+    }
+
     public async Task<IReadOnlyList<MonthlyCaptureRate>> GetMonthlySeriesAsync(
         string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
     {

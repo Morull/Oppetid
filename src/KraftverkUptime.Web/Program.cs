@@ -15,7 +15,14 @@ builder.Services.AddApexCharts();
 
 // API-baseadresse konfigureres via wwwroot/appsettings.json (ApiBaseAddress).
 var apiBase = builder.Configuration["ApiBaseAddress"] ?? builder.HostEnvironment.BaseAddress;
-builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(apiBase) });
+// Timeout 3 min (default er 100 s): den tunge /economy-rapporten for "all" kan
+// ta ~1 min på FØRSTE lasting (server-cachet i 3 min etterpå). Uten dette timer
+// Portefølje/Oversikt ut og «får ikke lastet inn».
+builder.Services.AddScoped(_ => new HttpClient
+{
+    BaseAddress = new Uri(apiBase),
+    Timeout = TimeSpan.FromMinutes(3),
+});
 
 // Typed API-klient for rapporter og opplasting.
 builder.Services.AddScoped<ReportsApi>();

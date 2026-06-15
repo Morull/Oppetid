@@ -423,6 +423,10 @@ public class EconomyReportQueryServiceTests
             return Task.FromResult(result);
         }
 
+        // Lett variant: returner samme som GetForPlantAsync (times-CR uendret).
+        public Task<CaptureRateCalculator.CaptureRateResult> GetTimesCrForPlantAsync(string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct) =>
+            GetForPlantAsync(plantId, fromUtc, toUtc, ct);
+
         public Task<IReadOnlyList<MonthlyCaptureRate>> GetMonthlySeriesAsync(string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct) =>
             Task.FromResult<IReadOnlyList<MonthlyCaptureRate>>(Array.Empty<MonthlyCaptureRate>());
         public Task<IReadOnlyList<DailyCaptureRate>> GetDailySeriesAsync(string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct) =>
