@@ -25,6 +25,7 @@ using KraftverkUptime.Modules.Reporting.Storage;
 using KraftverkUptime.Modules.Settlement.Jobs;
 using KraftverkUptime.Modules.Settlement.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -116,7 +117,16 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<KraftverkUptime.Modules.Scada.Import.IScadaImportService, KraftverkUptime.Infrastructure.Scada.ScadaImportService>();
 
         // --- UptimeReport-lagring (blob, JSON) ---
-        services.AddSingleton<IUptimeReportStore, KraftverkUptime.Infrastructure.Reporting.BlobUptimeReportStore>();
+        // BlobUptimeReportStore er den ekte lagringen; CachingUptimeReportStore er en
+        // per-prosess caching-dekorator (kort TTL, invalider-ved-skriving) som hindrer
+        // at samme rapport-blob leses 2–4× per forespørsel (settlement-KPI, capture-rate,
+        // nedetid, datakvalitet) og på tvers av nær-samtidige forespørsler. Blob-I/O er
+        // flaskehalsen i rapport-laget. Deler den samme IMemoryCache-singletonen som er
+        // registrert i «--- Cache ---»-blokken over (egne «uptimereport|»-nøkler).
+        services.AddSingleton<BlobUptimeReportStore>();
+        services.AddSingleton<IUptimeReportStore>(sp => new CachingUptimeReportStore(
+            sp.GetRequiredService<BlobUptimeReportStore>(),
+            sp.GetRequiredService<IMemoryCache>()));
 
         // --- Portefølje-aggregator (Steg 6) ---
         services.AddScoped<IPortfolioQueryService, KraftverkUptime.Infrastructure.Reporting.PortfolioQueryService>();
