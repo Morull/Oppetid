@@ -1,9 +1,11 @@
 using KraftverkUptime.Core.Domain;
 using KraftverkUptime.Core.Time;
 using KraftverkUptime.Infrastructure.Persistence;
+using KraftverkUptime.Infrastructure.Persistence.Entities;
 using KraftverkUptime.Modules.Reporting.Nedetid;
 using KraftverkUptime.Modules.Reporting.Portefolje;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace KraftverkUptime.Infrastructure.Reporting;
@@ -13,33 +15,29 @@ namespace KraftverkUptime.Infrastructure.Reporting;
 /// alle anlegg, kjører <see cref="VaktRoiCalculator"/> per anlegg og aggregerer
 /// resultatene. Mønster matcher <see cref="PortfolioQueryService"/>.
 ///
-/// Caching: i v1 kjøres beregningen synkront uten cache. Vakt-ROI er
-/// deterministisk for en gitt periode (samme imports + annoteringer gir
-/// samme resultat), så Memory-cache med 5 min TTL kan legges til senere
-/// hvis ytelse blir et problem.
+/// Anleggene kjøres i PARALLELL med scope-per-anlegg (siden DbContext er Scoped
+/// og ikke tråd-sikker — hver task får ferskt DbContext + ferske sub-tjenester),
+/// begrenset til <see cref="MaxParallel"/> samtidige mot DB-pool-press. Dette er
+/// den tyngste delkomponenten i /economy (som kaller denne) i tillegg til selve
+/// vakt-roi-rapporten. Aggregeringen skjer sekvensielt etter at alle anlegg er
+/// ferdige, så resultatet er identisk med en sekvensiell kjøring. Malen er den
+/// samme som <see cref="EffektivitetPortfolioQueryService"/>.
 /// </summary>
 public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
 {
+    private const int MaxParallel = 4;
+
+    private readonly IServiceProvider _services;
     private readonly KraftverkDbContext _db;
-    private readonly INedetidQueryService _nedetid;
-    private readonly IOverflowQueryService _overflow;
-    private readonly VaktRoiCalculator _calculator;
-    private readonly InflowOverflowQueryService _inflow;
     private readonly ILogger<PortfolioVaktRoiQueryService> _log;
 
     public PortfolioVaktRoiQueryService(
+        IServiceProvider services,
         KraftverkDbContext db,
-        INedetidQueryService nedetid,
-        IOverflowQueryService overflow,
-        VaktRoiCalculator calculator,
-        InflowOverflowQueryService inflow,
         ILogger<PortfolioVaktRoiQueryService> log)
     {
+        _services = services ?? throw new ArgumentNullException(nameof(services));
         _db = db ?? throw new ArgumentNullException(nameof(db));
-        _nedetid = nedetid ?? throw new ArgumentNullException(nameof(nedetid));
-        _overflow = overflow ?? throw new ArgumentNullException(nameof(overflow));
-        _calculator = calculator ?? throw new ArgumentNullException(nameof(calculator));
-        _inflow = inflow ?? throw new ArgumentNullException(nameof(inflow));
         _log = log ?? throw new ArgumentNullException(nameof(log));
     }
 
@@ -64,23 +62,96 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
             .OrderBy(p => p.Id)
             .ToListAsync(ct).ConfigureAwait(false);
 
-        var perPlant = new List<PortfolioVaktRoiPlantSummary>();
-        var allTopCandidates = new List<PortfolioVaktRoiTopEvent>();
-        var monthlyByKey = new Dictionary<(int Year, int Month), (double Nok, int Events)>();
-        var plantsWithData = 0;
-        var totalReddetNok = 0d;
-        var totalReddbare = 0;
-        var totalEvents = 0;
-
-        foreach (var plant in plants)
+        // Parallell per-anlegg med scope-per-anlegg (DbContext ikke tråd-trygg).
+        var sem = new SemaphoreSlim(MaxParallel, MaxParallel);
+        PlantVaktRoiResult?[] gathered;
+        try
         {
-            var events = await _nedetid.ListEventsAsync(plant.Id, fromUtc, toUtc, ct)
+            var tasks = plants
+                .Select(p => RunPlantAsync(p, fromUtc, toUtc, vaktOptions, sem, ct))
+                .ToList();
+            gathered = await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        finally
+        {
+            sem.Dispose();
+        }
+
+        // Aggregering sekvensielt — resultatlista bevarer anleggs-rekkefølge
+        // (Task.WhenAll beholder rekkefølgen på tasks), null = anlegg uten data.
+        var results = gathered.Where(r => r is not null).Select(r => r!).ToList();
+
+        var perPlant = results.Select(r => r.Summary).ToList();
+        var plantsWithData = results.Count;
+        var totalReddetNok = results.Sum(r => r.Summary.ReddetNok);
+        var totalReddbare = results.Sum(r => r.Summary.ReddbareEvents);
+        var totalEvents = results.Sum(r => r.Summary.TotaleEvents);
+
+        var allTopCandidates = results.SelectMany(r => r.QualifyingEvents).ToList();
+
+        var topEvents = allTopCandidates
+            .OrderByDescending(e => e.ReddetNok)
+            .Take(topNCapped)
+            .ToList();
+
+        var monthlyTrend = allTopCandidates
+            .GroupBy(e =>
+            {
+                var local = e.StartUtc.ToLocalTime();
+                return (local.Year, local.Month);
+            })
+            .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
+            .Select(g => new PortfolioVaktRoiMonthlyPoint(
+                Year: g.Key.Year,
+                Month: g.Key.Month,
+                TotalReddetNok: g.Sum(e => e.ReddetNok),
+                ReddbareEvents: g.Count()))
+            .ToList();
+
+        _log.LogInformation(
+            "PortfolioVaktRoi: {PlantCount} anlegg, {WithData} med data — total reddet {Total:F0} NOK, {Reddbare}/{Events} events.",
+            plants.Count, plantsWithData, totalReddetNok, totalReddbare, totalEvents);
+
+        return new PortfolioVaktRoiResponse(
+            FromUtc: fromUtc,
+            ToUtc: toUtc,
+            PlantCount: plants.Count,
+            PlantsWithData: plantsWithData,
+            TotalReddetNok: totalReddetNok,
+            TotalReddbareEvents: totalReddbare,
+            TotalEvents: totalEvents,
+            PerPlant: perPlant
+                .OrderByDescending(p => p.ReddetNok)
+                .ToList(),
+            TopEvents: topEvents,
+            MonthlyTrend: monthlyTrend);
+    }
+
+    private async Task<PlantVaktRoiResult?> RunPlantAsync(
+        PlantRegistration plant,
+        DateTimeOffset fromUtc, DateTimeOffset toUtc,
+        VaktTidsmodellOptions? vaktOptions,
+        SemaphoreSlim sem, CancellationToken ct)
+    {
+        await sem.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            // Ferskt scope per anlegg → eget DbContext + ferske sub-tjenester.
+            // IUptimeReportStore (singleton, caching-dekorator) deles trygt.
+            await using var scope = _services.CreateAsyncScope();
+            var sp = scope.ServiceProvider;
+            var nedetid = sp.GetRequiredService<INedetidQueryService>();
+            var overflow = sp.GetRequiredService<IOverflowQueryService>();
+            var inflow = sp.GetRequiredService<InflowOverflowQueryService>();
+            var calculator = sp.GetRequiredService<VaktRoiCalculator>();
+            var db = sp.GetRequiredService<KraftverkDbContext>();
+
+            var events = await nedetid.ListEventsAsync(plant.Id, fromUtc, toUtc, ct)
                 .ConfigureAwait(false);
             if (events.Count == 0)
             {
-                continue;
+                return null;
             }
-            plantsWithData++;
 
             // Snitt-spotpris-proxy fra events (samme metode som per-plant-endepunktet).
             double snittSpot = 500;
@@ -92,18 +163,18 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
             // utvidelsen for events nær slutten av perioden (samme buffer som
             // plan-tjenesten bruker). Uten dette telles aldri overløp som
             // faller etter toUtc, selv om kalkulatoren ser disse timene.
-            var dataset = await _overflow.GetOverflowDatasetAsync(plant.Id, fromUtc, toUtc.AddDays(3), ct)
+            var dataset = await overflow.GetOverflowDatasetAsync(plant.Id, fromUtc, toUtc.AddDays(3), ct)
                 .ConfigureAwait(false);
-            var snittUbalansetillegg = await _nedetid.GetAvgImbalancePremiumAsync(plant.Id, fromUtc, toUtc, ct)
+            var snittUbalansetillegg = await nedetid.GetAvgImbalancePremiumAsync(plant.Id, fromUtc, toUtc, ct)
                 .ConfigureAwait(false);
-            var planResult = await _nedetid.GetProduksjonplanByHourAsync(plant.Id, fromUtc, toUtc, ct)
+            var planResult = await nedetid.GetProduksjonplanByHourAsync(plant.Id, fromUtc, toUtc, ct)
                 .ConfigureAwait(false);
 
             // Per-anlegg overrides — henter hele raden siden vi trenger
             // både Classification og ActualEndOverrideUtc (varighetsoverstyring,
             // B1 2026-05-20). Varighet anvendes oppstrøms; klassifisering
             // sendes inn i Calculator som vanlig.
-            var overrideRows = await _db.VaktEventOverrides
+            var overrideRows = await db.VaktEventOverrides
                 .Where(o => o.PlantId == plant.Id
                     && o.EventStartUtc >= fromUtc
                     && o.EventStartUtc < toUtc)
@@ -145,11 +216,11 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
 
             // Dam-telemetri for tilsig-basert counterfactual-overløp (SPEC-VAKT-
             // ROI-OVERLOP-V2). Null for anlegg uten magasin-telemetri → kun observert.
-            var damTelemetry = await _inflow
+            var damTelemetry = await inflow
                 .GetDamTelemetryAsync(plant.Id, fromUtc, toUtc, ct)
                 .ConfigureAwait(false);
 
-            var roi = _calculator.Calculate(
+            var roi = calculator.Calculate(
                 events, snittSpot, planResult.PlanByHour,
                 dataset.OverflowHours, overflowDataAvailable: dataset.DataAvailable,
                 snittUbalansetillegg_NokMwh: snittUbalansetillegg,
@@ -166,7 +237,7 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
             var plantReddetUbalanse = roi.Sum(r => r.ReddetUbalanse_NOK);
             var plantReddbare = roi.Count(r => r.ErInnenforVakt && r.ErReddbar);
 
-            perPlant.Add(new PortfolioVaktRoiPlantSummary(
+            var summary = new PortfolioVaktRoiPlantSummary(
                 PlantId: plant.Id,
                 PlantName: plant.Name,
                 InstalledCapacityMw: plant.InstalledCapacityMw,
@@ -174,16 +245,12 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
                 ReddetProduksjon_NOK: plantReddetProduksjon,
                 ReddetUbalanse_NOK: plantReddetUbalanse,
                 ReddbareEvents: plantReddbare,
-                TotaleEvents: events.Count));
-
-            totalReddetNok += plantReddetNok;
-            totalReddbare += plantReddbare;
-            totalEvents += events.Count;
+                TotaleEvents: events.Count);
 
             // Top-N-kandidater + månedstrend: kun events som faktisk reddet noe.
-            foreach (var r in roi.Where(r => r.ReddetNok > 0))
-            {
-                allTopCandidates.Add(new PortfolioVaktRoiTopEvent(
+            var qualifying = roi
+                .Where(r => r.ReddetNok > 0)
+                .Select(r => new PortfolioVaktRoiTopEvent(
                     PlantId: plant.Id,
                     PlantName: plant.Name,
                     StartUtc: r.Event.StartUtc,
@@ -194,51 +261,25 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
                     ReddetNok: r.ReddetNok,
                     ReddetProduksjon_NOK: r.ReddetProduksjon_NOK,
                     ReddetUbalanse_NOK: r.ReddetUbalanse_NOK,
-                    EkstraTimerSpart: r.EkstraTimerSpart));
+                    EkstraTimerSpart: r.EkstraTimerSpart))
+                .ToList();
 
-                var localMonth = r.Event.StartUtc.ToLocalTime();
-                var key = (localMonth.Year, localMonth.Month);
-                if (monthlyByKey.TryGetValue(key, out var prev))
-                {
-                    monthlyByKey[key] = (prev.Nok + r.ReddetNok, prev.Events + 1);
-                }
-                else
-                {
-                    monthlyByKey[key] = (r.ReddetNok, 1);
-                }
-            }
+            return new PlantVaktRoiResult(summary, qualifying);
         }
-
-        var topEvents = allTopCandidates
-            .OrderByDescending(e => e.ReddetNok)
-            .Take(topNCapped)
-            .ToList();
-
-        var monthlyTrend = monthlyByKey
-            .OrderBy(kv => kv.Key.Year).ThenBy(kv => kv.Key.Month)
-            .Select(kv => new PortfolioVaktRoiMonthlyPoint(
-                Year: kv.Key.Year,
-                Month: kv.Key.Month,
-                TotalReddetNok: kv.Value.Nok,
-                ReddbareEvents: kv.Value.Events))
-            .ToList();
-
-        _log.LogInformation(
-            "PortfolioVaktRoi: {PlantCount} anlegg, {WithData} med data — total reddet {Total:F0} NOK, {Reddbare}/{Events} events.",
-            plants.Count, plantsWithData, totalReddetNok, totalReddbare, totalEvents);
-
-        return new PortfolioVaktRoiResponse(
-            FromUtc: fromUtc,
-            ToUtc: toUtc,
-            PlantCount: plants.Count,
-            PlantsWithData: plantsWithData,
-            TotalReddetNok: totalReddetNok,
-            TotalReddbareEvents: totalReddbare,
-            TotalEvents: totalEvents,
-            PerPlant: perPlant
-                .OrderByDescending(p => p.ReddetNok)
-                .ToList(),
-            TopEvents: topEvents,
-            MonthlyTrend: monthlyTrend);
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex,
+                "PortfolioVaktRoi: anlegg {PlantId} feilet — hopper over anlegget.", plant.Id);
+            return null;
+        }
+        finally
+        {
+            sem.Release();
+        }
     }
+
+    /// <summary>Internt per-anlegg-resultat for sekvensiell aggregering etter fan-out.</summary>
+    private sealed record PlantVaktRoiResult(
+        PortfolioVaktRoiPlantSummary Summary,
+        List<PortfolioVaktRoiTopEvent> QualifyingEvents);
 }
