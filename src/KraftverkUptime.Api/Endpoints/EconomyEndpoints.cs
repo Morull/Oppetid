@@ -98,11 +98,12 @@ public static class EconomyEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        // Server-side cache: /economy er tungt (~15–55 s for "all" — per-anlegg
-        // capture-rate leser full historikk). Oversikt-landingssiden OG Portefølje
-        // bruker dette; cachen gjør reload/navigasjon momentant. TTL 3 min.
-        // EconomyCacheWarmer holder inneværende-måned-nøkkelen forhåndsberegnet
-        // så første lasting også er rask. (Dypere fiks: lettere capture-rate.)
+        // Server-side cache: /economy er tungt (kald ~22 s for "all"; per-anlegg
+        // capture-rate bruker lett-variant, og rapport-blobbene deles nå via
+        // CachingUptimeReportStore). Oversikt-landingssiden OG Portefølje bruker
+        // dette; cachen (DTO-nivå, TTL 3 min) gjør reload/navigasjon momentant.
+        // Bevisst INGEN bakgrunns-warmer: en tidligere variant mettet api+azurite
+        // og gjorde hele appen tregere.
         var cacheKey = BuildCacheKey(plantIds, fromUtc, toUtc, periodKind);
         if (!cache.TryGetValue(cacheKey, out EconomyReportDto? report) || report is null)
         {
@@ -113,8 +114,7 @@ public static class EconomyEndpoints
     }
 
     /// <summary>
-    /// Kanonisk cache-nøkkel for økonomi-rapporten. Delt av endepunktet og
-    /// <c>EconomyCacheWarmer</c> så forhåndsvarming treffer samme nøkkel.
+    /// Kanonisk cache-nøkkel for økonomi-rapporten (DTO-nivå server-cache).
     /// </summary>
     internal static string BuildCacheKey(
         IReadOnlyList<string> plantIds, DateTimeOffset fromUtc, DateTimeOffset toUtc, PeriodKind kind)
