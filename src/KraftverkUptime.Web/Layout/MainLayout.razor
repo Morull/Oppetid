@@ -120,7 +120,8 @@
         get
         {
             var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
-            if (string.IsNullOrEmpty(path)) path = "/";
+            // Rot («/») er landingssiden = Portefølje; behandle den likt for layout.
+            if (string.IsNullOrEmpty(path)) path = "/portefolje";
             foreach (var prefix in FullWidthPathPrefixes)
             {
                 if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
@@ -137,11 +138,8 @@
         get
         {
             var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
-            if (string.IsNullOrEmpty(path)) path = "/";
-            // «/» er Oversikt-landingssiden som alltid viser «nå»-bildet
-            // (inneværende måned + siste 7 dager) uavhengig av global periode —
-            // den globale velgeren gir ingen mening der og skjules.
-            if (path == "/") return false;
+            // Rot («/») er landingssiden = Portefølje; behandle den likt.
+            if (string.IsNullOrEmpty(path)) path = "/portefolje";
             // Eksakt-match for definerte unntak.
             if (SuppressedPaths.Contains(path)) return false;
             // Prefix-match for sub-paths som /reports/{plant}/{key}.
