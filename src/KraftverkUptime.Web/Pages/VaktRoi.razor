@@ -270,28 +270,28 @@ else if (IsPortfolioMode && _portfolio is not null)
                       OnRowClick="@((TableRowClickEventArgs<PortfolioVaktRoiTopEvent> args) => GoToPlantDetail(args.Item))"
                       Style="cursor: pointer;">
                 <HeaderContent>
-                    <MudTh>Anlegg</MudTh>
-                    <MudTh>Start</MudTh>
+                    <MudTh><MudTableSortLabel SortBy="@SortByTopPlant">Anlegg</MudTableSortLabel></MudTh>
+                    <MudTh><MudTableSortLabel SortBy="@SortByTopStart">Start</MudTableSortLabel></MudTh>
                     <MudTh>Slutt</MudTh>
-                    <MudTh Style="text-align:right">Varighet (t)</MudTh>
-                    <MudTh>Kategori</MudTh>
+                    <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByTopVarighet">Varighet (t)</MudTableSortLabel></MudTh>
+                    <MudTh><MudTableSortLabel SortBy="@SortByTopKategori">Kategori</MudTableSortLabel></MudTh>
                     <MudTh>
                         <MudTooltip Text="Årsak = HVORFOR enheten er i tilstanden. Drifts-leder kan gi cause-koden brukervennlig tekst på /admin/kategorier.">
                             Årsak
                         </MudTooltip>
                     </MudTh>
-                    <MudTh Style="text-align:right">Ekstra (t)</MudTh>
+                    <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByTopEkstra">Ekstra (t)</MudTableSortLabel></MudTh>
                     <MudTh Style="text-align:right">
                         <MudTooltip Text="Verdi av produksjons-tap vakten reddet. Gjelder kun timer med overløp i magasinet (ellers er vannet bare utsatt).">
-                            <span>Overløp (NOK)</span>
+                            <MudTableSortLabel SortBy="@SortByTopProduksjon">Overløp (NOK)</MudTableSortLabel>
                         </MudTooltip>
                     </MudTh>
                     <MudTh Style="text-align:right">
                         <MudTooltip Text="Ubalanse-gebyr vakten reddet (gjelder alle counterfactual-timer fordi Spotbud-forpliktelsen står).">
-                            <span>Ubalanse (NOK)</span>
+                            <MudTableSortLabel SortBy="@SortByTopUbalanse">Ubalanse (NOK)</MudTableSortLabel>
                         </MudTooltip>
                     </MudTh>
-                    <MudTh Style="text-align:right">Reddet (NOK)</MudTh>
+                    <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByTopReddet" InitialDirection="SortDirection.Descending">Reddet (NOK)</MudTableSortLabel></MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.PlantName</MudTd>
@@ -340,21 +340,21 @@ else if (IsPortfolioMode && _portfolio is not null)
                   OnRowClick="@((TableRowClickEventArgs<PortfolioVaktRoiPlantSummary> args) => GoToPlantSummary(args.Item))"
                   Style="cursor: pointer;">
             <HeaderContent>
-                <MudTh>Anlegg</MudTh>
-                <MudTh Style="text-align:right">Effekt (MW)</MudTh>
-                <MudTh Style="text-align:right">Reddbare events</MudTh>
-                <MudTh Style="text-align:right">Totale events</MudTh>
+                <MudTh><MudTableSortLabel SortBy="@SortByPlantName">Anlegg</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByPlantEffekt">Effekt (MW)</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByPlantReddbare">Reddbare events</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByPlantTotale">Totale events</MudTableSortLabel></MudTh>
                 <MudTh Style="text-align:right">
                     <MudTooltip Text="Verdi av produksjon vakten reddet i timer med overløp.">
-                        <span>Overløp (NOK)</span>
+                        <MudTableSortLabel SortBy="@SortByPlantProduksjon">Overløp (NOK)</MudTableSortLabel>
                     </MudTooltip>
                 </MudTh>
                 <MudTh Style="text-align:right">
                     <MudTooltip Text="Ubalanse-gebyr vakten reddet (alle counterfactual-timer).">
-                        <span>Ubalanse (NOK)</span>
+                        <MudTableSortLabel SortBy="@SortByPlantUbalanse">Ubalanse (NOK)</MudTableSortLabel>
                     </MudTooltip>
                 </MudTh>
-                <MudTh Style="text-align:right">Reddet (NOK)</MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByPlantReddet" InitialDirection="SortDirection.Descending">Reddet (NOK)</MudTableSortLabel></MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd>@context.PlantName</MudTd>
@@ -554,15 +554,15 @@ else if (!IsPortfolioMode && _response is not null)
                     </MudTooltip>
                 </MudTh>
                 <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVaktExtra">Ekstra (t)</MudTableSortLabel></MudTh>
-                <MudTh Style="text-align:right">Overløp</MudTh>
+                <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVaktOverflowTimer">Overløp</MudTableSortLabel></MudTh>
                 <MudTh Style="text-align:right">
                     <MudTooltip Text="Verdi av produksjon vakten reddet (kun timer med overløp).">
-                        <span>Overløp (NOK)</span>
+                        <MudTableSortLabel SortBy="@SortByVaktProduksjonNok">Overløp (NOK)</MudTableSortLabel>
                     </MudTooltip>
                 </MudTh>
                 <MudTh Style="text-align:right">
                     <MudTooltip Text="Ubalanse-gebyr vakten reddet (alle counterfactual-timer).">
-                        <span>Ubalanse (NOK)</span>
+                        <MudTableSortLabel SortBy="@SortByVaktUbalanseNok">Ubalanse (NOK)</MudTableSortLabel>
                     </MudTooltip>
                 </MudTh>
                 <MudTh Style="text-align:right"><MudTableSortLabel SortBy="@SortByVaktReddetNok">Reddet (NOK)</MudTableSortLabel></MudTh>
@@ -602,7 +602,7 @@ else if (!IsPortfolioMode && _response is not null)
                                    OnClick="@(() => OpenDetailDialogAsync(context))"
                                    aria-label="Vis hendelses-detaljer">
                     </MudIconButton>
-                    @if (_overrides.ContainsKey(context.Event.StartUtc))
+                    @if (_overrides.ContainsKey(context.Event.EffektivDetectedStartUtc))
                     {
                         <MudTooltip Text="Manuell overstyring aktiv på denne hendelsen.">
                             <MudIcon Icon="@Icons.Material.Filled.EditNote"
@@ -872,6 +872,28 @@ else if (!IsPortfolioMode && _response is not null)
     private static readonly Func<VaktRoiEventDto, object> SortByVaktReddbar  = e => e.ErReddbar;
     private static readonly Func<VaktRoiEventDto, object> SortByVaktExtra    = e => e.EkstraTimerSpart;
     private static readonly Func<VaktRoiEventDto, object> SortByVaktReddetNok = e => e.ReddetNok;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktOverflowTimer = e => e.OverflowTimerInCounterfactual;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktProduksjonNok = e => e.ReddetProduksjon_NOK;
+    private static readonly Func<VaktRoiEventDto, object> SortByVaktUbalanseNok   = e => e.ReddetUbalanse_NOK;
+
+    // Portefølje-tabellene (topp-hendelser + per anlegg) — sorterbare som de
+    // andre tabellene i appen.
+    private static readonly Func<PortfolioVaktRoiTopEvent, object> SortByTopPlant     = e => e.PlantName;
+    private static readonly Func<PortfolioVaktRoiTopEvent, object> SortByTopStart     = e => e.StartUtc;
+    private static readonly Func<PortfolioVaktRoiTopEvent, object> SortByTopVarighet  = e => e.VarighetTimer;
+    private static readonly Func<PortfolioVaktRoiTopEvent, object> SortByTopKategori  = e => e.Kategori;
+    private static readonly Func<PortfolioVaktRoiTopEvent, object> SortByTopEkstra    = e => e.EkstraTimerSpart;
+    private static readonly Func<PortfolioVaktRoiTopEvent, object> SortByTopProduksjon = e => e.ReddetProduksjon_NOK;
+    private static readonly Func<PortfolioVaktRoiTopEvent, object> SortByTopUbalanse  = e => e.ReddetUbalanse_NOK;
+    private static readonly Func<PortfolioVaktRoiTopEvent, object> SortByTopReddet    = e => e.ReddetNok;
+
+    private static readonly Func<PortfolioVaktRoiPlantSummary, object> SortByPlantName      = p => p.PlantName;
+    private static readonly Func<PortfolioVaktRoiPlantSummary, object> SortByPlantEffekt    = p => p.InstalledCapacityMw;
+    private static readonly Func<PortfolioVaktRoiPlantSummary, object> SortByPlantReddbare  = p => p.ReddbareEvents;
+    private static readonly Func<PortfolioVaktRoiPlantSummary, object> SortByPlantTotale    = p => p.TotaleEvents;
+    private static readonly Func<PortfolioVaktRoiPlantSummary, object> SortByPlantProduksjon = p => p.ReddetProduksjon_NOK;
+    private static readonly Func<PortfolioVaktRoiPlantSummary, object> SortByPlantUbalanse  = p => p.ReddetUbalanse_NOK;
+    private static readonly Func<PortfolioVaktRoiPlantSummary, object> SortByPlantReddet    = p => p.ReddetNok;
 
     private bool MatchesVaktSearch(VaktRoiEventDto e)
     {
@@ -1263,7 +1285,8 @@ else if (!IsPortfolioMode && _response is not null)
     /// </summary>
     private async Task OpenDetailDialogAsync(VaktRoiEventDto e)
     {
-        var existing = _overrides.GetValueOrDefault(e.Event.StartUtc);
+        // Override-radene er nøklet på DETEKTERT start (stabil ved start-korreksjon).
+        var existing = _overrides.GetValueOrDefault(e.Event.EffektivDetectedStartUtc);
         var parameters = new MudBlazor.DialogParameters<VaktEventDetailDialog>
         {
             { x => x.PlantId, Filter.PlantId },

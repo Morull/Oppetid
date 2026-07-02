@@ -173,8 +173,12 @@ public sealed class InflowOverflowQueryService
         var terminalDam = await _dams.GetTerminalDamAsync(plantId, ct).ConfigureAwait(false);
         if (terminalDam is null) return null;
 
+        // Manuelt volum fra dam-metadata (PlantAdmin) når satt. Mangler det,
+        // utleder vi maks-volum fra samtidige volum-/fyllgrad-samples lenger
+        // ned — dammene i porteføljen mangler stort sett VolumeMm3, og uten
+        // maks-volum står hele tilsigsmodellen av (Vakt-ROI kunne da aldri
+        // kreditere counterfactual-overløp, jf. Øgreyfoss 27.02/16.05-2026).
         var maxVolumeM3 = (terminalDam.VolumeMm3 ?? 0) * 1_000_000;
-        if (maxVolumeM3 <= 0) return null;
 
         var volumeSignals = await _signalMaps.GetByPlantDamAndRoleAsync(
             plantId, terminalDam.DamId, SignalRole.ReservoirVolume, ct).ConfigureAwait(false);
@@ -231,6 +235,27 @@ public sealed class InflowOverflowQueryService
         var fillByHour = byHour
             .Where(kv => kv.Value.Fill.HasValue)
             .ToDictionary(kv => kv.Key, kv => kv.Value.Fill!.Value / 100.0);
+
+        // Selvkalibrering: maks-volum = median av (volum_m3 / fyllgrad-ratio)
+        // over timer der begge signaler finnes og fyllgraden er i et pålitelig
+        // område (20–120 % — lave verdier gir støyfølsom divisjon, og >120 %
+        // er sensor-avvik). SCADA-fyllgraden refererer HRV, så ratioen er
+        // per definisjon volum-ved-HRV = maks-volum. Manuelt volum i
+        // dam-metadata trumfer (sjekket over).
+        if (maxVolumeM3 <= 0)
+        {
+            var ratios = byHour.Values
+                .Where(r => r.Vol is > 0 && r.Fill is >= 20 and <= 120)
+                .Select(r => r.Vol!.Value / (r.Fill!.Value / 100.0))
+                .OrderBy(x => x)
+                .ToList();
+            // Krev noen samples så én enkelt glitch ikke setter kalibreringen.
+            if (ratios.Count >= 3)
+            {
+                maxVolumeM3 = ratios[ratios.Count / 2];
+            }
+        }
+        if (maxVolumeM3 <= 0) return null;
 
         return new DamTelemetry(hourly, maxVolumeM3, fillByHour);
     }

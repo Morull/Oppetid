@@ -689,11 +689,23 @@ public sealed class VaktRoiCalculator
         if (overflowTimer == 0)
         {
             var msg = $"Vakt løste på {e.VarighetTimer:F1} t. Counterfactual = {ekstraTimer:F1} t, "
-                + "men ingen overløp i perioden — vannet ville vært magasinert.";
-            // Estimatoren kjørte, men sa at magasinet ikke ville fylles i vinduet.
+                + "men ingen OBSERVERT overløp i perioden.";
             if (overflowEstimateAvailable && estimateForklaring is not null)
             {
+                // Estimatoren kjørte, men sa at magasinet ikke ville fylles i vinduet.
                 msg += $" Tilsigsmodell: {estimateForklaring}";
+            }
+            else
+            {
+                // Observert overløp er bare en NEDRE grense: med vakt-respons kjørte
+                // turbinen og tappet magasinet, så null observert spill sier lite om
+                // counterfactual-scenariet der anlegget står. Uten magasindata kan
+                // tilsigsmodellen ikke estimere det — vær ærlig om hullet i stedet
+                // for å påstå at «vannet ville vært magasinert».
+                msg += " NB: tilsigsmodellen er utilgjengelig (magasinvolum/telemetri "
+                    + "mangler for anlegget eller perioden), så counterfactual-overløp "
+                    + "kan ikke estimeres. Vet du at det var overløp: bruk overstyringen "
+                    + "«Hadde overløp» i Detaljer.";
             }
             if (hasUbalanse)
             {
