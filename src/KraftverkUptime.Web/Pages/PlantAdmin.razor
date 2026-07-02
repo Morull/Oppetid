@@ -78,7 +78,6 @@ else
                         <MudNumericField T="double" @bind-Value="_form.Maanedsprofil[idx]"
                                          Label="@MaanedsNavn[idx]"
                                          Min="0" Max="100" Step="0.1" Format="F1"
-                                         Culture="@NumberFormat.Norsk"
                                          Variant="Variant.Outlined" Margin="Margin.Dense" />
                     </MudItem>
                 }
@@ -1186,18 +1185,24 @@ else
     private static readonly double[] StandardProfil =
         [13.1, 11.0, 9.1, 8.1, 4.7, 2.3, 1.3, 4.9, 8.7, 10.4, 12.4, 14.0];
 
+    // _form er null til plant-lastingen er ferdig; profil-seksjonen rendres
+    // først etterpå, men helpers må være null-trygge (nullable-analyse i
+    // Release-publish er strengere enn Debug-testbygget).
+    private double[] Profil => _form?.Maanedsprofil ?? _tomProfil;
+    private static readonly double[] _tomProfil = new double[12];
+
     /// <summary>Alle 0 = «ikke satt» (lagres som null → flat fallback).</summary>
-    private bool ProfilErTom => _form.Maanedsprofil.All(v => v == 0);
+    private bool ProfilErTom => Profil.All(v => v == 0);
 
     private bool ProfilSumOk
-        => ProfilErTom || Math.Abs(_form.Maanedsprofil.Sum() - 100.0) <= 0.1;
+        => ProfilErTom || Math.Abs(Profil.Sum() - 100.0) <= 0.1;
 
     private string ProfilSumTekst
     {
         get
         {
             if (ProfilErTom) return "Ikke satt — flat fordeling (pro-rata) brukes.";
-            var sum = _form.Maanedsprofil.Sum();
+            var sum = Profil.Sum();
             var diff = 100.0 - sum;
             return Math.Abs(diff) <= 0.1
                 ? $"Sum {sum.ToString("F1", NumberFormat.Norsk)} % ✓"
@@ -1208,27 +1213,32 @@ else
     /// <summary>Skalerer alle verdier proporsjonalt slik at summen blir 100.</summary>
     private void NormaliserProfil()
     {
-        var sum = _form.Maanedsprofil.Sum();
+        if (_form is null) return;
+        var p = _form.Maanedsprofil;
+        var sum = p.Sum();
         if (sum <= 0) return;
         for (var i = 0; i < 12; i++)
         {
-            _form.Maanedsprofil[i] = Math.Round(_form.Maanedsprofil[i] * 100.0 / sum, 1);
+            p[i] = Math.Round(p[i] * 100.0 / sum, 1);
         }
         // Avrundingsrest legges på største måned så summen blir eksakt 100,0.
-        var rest = Math.Round(100.0 - _form.Maanedsprofil.Sum(), 1);
+        var rest = Math.Round(100.0 - p.Sum(), 1);
         if (rest != 0)
         {
-            var maxIdx = Array.IndexOf(_form.Maanedsprofil, _form.Maanedsprofil.Max());
-            _form.Maanedsprofil[maxIdx] = Math.Round(_form.Maanedsprofil[maxIdx] + rest, 1);
+            var maxIdx = Array.IndexOf(p, p.Max());
+            p[maxIdx] = Math.Round(p[maxIdx] + rest, 1);
         }
     }
 
     private void BrukStandardprofil()
-        => _form.Maanedsprofil = (double[])StandardProfil.Clone();
+    {
+        if (_form is null) return;
+        _form.Maanedsprofil = (double[])StandardProfil.Clone();
+    }
 
     /// <summary>Tom profil (alle 0) lagres som null → flat pro-rata-fallback.</summary>
     private double[]? ProfilForLagring()
-        => ProfilErTom ? null : (double[])_form.Maanedsprofil.Clone();
+        => ProfilErTom ? null : (double[])Profil.Clone();
 
     private sealed class FormModel
     {
