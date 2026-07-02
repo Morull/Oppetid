@@ -34,6 +34,12 @@
             <MudItem xs="12" sm="6">
                 <MudText Typo="Typo.caption" Color="Color.Secondary">Start (lokal)</MudText>
                 <MudText>@FormatLocal(RoiEvent.Event.StartUtc)</MudText>
+                @if (RoiEvent.Event.DetectedStartUtc is { } detektert && detektert != RoiEvent.Event.StartUtc)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Style="display:block; opacity:0.75;">
+                        Detektert (SCADA): @FormatLocal(detektert) — manuelt korrigert
+                    </MudText>
+                }
             </MudItem>
             <MudItem xs="12" sm="6">
                 <MudText Typo="Typo.caption" Color="Color.Secondary">Slutt (lokal)</MudText>
@@ -155,6 +161,23 @@
                               HelperText="@ActualEndHelperText" />
             </MudItem>
 
+            @* Start-korreksjon (SPEC-NEDETID-STARTTID-OVERRIDE): når SCADA-
+               klassifiseringen plasserer starten feil. Vakt-ROI, varighet og
+               tap reberegnes automatisk ved neste spørring. *@
+            <MudItem xs="12" sm="6">
+                <MudTextField T="DateTime?" @bind-Value="_actualStartLocal"
+                              Label="Faktisk start (lokal tid, valgfri)"
+                              InputType="InputType.DateTimeLocal"
+                              Format="yyyy-MM-ddTHH:mm"
+                              HelperText="@ActualStartHelperText" />
+            </MudItem>
+            @if (StartKrysserVaktgrense is { } varsel)
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Warning" Dense="true">@varsel</MudAlert>
+                </MudItem>
+            }
+
             @* ====== Vakt-utrykning (Spec NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md) ======
                Drifts-leder bekrefter eller avkrefter at vakta faktisk rykket ut for denne
                hendelsen. Default Auto = bruk operlog-match som proxy for U2-PlanDeviation,
@@ -178,7 +201,8 @@
             </MudItem>
 
             <MudItem xs="12">
-                <MudTextField @bind-Value="_comment" Label="Kommentar (valgfri)"
+                <MudTextField @bind-Value="_comment"
+                              Label="@(_actualStartLocal is null ? "Kommentar (valgfri)" : "Begrunnelse (påkrevd ved start-korreksjon)")"
                               Lines="2" MaxLength="500" />
             </MudItem>
 
@@ -209,6 +233,7 @@
     private string _classification = "Auto";
     private string? _comment;
     private DateTime? _actualEndLocal;
+    private DateTime? _actualStartLocal;
     private GuardResponseOverride _guardResponse = GuardResponseOverride.Auto;
     private bool _busy;
     private string? _error;
@@ -260,6 +285,71 @@
         }
     }
 
+    /// <summary>
+    /// Hjelpetekst for start-korreksjonen: avledet varighet + påminnelse om
+    /// detektert start. Tom = ingen korreksjon.
+    /// </summary>
+    private string ActualStartHelperText
+    {
+        get
+        {
+            if (_actualStartLocal is null)
+            {
+                return "Tom = bruk detektert start fra SCADA-klassifiseringen. Vakt-ROI, varighet og tap reberegnes automatisk.";
+            }
+            var localKind = DateTime.SpecifyKind(_actualStartLocal.Value, DateTimeKind.Local);
+            var dto = new DateTimeOffset(localKind);
+            var effektivSlutt = _actualEndLocal is { } e
+                ? new DateTimeOffset(DateTime.SpecifyKind(e, DateTimeKind.Local))
+                : RoiEvent.Event.EndUtc;
+            var duration = (effektivSlutt - dto).TotalHours;
+            if (duration <= 0)
+            {
+                return "⚠ Må være før hendelsens (effektive) slutt.";
+            }
+            return $"Avledet varighet: {duration:F1} t (opprinnelig {RoiEvent.Event.VarighetTimer:F1} t).";
+        }
+    }
+
+    /// <summary>
+    /// Live-varsel når start-korreksjonen krysser vaktgrensen (default-vindu:
+    /// ordinær arbeidstid man–fre 08–15 = driftspersonell; ellers vakt).
+    /// Null = ingen kryssing / ingen korreksjon.
+    /// </summary>
+    private string? StartKrysserVaktgrense
+    {
+        get
+        {
+            if (_actualStartLocal is null) return null;
+            var nyLokal = DateTime.SpecifyKind(_actualStartLocal.Value, DateTimeKind.Local);
+            var varInnenfor = RoiEvent.ErInnenforVakt;
+            var blirInnenfor = ErInnenforVaktDefault(nyLokal);
+            if (varInnenfor && !blirInnenfor)
+            {
+                return $"Ny start {nyLokal:dd.MM HH:mm} ligger i ordinær arbeidstid (08–15) → " +
+                    "hendelsen faller utenfor vakt. Vakt-ROI settes til 0 (driftspersonell responderer, ikke vakten).";
+            }
+            if (!varInnenfor && blirInnenfor)
+            {
+                return $"Ny start {nyLokal:dd.MM HH:mm} ligger i vaktvinduet → " +
+                    "hendelsen blir vakt-kandidat og ROI beregnes (counterfactual + overløp som vanlig).";
+            }
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Default vakt-vindu (speiler VaktTidsmodell-default): hverdager 08–15
+    /// lokal = ordinær arbeidstid (IKKE vakt); alt annet inkl. helg = vakt.
+    /// Simulerte vakt-vinduer fra vakt-roi-siden fanges ikke her — varselet
+    /// er veiledende; kalkulatoren bruker det faktiske vinduet ved lagring.
+    /// </summary>
+    private static bool ErInnenforVaktDefault(DateTime lokal)
+    {
+        if (lokal.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) return true;
+        return lokal.Hour < 8 || lokal.Hour >= 15;
+    }
+
     protected override void OnInitialized()
     {
         if (ExistingOverride is not null)
@@ -269,6 +359,10 @@
             if (ExistingOverride.ActualEndOverrideUtc is { } endOv)
             {
                 _actualEndLocal = endOv.ToLocalTime().DateTime;
+            }
+            if (ExistingOverride.ActualStartOverrideUtc is { } startOv)
+            {
+                _actualStartLocal = startOv.ToLocalTime().DateTime;
             }
             _guardResponse = ExistingOverride.GuardResponseOverride;
         }
@@ -284,28 +378,46 @@
     private async Task SaveAsync()
     {
         // Konverter lokal tid til DateTimeOffset i UTC. Hvis brukeren ikke har
-        // satt feltet, send null = ingen varighetsoverstyring.
+        // satt feltet, send null = ingen overstyring.
+        DateTimeOffset? actualStartUtc = null;
+        if (_actualStartLocal is { } startLocal)
+        {
+            var asLocalStart = DateTime.SpecifyKind(startLocal, DateTimeKind.Local);
+            actualStartUtc = new DateTimeOffset(asLocalStart).ToUniversalTime();
+            if (string.IsNullOrWhiteSpace(_comment))
+            {
+                _error = "Start-korreksjon krever en begrunnelse (kommentar).";
+                return;
+            }
+        }
+
         DateTimeOffset? actualEndUtc = null;
+        var effektivStart = actualStartUtc ?? RoiEvent.Event.StartUtc;
         if (_actualEndLocal is { } local)
         {
             var asLocal = DateTime.SpecifyKind(local, DateTimeKind.Local);
             actualEndUtc = new DateTimeOffset(asLocal).ToUniversalTime();
-            if (actualEndUtc <= RoiEvent.Event.StartUtc)
-            {
-                _error = "Faktisk slutt må være etter hendelsens start-tidspunkt.";
-                return;
-            }
+        }
+        var effektivSlutt = actualEndUtc ?? RoiEvent.Event.EndUtc;
+        if (effektivSlutt <= effektivStart)
+        {
+            _error = "Effektiv start må være før effektiv slutt.";
+            return;
         }
 
         _busy = true;
         _error = null;
         try
         {
+            // Nøkkelen er DETEKTERT start — stabil selv når start korrigeres,
+            // så øvrige overstyringer på samme hendelse beholder ankeret sitt.
             await NedetidApi.UpsertVaktOverrideAsync(
-                PlantId, RoiEvent.Event.StartUtc, _classification, _comment, actualEndUtc,
-                guardResponseOverride: _guardResponse);
+                PlantId, RoiEvent.Event.EffektivDetectedStartUtc, _classification, _comment, actualEndUtc,
+                guardResponseOverride: _guardResponse,
+                actualStartOverrideUtc: actualStartUtc);
 
             var alleDefaults = _classification == "Auto"
+                && actualStartUtc is null
                 && actualEndUtc is null
                 && _guardResponse == GuardResponseOverride.Auto;
             Snackbar.Add(

@@ -18,6 +18,20 @@ public sealed record DowntimeEvent
     public required DateTimeOffset StartUtc { get; init; }
     public required DateTimeOffset EndUtc { get; init; }
 
+    /// <summary>
+    /// Starten slik SCADA-klassifiseringen DETEKTERTE den — før en eventuell
+    /// manuell start-korreksjon (SPEC-NEDETID-STARTTID-OVERRIDE). Null = ingen
+    /// korreksjon er anvendt (StartUtc ER detektert start). Override-rader i
+    /// <c>core.vakt_event_overrides</c> nøkles på detektert start (stabil
+    /// nøkkel), mens all tids-matematikk (vakt-vindu, counterfactual, tap)
+    /// bruker den effektive <see cref="StartUtc"/>. Bruk
+    /// <see cref="EffektivDetectedStartUtc"/> for override-oppslag.
+    /// </summary>
+    public DateTimeOffset? DetectedStartUtc { get; init; }
+
+    /// <summary>Detektert start for override-oppslag: eksplisitt satt, ellers StartUtc.</summary>
+    public DateTimeOffset EffektivDetectedStartUtc => DetectedStartUtc ?? StartUtc;
+
     /// <summary>Varighet i timer, beregnet fra Start/End. Helt tall hvis events kommer fra time-aggregering.</summary>
     public double VarighetTimer => (EndUtc - StartUtc).TotalHours;
 

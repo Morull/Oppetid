@@ -168,6 +168,14 @@ public static class NedetidEndpoints
             .GetAvgImbalancePremiumAsync(plantId, fromUtc, toUtc, ct)
             .ConfigureAwait(false);
 
+        // Variant 2 (SPEC-VAKT-ROI-UBALANSE-FULLPERIODE-OG-VISNING): verdsett
+        // hver counterfactual-time på timens faktiske (RK − spot) i stedet for
+        // periodesnittet. Snittet over beholdes som fallback for timer uten
+        // pris-data + til visning i responsen.
+        var ubalansePremieByHour = await nedetid
+            .GetImbalancePremiumByHourAsync(plantId, fromUtc, toUtc, ct)
+            .ConfigureAwait(false);
+
         // Produksjonsplan-per-time fra Hydrogrid-plan (settlement-import).
         // Tjenesten utvider vinduet bakover (4 uker proxy) og fremover
         // (3 dager counterfactual-buffer) automatisk.
@@ -186,10 +194,24 @@ public static class NedetidEndpoints
             .ToListAsync(ct)
             .ConfigureAwait(false);
 
+        // Anvend START-korreksjoner FØRST (SPEC-NEDETID-STARTTID-OVERRIDE):
+        // StartUtc byttes til korrigert tid, detektert start bevares i
+        // DetectedStartUtc (= override-radenes nøkkel), og varighet + tap
+        // reberegnes fra plan-data. Kalkulatoren leser effektiv StartUtc →
+        // vakt-vindu/counterfactual/gruppering følger automatisk (Haukland-
+        // caset: 17:00 → 10:00 gir UtenforVakt → ROI 0).
+        var startOverrides = overrideRows
+            .Where(o => o.ActualStartOverrideUtc.HasValue)
+            .ToDictionary(o => o.EventStartUtc, o => o.ActualStartOverrideUtc!.Value);
+        events = StartOverrideApplier.Apply(
+            events, startOverrides, planResult.PlanByHour, fallbackSpotNokMwh: snittSpot);
+
         // Anvend ActualEndOverrideUtc OPPSTRØMS for VaktRoiCalculator: bytt ut
         // EndUtc på matchende events før ROI-beregning. Calculator forblir en
         // ren funksjon av events — ingen ny parameter trengs. Records er
-        // immutable, så vi bygger en ny liste med 'with'-syntaks.
+        // immutable, så vi bygger en ny liste med 'with'-syntaks. Oppslaget
+        // bruker DETEKTERT start (override-radens nøkkel) så slutt-korreksjonen
+        // overlever en samtidig start-korreksjon.
         if (overrideRows.Any(o => o.ActualEndOverrideUtc.HasValue))
         {
             var endOverrides = overrideRows
@@ -197,16 +219,23 @@ public static class NedetidEndpoints
                 .ToDictionary(o => o.EventStartUtc, o => o.ActualEndOverrideUtc!.Value);
 
             events = events
-                .Select(e => endOverrides.TryGetValue(e.StartUtc, out var endOv)
+                .Select(e => endOverrides.TryGetValue(e.EffektivDetectedStartUtc, out var endOv)
                     ? e with { EndUtc = endOv }
                     : e)
                 .ToList();
         }
 
-        // Klassifiserings-dict (kun ikke-Auto) til Calculator.
+        // Klassifiserings-dict (kun ikke-Auto) til Calculator. Kalkulatoren slår
+        // opp på leder-eventets EFFEKTIVE StartUtc, mens radene er nøklet på
+        // detektert start — oversett nøklene via events-listen.
+        var detectedToEffective = events.ToDictionary(
+            e => e.EffektivDetectedStartUtc, e => e.StartUtc);
         var overrides = overrideRows
             .Where(o => o.Classification != "Auto")
-            .ToDictionary(o => o.EventStartUtc, o => o.Classification);
+            .ToDictionary(
+                o => detectedToEffective.TryGetValue(o.EventStartUtc, out var eff)
+                    ? eff : o.EventStartUtc,
+                o => o.Classification);
 
         // U2-PlanDeviation-filter (spec NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md,
         // 2026-05-22): bygg settet av events hvor EffectiveGuardResponse == false.
@@ -219,7 +248,8 @@ public static class NedetidEndpoints
         var excludeFromReddbar = events
             .Where(e =>
             {
-                var ovr = guardOverridesByEventStart.TryGetValue(e.StartUtc, out var g)
+                // Vakt-utrykning-raden er nøklet på DETEKTERT start.
+                var ovr = guardOverridesByEventStart.TryGetValue(e.EffektivDetectedStartUtc, out var g)
                     ? (GuardResponseOverride?)g
                     : null;
                 return !EffectiveGuardResponseEvaluator.ShouldCount(e, ovr);
@@ -244,7 +274,8 @@ public static class NedetidEndpoints
             excludeFromReddbar: excludeFromReddbar,
             damSamples: damTelemetry?.Samples,
             maxVolumeM3: damTelemetry?.MaxVolumeM3 ?? 0,
-            fillRateByHour: damTelemetry?.FillRateByHour);
+            fillRateByHour: damTelemetry?.FillRateByHour,
+            ubalansePremieByHour: ubalansePremieByHour);
         var effectiveVakt = vaktOptions ?? VaktTidsmodellOptions.Default;
         var response = BuildVaktRoiResponse(plantId, fromUtc, toUtc, plant.InstalledCapacityMw,
             snittSpot, snittUbalansetillegg, effectiveVakt, roi, guardOverridesByEventStart);
@@ -372,7 +403,7 @@ public static class NedetidEndpoints
             OverflowDataMissing: r.OverflowDataMissing,
             PlanDataPartial: r.PlanDataPartial,
             Forklaring: r.Forklaring,
-            GuardResponseOverride: guardOverrides.TryGetValue(r.Event.StartUtc, out var g)
+            GuardResponseOverride: guardOverrides.TryGetValue(r.Event.EffektivDetectedStartUtc, out var g)
                 ? g : GuardResponseOverride.Auto,
             SavedOverflowHoursObserved: r.SavedOverflowHoursObserved,
             SavedOverflowHoursEstimated: r.SavedOverflowHoursEstimated,
@@ -471,6 +502,7 @@ public static class NedetidEndpoints
         PlantId: e.PlantId,
         StartUtc: e.StartUtc,
         EndUtc: e.EndUtc,
+        DetectedStartUtc: e.DetectedStartUtc,
         VarighetTimer: e.VarighetTimer,
         State: e.State.ToString(),
         Kategori: e.Category.ToString(),
@@ -504,6 +536,9 @@ public static class NedetidEndpoints
 
     private static string BuildVaktRoiCsv(VaktRoiResponse r)
     {
+        // NB: reddet_ubalanse_nok og reddet_nok er SIGNERTE og kan være negative
+        // (énpris-ubalanse i NO2 er ofte billigere enn spot) — SPEC-VAKT-ROI-
+        // UBALANSE-FULLPERIODE-OG-VISNING §4.2.
         var sb = new StringBuilder();
         sb.AppendLine("start_utc;end_utc;varighet_t;state;kategori;cause_code;innenfor_vakt;reddbar;counterfactual_end;ekstra_timer;overflow_timer;overflow_data_missing;reddet_mwh;reddet_produksjon_nok;reddet_ubalanse_nok;reddet_nok;forklaring");
         foreach (var x in r.Events)

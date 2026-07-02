@@ -167,6 +167,10 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
                 .ConfigureAwait(false);
             var snittUbalansetillegg = await nedetid.GetAvgImbalancePremiumAsync(plant.Id, fromUtc, toUtc, ct)
                 .ConfigureAwait(false);
+            // Variant 2 (SPEC-VAKT-ROI-UBALANSE-FULLPERIODE-OG-VISNING): per-time
+            // premie; snittet over er fallback for timer uten pris-data.
+            var ubalansePremieByHour = await nedetid.GetImbalancePremiumByHourAsync(plant.Id, fromUtc, toUtc, ct)
+                .ConfigureAwait(false);
             var planResult = await nedetid.GetProduksjonplanByHourAsync(plant.Id, fromUtc, toUtc, ct)
                 .ConfigureAwait(false);
 
@@ -181,6 +185,14 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
                 .ToListAsync(ct)
                 .ConfigureAwait(false);
 
+            // START-korreksjoner FØRST (SPEC-NEDETID-STARTTID-OVERRIDE): effektiv
+            // StartUtc + bevart detektert start; varighet/tap reberegnes fra plan.
+            var startOverrides = overrideRows
+                .Where(o => o.ActualStartOverrideUtc.HasValue)
+                .ToDictionary(o => o.EventStartUtc, o => o.ActualStartOverrideUtc!.Value);
+            events = StartOverrideApplier.Apply(
+                events, startOverrides, planResult.PlanByHour, fallbackSpotNokMwh: snittSpot);
+
             if (overrideRows.Any(o => o.ActualEndOverrideUtc.HasValue))
             {
                 var endOverrides = overrideRows
@@ -188,15 +200,23 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
                     .ToDictionary(o => o.EventStartUtc, o => o.ActualEndOverrideUtc!.Value);
 
                 events = events
-                    .Select(e => endOverrides.TryGetValue(e.StartUtc, out var endOv)
+                    // Oppslag på DETEKTERT start (override-radens nøkkel).
+                    .Select(e => endOverrides.TryGetValue(e.EffektivDetectedStartUtc, out var endOv)
                         ? e with { EndUtc = endOv }
                         : e)
                     .ToList();
             }
 
+            // Kalkulatoren slår opp på leder-eventets EFFEKTIVE StartUtc —
+            // oversett rad-nøklene (detektert start) via events-listen.
+            var detectedToEffective = events.ToDictionary(
+                e => e.EffektivDetectedStartUtc, e => e.StartUtc);
             var overrides = overrideRows
                 .Where(o => o.Classification != "Auto")
-                .ToDictionary(o => o.EventStartUtc, o => o.Classification);
+                .ToDictionary(
+                    o => detectedToEffective.TryGetValue(o.EventStartUtc, out var eff)
+                        ? eff : o.EventStartUtc,
+                    o => o.Classification);
 
             // U2-PlanDeviation-filter (spec NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md,
             // 2026-05-22): hendelser uten operlog-match og uten eksplisitt Yes-override
@@ -206,7 +226,8 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
             var excludeFromReddbar = events
                 .Where(e =>
                 {
-                    var ovr = guardOverridesByEventStart.TryGetValue(e.StartUtc, out var g)
+                    // Vakt-utrykning-raden er nøklet på DETEKTERT start.
+                    var ovr = guardOverridesByEventStart.TryGetValue(e.EffektivDetectedStartUtc, out var g)
                         ? (GuardResponseOverride?)g
                         : null;
                     return !EffectiveGuardResponseEvaluator.ShouldCount(e, ovr);
@@ -230,7 +251,8 @@ public sealed class PortfolioVaktRoiQueryService : IPortfolioVaktRoiQueryService
                 excludeFromReddbar: excludeFromReddbar,
                 damSamples: damTelemetry?.Samples,
                 maxVolumeM3: damTelemetry?.MaxVolumeM3 ?? 0,
-                fillRateByHour: damTelemetry?.FillRateByHour);
+                fillRateByHour: damTelemetry?.FillRateByHour,
+                ubalansePremieByHour: ubalansePremieByHour);
 
             var plantReddetNok = roi.Sum(r => r.ReddetNok);
             var plantReddetProduksjon = roi.Sum(r => r.ReddetProduksjon_NOK);

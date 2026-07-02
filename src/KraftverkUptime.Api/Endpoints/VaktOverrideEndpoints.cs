@@ -70,7 +70,7 @@ public static class VaktOverrideEndpoints
             .OrderBy(o => o.EventStartUtc)
             .Select(o => new VaktOverrideDto(
                 o.PlantId, o.EventStartUtc, o.Classification, o.Comment, o.SetAt, o.SetBy,
-                o.ActualEndOverrideUtc, o.GuardResponseOverride))
+                o.ActualStartOverrideUtc, o.ActualEndOverrideUtc, o.GuardResponseOverride))
             .ToListAsync(ct).ConfigureAwait(false);
         return Results.Ok(rows);
     }
@@ -89,13 +89,37 @@ public static class VaktOverrideEndpoints
                 detail: "Må være 'Auto', 'HaddeOverlop' eller 'IkkeOverlop'.",
                 statusCode: 400);
 
-        // Validering: varighetsoverstyring må være etter EventStartUtc.
-        if (body.ActualEndOverrideUtc is { } actualEnd && actualEnd <= body.EventStartUtc)
+        // Validering: varighetsoverstyring må være etter effektiv start
+        // (korrigert start hvis satt, ellers detektert = EventStartUtc).
+        var effektivStart = body.ActualStartOverrideUtc ?? body.EventStartUtc;
+        if (body.ActualEndOverrideUtc is { } actualEnd && actualEnd <= effektivStart)
         {
             return Results.Problem(
                 title: "Ugyldig actualEndOverrideUtc",
-                detail: "Faktisk slutt må være etter hendelsens start-tidspunkt.",
+                detail: "Faktisk slutt må være etter hendelsens (effektive) start-tidspunkt.",
                 statusCode: 400);
+        }
+
+        // Start-korreksjon (SPEC-NEDETID-STARTTID-OVERRIDE §9): maks ±14 dager
+        // fra detektert start (fanger tastefeil), og begrunnelse er påkrevd
+        // (audit — hvorfor avviker driftsleders tid fra SCADA?).
+        if (body.ActualStartOverrideUtc is { } actualStart)
+        {
+            var avvik = actualStart - body.EventStartUtc;
+            if (Math.Abs(avvik.TotalDays) > 14)
+            {
+                return Results.Problem(
+                    title: "Ugyldig actualStartOverrideUtc",
+                    detail: "Korrigert start kan maks avvike ±14 dager fra detektert start.",
+                    statusCode: 400);
+            }
+            if (string.IsNullOrWhiteSpace(body.Comment))
+            {
+                return Results.Problem(
+                    title: "Begrunnelse mangler",
+                    detail: "Start-korreksjon krever en begrunnelse (kommentar).",
+                    statusCode: 400);
+            }
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -103,16 +127,17 @@ public static class VaktOverrideEndpoints
             .FirstOrDefaultAsync(o => o.PlantId == plantId && o.EventStartUtc == body.EventStartUtc, ct)
             .ConfigureAwait(false);
 
-        // En override-rad kan nå bære klassifisering, varighet OG/eller vakt-
-        // utrykning — alle tre valgfrie. Slett raden kun hvis ALLE tre er på
-        // default (classification = "Auto", ActualEndOverrideUtc = null,
-        // GuardResponseOverride = Auto). null i body.GuardResponseOverride betyr
-        // "ikke endre", så vi må kombinere med eksisterende verdi for å vurdere
-        // den endelige tilstanden.
+        // En override-rad kan nå bære klassifisering, start, slutt OG/eller
+        // vakt-utrykning — alle fire valgfrie. Slett raden kun hvis ALLE fire
+        // er på default (classification = "Auto", ActualStartOverrideUtc = null,
+        // ActualEndOverrideUtc = null, GuardResponseOverride = Auto). null i
+        // body.GuardResponseOverride betyr "ikke endre", så vi må kombinere med
+        // eksisterende verdi for å vurdere den endelige tilstanden.
         var finalGuardResponse = body.GuardResponseOverride
             ?? existing?.GuardResponseOverride
             ?? GuardResponseOverride.Auto;
         var skalSlettes = body.Classification == "Auto"
+            && body.ActualStartOverrideUtc is null
             && body.ActualEndOverrideUtc is null
             && finalGuardResponse == GuardResponseOverride.Auto;
         if (skalSlettes)
@@ -123,7 +148,7 @@ public static class VaktOverrideEndpoints
                 await db.SaveChangesAsync(ct).ConfigureAwait(false);
             }
             return Results.Ok(new VaktOverrideDto(
-                plantId, body.EventStartUtc, "Auto", null, now, null, null, GuardResponseOverride.Auto));
+                plantId, body.EventStartUtc, "Auto", null, now, null, null, null, GuardResponseOverride.Auto));
         }
 
         if (existing is null)
@@ -136,6 +161,7 @@ public static class VaktOverrideEndpoints
                 Comment = body.Comment,
                 OwnerOrgId = "dev-org",
                 SetAt = now,
+                ActualStartOverrideUtc = body.ActualStartOverrideUtc,
                 ActualEndOverrideUtc = body.ActualEndOverrideUtc,
                 GuardResponseOverride = body.GuardResponseOverride ?? GuardResponseOverride.Auto,
             });
@@ -145,6 +171,7 @@ public static class VaktOverrideEndpoints
             existing.Classification = body.Classification;
             existing.Comment = body.Comment;
             existing.SetAt = now;
+            existing.ActualStartOverrideUtc = body.ActualStartOverrideUtc;
             existing.ActualEndOverrideUtc = body.ActualEndOverrideUtc;
             // null = "ikke endre" — la eksisterende vakt-utrykning-overstyring stå.
             if (body.GuardResponseOverride.HasValue)
@@ -156,7 +183,7 @@ public static class VaktOverrideEndpoints
 
         return Results.Ok(new VaktOverrideDto(
             plantId, body.EventStartUtc, body.Classification, body.Comment, now, null,
-            body.ActualEndOverrideUtc, finalGuardResponse));
+            body.ActualStartOverrideUtc, body.ActualEndOverrideUtc, finalGuardResponse));
     }
 
     private static async Task<IResult> DeleteAsync(
@@ -179,6 +206,8 @@ public sealed record VaktOverrideDto(
     string? Comment,
     DateTimeOffset SetAt,
     string? SetBy,
+    // Manuell start-korreksjon (SPEC-NEDETID-STARTTID-OVERRIDE); null = ingen.
+    DateTimeOffset? ActualStartOverrideUtc,
     DateTimeOffset? ActualEndOverrideUtc,
     GuardResponseOverride GuardResponseOverride);
 
@@ -187,4 +216,6 @@ public sealed record UpsertVaktOverrideRequest(
     string Classification,
     string? Comment,
     DateTimeOffset? ActualEndOverrideUtc = null,
-    GuardResponseOverride? GuardResponseOverride = null);
+    GuardResponseOverride? GuardResponseOverride = null,
+    // Korrigert start (nøkkelen EventStartUtc forblir DETEKTERT start).
+    DateTimeOffset? ActualStartOverrideUtc = null);

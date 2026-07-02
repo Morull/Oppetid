@@ -45,6 +45,18 @@ public sealed class VaktEventOverrideEntry
     public DateTimeOffset? ActualEndOverrideUtc { get; set; }
 
     /// <summary>
+    /// Manuell overstyring av når hendelsen FAKTISK startet. Brukes når SCADA-
+    /// klassifiseringen plasserer starten feil (Haukland-caset: detektert 17:00,
+    /// reell start 10:00 → hendelsen faller utenfor vakt → ROI 0). Raden er
+    /// fortsatt nøklet på <see cref="EventStartUtc"/> = DETEKTERT start (stabil
+    /// nøkkel), så eksisterende klassifiserings-/slutt-/vakt-overstyringer
+    /// beholder ankeret sitt. Null = ingen start-korreksjon (default).
+    /// Valideres til å være før effektiv slutt og innen ±14 dager fra detektert.
+    /// SPEC-NEDETID-STARTTID-OVERRIDE (2026-06-01).
+    /// </summary>
+    public DateTimeOffset? ActualStartOverrideUtc { get; set; }
+
+    /// <summary>
     /// Manuell overstyring av om vakta rykket ut for denne hendelsen.
     /// Spec NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md (2026-05-22): U2-PlanDeviation-
     /// hendelser uten operlog-match teller IKKE som vakt-utrykning i Auto-modus —

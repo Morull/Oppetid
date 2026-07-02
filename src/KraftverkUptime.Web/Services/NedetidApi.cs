@@ -146,6 +146,7 @@ public sealed class NedetidApi
         string? comment,
         DateTimeOffset? actualEndOverrideUtc = null,
         GuardResponseOverride? guardResponseOverride = null,
+        DateTimeOffset? actualStartOverrideUtc = null,
         CancellationToken ct = default)
     {
         var url = $"api/v1/plants/{Uri.EscapeDataString(plantId)}/vakt-overrides";
@@ -154,6 +155,7 @@ public sealed class NedetidApi
             eventStartUtc,
             classification,
             comment,
+            actualStartOverrideUtc,
             actualEndOverrideUtc,
             guardResponseOverride,
         };
@@ -542,7 +544,15 @@ public sealed record NedetidEventDto(
     double TapNok,
     int TimerSettlement,
     bool HarOperlogMatch,
-    string? Rationale);
+    string? Rationale,
+    // Detektert (SCADA-) start når en manuell start-korreksjon er anvendt;
+    // null = StartUtc ER detektert. Brukes som override-nøkkel i dialogen.
+    // SPEC-NEDETID-STARTTID-OVERRIDE.
+    DateTimeOffset? DetectedStartUtc = null)
+{
+    /// <summary>Detektert start for override-oppslag: eksplisitt satt, ellers StartUtc.</summary>
+    public DateTimeOffset EffektivDetectedStartUtc => DetectedStartUtc ?? StartUtc;
+}
 
 public sealed record NedetidKategoriSummary(
     string Kategori,
@@ -680,7 +690,9 @@ public sealed record VaktOverrideDto(
     DateTimeOffset SetAt,
     string? SetBy,
     DateTimeOffset? ActualEndOverrideUtc,
-    GuardResponseOverride GuardResponseOverride = GuardResponseOverride.Auto);
+    GuardResponseOverride GuardResponseOverride = GuardResponseOverride.Auto,
+    // Manuell start-korreksjon (SPEC-NEDETID-STARTTID-OVERRIDE); null = ingen.
+    DateTimeOffset? ActualStartOverrideUtc = null);
 
 public sealed record EffektivitetResponse(
     string PlantId,

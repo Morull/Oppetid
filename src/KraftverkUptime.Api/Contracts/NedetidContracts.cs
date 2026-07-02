@@ -19,7 +19,11 @@ public sealed record NedetidEventDto(
     double TapNok,
     int TimerSettlement,
     bool HarOperlogMatch,
-    string? Rationale);
+    string? Rationale,
+    // Detektert (SCADA-) start når en manuell start-korreksjon er anvendt;
+    // null = StartUtc ER detektert. Override-nøkkel for dialogen.
+    // SPEC-NEDETID-STARTTID-OVERRIDE.
+    DateTimeOffset? DetectedStartUtc = null);
 
 /// <summary>
 /// Aggregat-respons med både event-listen og pre-beregnede totaler/grupperinger
