@@ -482,6 +482,8 @@ public class EconomyReportQueryServiceTests
             Task.FromResult<IReadOnlyList<DowntimeEvent>>(Array.Empty<DowntimeEvent>());
         public Task<double> GetAvgImbalancePremiumAsync(string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct) =>
             Task.FromResult(0d);
+        public Task<IReadOnlyDictionary<DateTimeOffset, double>> GetImbalancePremiumByHourAsync(string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyDictionary<DateTimeOffset, double>>(new Dictionary<DateTimeOffset, double>());
         public Task<PlanByHourResult> GetProduksjonplanByHourAsync(string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct) =>
             Task.FromResult(new PlanByHourResult(new Dictionary<DateTimeOffset, double>(), new HashSet<DateTimeOffset>()));
     }

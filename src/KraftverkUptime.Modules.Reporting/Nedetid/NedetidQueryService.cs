@@ -254,4 +254,45 @@ public sealed class NedetidQueryService : INedetidQueryService
 
         return count == 0 ? 0 : sumDiff / count;
     }
+
+    public async Task<IReadOnlyDictionary<DateTimeOffset, double>> GetImbalancePremiumByHourAsync(
+        string plantId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(plantId);
+        var result = new Dictionary<DateTimeOffset, double>();
+        if (toUtc <= fromUtc) return result;
+
+        // Samme counterfactual-buffer som plan-/overløps-tjenestene: hendelser
+        // sent i perioden har counterfactual-vindu forbi toUtc, og der finnes
+        // ofte faktiske priser (historiske spørringer). Timer uten data utelates
+        // — kalkulatoren faller da tilbake på periodesnittet.
+        var extendedTo = toUtc.AddDays(3);
+
+        var imports = await _imports
+            .ListForPlantAsync(plantId, fromUtc, extendedTo, limit: 500, ct)
+            .ConfigureAwait(false);
+        if (imports.Count == 0) return result;
+
+        // Iterér eldste → nyeste og overskriv per time, så nyeste import vinner
+        // ved overlapp (re-import av samme måned).
+        foreach (var imp in imports.OrderBy(i => i.ImportedAtUtc))
+        {
+            var report = await _reports
+                .GetAsync(imp.OwnerOrgId, imp.PlantId, imp.IdempotencyKey, ct)
+                .ConfigureAwait(false);
+            if (report is null) continue;
+
+            foreach (var h in report.Classified)
+            {
+                if (h.TimeUtc < fromUtc || h.TimeUtc >= extendedTo) continue;
+                var spot = h.Row.SpotprisNokMwh;
+                var rk = h.Row.RkPrisNokMwh;
+                if (!spot.HasValue || !rk.HasValue) continue;
+
+                result[FloorToHour(h.TimeUtc)] = rk.Value - spot.Value;
+            }
+        }
+
+        return result;
+    }
 }

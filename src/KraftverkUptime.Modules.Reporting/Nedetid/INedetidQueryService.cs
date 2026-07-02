@@ -48,6 +48,24 @@ public interface INedetidQueryService
         CancellationToken ct);
 
     /// <summary>
+    /// Henter SIGNERT ubalansepremie <c>(RkPris − Spotpris)</c> i NOK/MWh per
+    /// UTC-time (gulv-kvantisert til hel time). Vinduet utvides 3 dager forbi
+    /// <paramref name="toUtc"/> — samme counterfactual-buffer som plan- og
+    /// overløps-tjenestene — slik at hendelser sent i perioden får faktiske
+    /// per-time-premier for hele counterfactual-vinduet når data finnes.
+    /// Brukes av Vakt-ROI (Variant 2, SPEC-VAKT-ROI-UBALANSE-FULLPERIODE-OG-
+    /// VISNING): et periodesnitt er strukturelt negativt i NO2 og maskerer at
+    /// knapphetstimer (RK ≫ spot) gir sterkt positiv ubalanse-redning.
+    /// Timer uten gyldig pris-data utelates (kalkulatoren faller tilbake på
+    /// periodesnittet for slike). Ved overlappende importer vinner nyeste.
+    /// </summary>
+    Task<IReadOnlyDictionary<DateTimeOffset, double>> GetImbalancePremiumByHourAsync(
+        string plantId,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        CancellationToken ct);
+
+    /// <summary>
     /// Henter Hydrogrid-plan (<c>ProduksjonplanMwh</c>) per UTC-time fra alle
     /// settlement-imports som overlapper en utvidet variant av [from, to). For
     /// timer der settlement-data mangler innenfor counterfactual-vinduet, fyller

@@ -454,7 +454,9 @@ public class VaktRoiCalculatorTests
         r.ReddetUbalanse_NOK.Should().BeApproximately(15 * 2.2 * 0.5 * 200, 1.0);
         r.ReddetNok.Should().BeApproximately(15 * 2.2 * 0.5 * 200, 1.0);
         r.Forklaring.Should().Contain("ingen overløp");
-        r.Forklaring.Should().Contain("ubalanse-gebyret");
+        // Fortegnsnøytral formulering (SPEC-VAKT-ROI-UBALANSE-FULLPERIODE B3):
+        // positiv premie → «Ubalanse-gebyr unngått».
+        r.Forklaring.Should().Contain("Ubalanse-gebyr unngått");
     }
 
     [Fact]
@@ -523,20 +525,26 @@ public class VaktRoiCalculatorTests
 
         var r = roi[0];
         r.ReddetProduksjon_NOK.Should().Be(0); // ingen overløp
-        // Samme 15 timer som positiv-varianten (onsdag → counterfactual før neste
-        // gate closure, så ingen cap), men negativ premie → negativ komponent.
+        // Samme 15 timer som positiv-varianten, negativ premie → negativ komponent.
         r.ReddetUbalanse_NOK.Should().BeApproximately(15 * 2.2 * 0.5 * -100, 1.0);
         r.ReddetUbalanse_NOK.Should().BeLessThan(0);
+        // Totalen bærer fortegnet: ReddetNok = 0 + negativ ubalanse < 0
+        // (SPEC-VAKT-ROI-UBALANSE-FULLPERIODE §6.2 — negativ total skal IKKE
+        // klippes til 0 noe sted i kjeden).
+        r.ReddetNok.Should().BeApproximately(r.ReddetUbalanse_NOK, 0.01);
+        r.ReddetNok.Should().BeLessThan(0);
     }
 
     [Fact]
-    public void V3_GateClosure_Begrenser_Ubalanse_Vindu_For_Helge_Event()
+    public void FullPeriode_Ubalanse_Dekker_Hele_Counterfactual_Vinduet_For_Helge_Event()
     {
         // Helge-event: trip lørdag 13:00, counterfactual = mandag 08:00 (neste
-        // arbeidsdag). Produksjons-komponenten (overløp) gjelder HELE vinduet,
-        // men ubalanse-komponenten stopper ved slutten av siste budte døgn —
-        // her mandag 00:00 (lørdag 13:00 er etter kl. 12, så søndag er budt inn,
-        // men mandag nullstilles ved søndag 12:00-gate). FAGVURDERING #1.
+        // arbeidsdag). Ubalanse-komponenten dekker HELE vinduet — Hydrogrid melder
+        // inn produksjon automatisk for påfølgende døgn, så Spotbud-forpliktelsen
+        // består gjennom hele den ekstra nedetiden (verifisert mot Øgreyfoss-
+        // havariet 16.01.2026: Spotbud sto uendret gjennom hele nedetiden).
+        // SPEC-VAKT-ROI-UBALANSE-FULLPERIODE-OG-VISNING (avløser gate-closure-
+        // cappen fra SPEC-UBALANSE-ENPRIS-FIX).
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
@@ -565,12 +573,60 @@ public class VaktRoiCalculatorTests
         // Produksjon dekker hele counterfactual: 42 timer (43 i vinduet − 1 outage).
         r.ReddetProduksjon_NOK.Should().BeApproximately(42 * p * 850, 1.0);
 
-        // Ubalanse capet ved mandag 00:00: 34 timer (35 fram til cap − 1 outage),
-        // IKKE de 42 timene produksjonen bruker.
-        r.ReddetUbalanse_NOK.Should().BeApproximately(34 * p * 200, 1.0);
+        // Ubalanse dekker de SAMME 42 timene — ikke kappet ved lørdag/søndag-
+        // gate-closure (tidligere: 34 timer).
+        r.ReddetUbalanse_NOK.Should().BeApproximately(42 * p * 200, 1.0);
+        r.ReddetNok.Should().BeApproximately(42 * p * 850 + 42 * p * 200, 1.0);
+    }
 
-        // Bevis at capet faktisk biter: uten cap ville ubalanse vært 42 timer.
-        r.ReddetUbalanse_NOK.Should().BeLessThan(42 * p * 200);
+    [Fact]
+    public void Variant2_PerTime_Premie_Verdsetter_Hver_Time_Paa_Faktisk_Pris()
+    {
+        // Variant 2 (SPEC funn 1b): et periodesnitt er strukturelt negativt i NO2
+        // og maskerer knapphetstimer. Hver counterfactual-time skal verdsettes på
+        // timens faktiske (RK − spot); timer som mangler i ordboken faller
+        // tilbake på periodesnittet.
+        var ev = new DowntimeEvent
+        {
+            PlantId = "drivdal",
+            StartUtc = OsloLokal(2026, 2, 4, 16),   // onsdag 16:00
+            EndUtc = OsloLokal(2026, 2, 4, 17),     // 1 t outage
+            State = UnitState.ForcedOutage,
+            Category = DowntimeEventCategory.TripFeil,
+            TapMwh = 1.0, TapNok = 850, TimerSettlement = 1,
+        };
+
+        var counterfactualEnd = OsloLokal(2026, 2, 5, 8);  // torsdag 08:00
+        const double p = 2.0;                                // plan MWh/time
+        var plan = PlanFlat(ev.StartUtc, counterfactualEnd, p);
+
+        // Counterfactual-timer (ikke-outage): 17:00 → 08:00 = 15 hele timer.
+        // Gi de FØRSTE 3 timene en sterkt positiv premie (knapphet, RK ≫ spot),
+        // de neste 10 en negativ (NO2-normalen) — og la de siste 2 mangle i
+        // ordboken slik at fallback-snittet (−50) brukes.
+        var premieByHour = new Dictionary<DateTimeOffset, double>();
+        var t0 = OsloLokal(2026, 2, 4, 17);
+        for (var i = 0; i < 3; i++) premieByHour[t0.AddHours(i)] = +500;
+        for (var i = 3; i < 13; i++) premieByHour[t0.AddHours(i)] = -30;
+
+        var calc = new VaktRoiCalculator();
+        var roi = calc.Calculate(new[] { ev },
+            snittSpotprisNokMwh: 850,
+            planByHour: plan,
+            overflowHours: new HashSet<DateTimeOffset>(),
+            overflowDataAvailable: true,
+            snittUbalansetillegg_NokMwh: -50,
+            ubalansePremieByHour: premieByHour);
+
+        var r = roi[0];
+        r.ReddetProduksjon_NOK.Should().Be(0); // ingen overløp
+
+        // Forventet: 3 t × 2 MWh × 500 + 10 t × 2 MWh × (−30) + 2 t × 2 MWh × (−50)
+        //          = 3000 − 600 − 200 = 2 200 NOK.
+        // Med periodesnittet alene ville komponenten vært 15 × 2 × (−50) = −1 500 —
+        // per-time-verdsettingen avdekker at knapphetstimene snur fortegnet.
+        r.ReddetUbalanse_NOK.Should().BeApproximately(2200, 1.0);
+        r.ReddetNok.Should().BeApproximately(2200, 1.0);
     }
 
     /// <summary>

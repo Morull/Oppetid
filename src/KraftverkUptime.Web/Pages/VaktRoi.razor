@@ -147,7 +147,7 @@ else if (IsPortfolioMode && _portfolio is not null)
                 <KpiCard Label="Total reddet"
                          Value="@FormatNok(_portfolio.TotalReddetNok)"
                          SubText="NOK i perioden"
-                         Accent="KpiAccent.Positive" />
+                         Accent="@(_portfolio.TotalReddetNok < 0 ? KpiAccent.Negative : KpiAccent.Positive)" />
             </MudItem>
             <MudItem xs="6" sm="3" md="2">
                 <KpiCard Label="Annualisert"
@@ -305,9 +305,12 @@ else if (IsPortfolioMode && _portfolio is not null)
                         </MudTooltip>
                     </MudTd>
                     <MudTd Style="text-align:right">@context.EkstraTimerSpart.ToString("F1", NumberFormat.Norsk)</MudTd>
-                    <MudTd Style="text-align:right">@(context.ReddetProduksjon_NOK > 0 ? FormatNok(context.ReddetProduksjon_NOK) : "–")</MudTd>
-                    <MudTd Style="text-align:right">@(context.ReddetUbalanse_NOK > 0 ? FormatNok(context.ReddetUbalanse_NOK) : "–")</MudTd>
-                    <MudTd Style="text-align:right; font-weight: 500;">@FormatNok(context.ReddetNok)</MudTd>
+                    @* Topp-events er per definisjon ROI-kandidater — vis faktiske
+                       tall (inkl. 0 og negativ ubalanse), aldri «–» (SPEC-VAKT-ROI-
+                       UBALANSE-FULLPERIODE B1). *@
+                    <MudTd Style="text-align:right">@FormatNok(context.ReddetProduksjon_NOK)</MudTd>
+                    <MudTd Style="@NokCellStyle(context.ReddetUbalanse_NOK)">@FormatNok(context.ReddetUbalanse_NOK)</MudTd>
+                    <MudTd Style="@NokCellStyle(context.ReddetNok, bold: true)">@FormatNok(context.ReddetNok)</MudTd>
                 </RowTemplate>
             </MudTable>
         }
@@ -358,9 +361,11 @@ else if (IsPortfolioMode && _portfolio is not null)
                 <MudTd Style="text-align:right">@context.InstalledCapacityMw.ToString("F1", NumberFormat.Norsk)</MudTd>
                 <MudTd Style="text-align:right">@context.ReddbareEvents</MudTd>
                 <MudTd Style="text-align:right">@context.TotaleEvents</MudTd>
-                <MudTd Style="text-align:right">@(context.ReddetProduksjon_NOK > 0 ? FormatNok(context.ReddetProduksjon_NOK) : "–")</MudTd>
-                <MudTd Style="text-align:right">@(context.ReddetUbalanse_NOK > 0 ? FormatNok(context.ReddetUbalanse_NOK) : "–")</MudTd>
-                <MudTd Style="text-align:right; font-weight: 500;">@FormatNok(context.ReddetNok)</MudTd>
+                @* Per-anlegg-summer: vis faktiske tall (inkl. 0 og negativ
+                   ubalanse) så netto tap er synlig (SPEC B1/B2). *@
+                <MudTd Style="text-align:right">@FormatNok(context.ReddetProduksjon_NOK)</MudTd>
+                <MudTd Style="@NokCellStyle(context.ReddetUbalanse_NOK)">@FormatNok(context.ReddetUbalanse_NOK)</MudTd>
+                <MudTd Style="@NokCellStyle(context.ReddetNok, bold: true)">@FormatNok(context.ReddetNok)</MudTd>
             </RowTemplate>
         </MudTable>
     </MudPaper>
@@ -375,7 +380,7 @@ else if (!IsPortfolioMode && _response is not null)
             <KpiCard Label="Reddet brutto"
                      Value="@FormatNok(_response.TotalReddetNok)"
                      SubText="@($"NOK i perioden ({PeriodLabel})")"
-                     Accent="KpiAccent.Positive" />
+                     Accent="@(_response.TotalReddetNok < 0 ? KpiAccent.Negative : KpiAccent.Positive)" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
             <KpiCard Label="Reddbare events innenfor vakt"
@@ -587,9 +592,9 @@ else if (!IsPortfolioMode && _response is not null)
                 </MudTd>
                 <MudTd DataLabel="Ekstra" Style="text-align:right">@(context.ErInnenforVakt && context.ErReddbar ? context.EkstraTimerSpart.ToString("F1", NumberFormat.Norsk) : "–")</MudTd>
                 <MudTd DataLabel="Overløp" Style="text-align:right">@DisplayOverflow(context)</MudTd>
-                <MudTd DataLabel="Overløp NOK" Style="text-align:right">@(context.ReddetProduksjon_NOK > 0 ? FormatNok(context.ReddetProduksjon_NOK) : "–")</MudTd>
-                <MudTd DataLabel="Ubalanse NOK" Style="text-align:right">@(context.ReddetUbalanse_NOK > 0 ? FormatNok(context.ReddetUbalanse_NOK) : "–")</MudTd>
-                <MudTd DataLabel="Reddet" Style="text-align:right; font-weight: 500;">@(context.ReddetNok > 0 ? FormatNok(context.ReddetNok) : "–")</MudTd>
+                <MudTd DataLabel="Overløp NOK" Style="text-align:right">@DisplayNok(context, context.ReddetProduksjon_NOK)</MudTd>
+                <MudTd DataLabel="Ubalanse NOK" Style="@NokCellStyle(context.ReddetUbalanse_NOK)">@DisplayNok(context, context.ReddetUbalanse_NOK)</MudTd>
+                <MudTd DataLabel="Reddet" Style="@NokCellStyle(context.ReddetNok, bold: true)">@DisplayNok(context, context.ReddetNok)</MudTd>
                 <MudTd DataLabel="Detaljer" Style="text-align:center;">
                     <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
                                    Size="MudBlazor.Size.Small"
@@ -804,6 +809,9 @@ else if (!IsPortfolioMode && _response is not null)
         if (r >= 1.0) return $"Lønnsom ({r.ToString("F2", NumberFormat.Norsk)}×)";
         if (r >= 0.5) return $"Marginal ({r.ToString("F2", NumberFormat.Norsk)}×)";
         if (r > 0) return $"Ikke lønnsom ({r.ToString("F2", NumberFormat.Norsk)}×)";
+        // Negativ total (ubalanse dyrere enn spot-gevinsten) er en MENINGSFULL
+        // vurdering — ikke datamangel (SPEC-VAKT-ROI-UBALANSE-FULLPERIODE §4.3).
+        if (r < 0) return $"Netto tap ({r.ToString("F2", NumberFormat.Norsk)}×)";
         return "–";
     }
 
@@ -813,6 +821,7 @@ else if (!IsPortfolioMode && _response is not null)
         if (r >= 1.0) return "Vakt-ordningen tjener inn kostnaden.";
         if (r >= 0.5) return "Halv inntjening — vurder bemanningsmodell.";
         if (r > 0) return "Underdekning — vurder reduksjon.";
+        if (r < 0) return "Negativ ubalanse-komponent overstiger reddet produksjon i perioden.";
         return "Ikke nok data til vurdering.";
     }
 
@@ -821,7 +830,7 @@ else if (!IsPortfolioMode && _response is not null)
         var r = VaktRoiRatio();
         if (r >= 1.0) return KpiAccent.Positive;
         if (r >= 0.5) return KpiAccent.Warning;
-        if (r > 0) return KpiAccent.Negative;
+        if (r != 0) return KpiAccent.Negative;
         return KpiAccent.Muted;
     }
 
@@ -1326,6 +1335,19 @@ else if (!IsPortfolioMode && _response is not null)
     // Tall-formatering: Services/NumberFormat. Vakt-ROI viser 0 som "0"
     // (ikke "–") siden 0 NOK reddet er en MENINGSFULL verdi.
     private static string FormatNok(double nok) => nok.ToString("N0", NumberFormat.Norsk);
+
+    // Viser faktisk NOK-verdi (inkl. 0 og negativ) for ROI-kandidater.
+    // «–» reserveres for hendelser som IKKE er kandidat (utenfor vakt /
+    // ikke reddbar) — SPEC-VAKT-ROI-UBALANSE-FULLPERIODE-OG-VISNING B1.
+    private static string DisplayNok(VaktRoiEventDto e, double verdi)
+        => (e.ErInnenforVakt && e.ErReddbar) ? FormatNok(verdi) : "–";
+
+    // Celle-stil for NOK-kolonner: negative beløp farges røde så drifts-leder
+    // ser umiddelbart når vakten netto TAPER på ubalanse (SPEC B2).
+    private static string NokCellStyle(double verdi, bool bold = false)
+        => "text-align:right;"
+            + (bold ? " font-weight: 500;" : "")
+            + (verdi < 0 ? " color: var(--mud-palette-error);" : "");
 
     private static string DisplayOverflow(VaktRoiEventDto e)
     {
