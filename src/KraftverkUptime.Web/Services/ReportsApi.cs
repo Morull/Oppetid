@@ -387,6 +387,8 @@ public sealed record PlantDto(
     string Id, string Name, string Type, double InstalledCapacityMw, string TimeZone,
     double? DeratingThreshold = null,
     double? NormalAarsproduksjonGwh = null,
+    // Månedsprofil (12 %-verdier, jan–des, sum 100) — null = flat fallback.
+    double[]? MaanedsprofilProsent = null,
     string? TurbineType = null,
     double? HeadM = null,
     double? EnergyEquivalentKwhPerM3 = null,
@@ -412,6 +414,8 @@ public sealed record UpdatePlantRequest(
     string TimeZone,
     double? DeratingThreshold = null,
     double? NormalAarsproduksjonGwh = null,
+    // 12 prosentverdier (jan–des, sum 100 ± 0,1) eller null = flat fallback.
+    double[]? MaanedsprofilProsent = null,
     string? TurbineType = null,
     double? HeadM = null,
     double? EnergyEquivalentKwhPerM3 = null,

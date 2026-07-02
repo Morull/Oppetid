@@ -79,6 +79,10 @@ public sealed class KraftverkDbContext : DbContext
             // Normal årsproduksjon i GWh — nullable, default null. Snake-case-
             // konvensjon mapper automatisk til kolonnen normal_aarsproduksjon_gwh.
             b.Property(x => x.NormalAarsproduksjonGwh);
+            // Månedsprofil (12 prosentverdier, sum 100) — Npgsql mapper double[]
+            // nativt til double precision[] (kolonne maanedsprofil_prosent).
+            // SPEC-MAANEDSPROFIL-NORMALAAR.
+            b.Property(x => x.MaanedsprofilProsent);
             // Anleggs-metadata (2026-05-21): turbin-type + fallhøyde + energiekv +
             // idriftsettelsesår. Snake-case-konvensjon mapper kolonne-navnene.
             b.Property(x => x.TurbineType).HasMaxLength(32);

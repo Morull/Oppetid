@@ -512,6 +512,7 @@ public sealed class EconomyReportQueryService : IEconomyReportQueryService
                 AntallEvents: s.AntallEvents,
                 AntallReddbareEvents: s.AntallReddbareEvents,
                 NormalAarsproduksjonGwh: p.NormalAarsproduksjonGwh,
+                MaanedsprofilProsent: p.MaanedsprofilProsent,
                 GoodHoursPct: s.GoodHoursPct,
                 ManglerImportHours: s.ManglerImportHours);
         }).ToArray();

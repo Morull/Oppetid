@@ -62,6 +62,44 @@ else
                              Variant="Variant.Outlined"
                              HelperText="Forventet produksjon i et gjennomsnittlig (normalt) år. Brukes til å sammenligne mot faktisk produksjon og til å fordele felleskostnader etter GWh-andel. La stå tom hvis ukjent." />
 
+            @* Månedsprofil for normalårsproduksjonen (SPEC-MAANEDSPROFIL-
+               NORMALAAR §6): 12 prosentfelt (jan–des) som må summere til
+               100 ± 0,1. Alle felt 0 = «ikke satt» → flat pro-rata-fallback. *@
+            <MudText Typo="Typo.subtitle2" Class="mt-2">
+                Månedsprofil for normalår (%)
+                <HjelpeIkon Tittel="Månedsprofil"
+                            Beskrivelse="Fordeler normalårsproduksjonen per måned (hydrologisk sesong). Brukes i «Faktisk vs normalår» på Produksjon-siden og «Normalår %» i Portefølje. Summen må være 100 %. Sett alle til 0 for å bruke flat fordeling." />
+            </MudText>
+            <MudGrid Spacing="1">
+                @for (var i = 0; i < 12; i++)
+                {
+                    var idx = i; // capture for lambda-binding
+                    <MudItem xs="4" sm="2">
+                        <MudNumericField T="double" @bind-Value="_form.Maanedsprofil[idx]"
+                                         Label="@MaanedsNavn[idx]"
+                                         Min="0" Max="100" Step="0.1" Format="F1"
+                                         Culture="@NumberFormat.Norsk"
+                                         Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                }
+            </MudGrid>
+            <div class="d-flex align-center" style="gap:12px;">
+                <MudText Typo="Typo.body2"
+                         Style="@(ProfilSumOk ? "color: var(--mud-palette-success);" : "color: var(--mud-palette-error);")">
+                    @ProfilSumTekst
+                </MudText>
+                <MudSpacer />
+                <MudButton Variant="Variant.Text" Size="MudBlazor.Size.Small"
+                           OnClick="NormaliserProfil"
+                           Disabled="@(_form.Maanedsprofil.Sum() <= 0)">
+                    Normaliser til 100 %
+                </MudButton>
+                <MudButton Variant="Variant.Text" Size="MudBlazor.Size.Small"
+                           OnClick="BrukStandardprofil">
+                    Bruk standardprofil
+                </MudButton>
+            </div>
+
             @* Start/stopp-KPI (Spec NESTE-CHAT-START-STOPP-KPI.md, 2026-05-22).
                Tre felt for å styre KPI-kortet på Rapport-detalj: OEM-budsjett,
                kostnad per syklus, og kildehenvisning. Tomme felt = KPI viser
@@ -137,7 +175,7 @@ else
                 <MudButton Variant="Variant.Text" Href="/plants">Avbryt</MudButton>
                 <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
                            StartIcon="@Icons.Material.Filled.Save"
-                           OnClick="OnSaveAsync" Disabled="@_saving">
+                           OnClick="OnSaveAsync" Disabled="@(_saving || !ProfilSumOk)">
                     @(_saving ? "Lagrer…" : "Lagre")
                 </MudButton>
             </div>
@@ -662,6 +700,9 @@ else
                     TimeZone = plant.TimeZone,
                     DeratingThreshold = plant.DeratingThreshold ?? 0.80,
                     NormalAarsproduksjonGwh = plant.NormalAarsproduksjonGwh,
+                    Maanedsprofil = plant.MaanedsprofilProsent is { Length: 12 } prof
+                        ? (double[])prof.Clone()
+                        : new double[12],
                     TurbineType = plant.TurbineType,
                     HeadM = plant.HeadM,
                     EnergyEquivalentKwhPerM3 = plant.EnergyEquivalentKwhPerM3,
@@ -1080,6 +1121,7 @@ else
                 _form.Name, _form.Type, _form.InstalledCapacityMw, _form.TimeZone,
                 DeratingThreshold: _form.DeratingThreshold,
                 NormalAarsproduksjonGwh: _form.NormalAarsproduksjonGwh,
+                MaanedsprofilProsent: ProfilForLagring(),
                 TurbineType: _form.TurbineType,
                 HeadM: _form.HeadM,
                 EnergyEquivalentKwhPerM3: _form.EnergyEquivalentKwhPerM3,
@@ -1135,6 +1177,59 @@ else
         }
     }
 
+    // ---- Månedsprofil (SPEC-MAANEDSPROFIL-NORMALAAR §6) -------------------
+
+    private static readonly string[] MaanedsNavn =
+        ["Jan", "Feb", "Mar", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Des"];
+
+    // Felles Dalane-profil — samme som MaanedsprofilSeeder sin default.
+    private static readonly double[] StandardProfil =
+        [13.1, 11.0, 9.1, 8.1, 4.7, 2.3, 1.3, 4.9, 8.7, 10.4, 12.4, 14.0];
+
+    /// <summary>Alle 0 = «ikke satt» (lagres som null → flat fallback).</summary>
+    private bool ProfilErTom => _form.Maanedsprofil.All(v => v == 0);
+
+    private bool ProfilSumOk
+        => ProfilErTom || Math.Abs(_form.Maanedsprofil.Sum() - 100.0) <= 0.1;
+
+    private string ProfilSumTekst
+    {
+        get
+        {
+            if (ProfilErTom) return "Ikke satt — flat fordeling (pro-rata) brukes.";
+            var sum = _form.Maanedsprofil.Sum();
+            var diff = 100.0 - sum;
+            return Math.Abs(diff) <= 0.1
+                ? $"Sum {sum.ToString("F1", NumberFormat.Norsk)} % ✓"
+                : $"Sum {sum.ToString("F1", NumberFormat.Norsk)} % — {(diff > 0 ? "mangler" : "overskyter med")} {Math.Abs(diff).ToString("F1", NumberFormat.Norsk)} %";
+        }
+    }
+
+    /// <summary>Skalerer alle verdier proporsjonalt slik at summen blir 100.</summary>
+    private void NormaliserProfil()
+    {
+        var sum = _form.Maanedsprofil.Sum();
+        if (sum <= 0) return;
+        for (var i = 0; i < 12; i++)
+        {
+            _form.Maanedsprofil[i] = Math.Round(_form.Maanedsprofil[i] * 100.0 / sum, 1);
+        }
+        // Avrundingsrest legges på største måned så summen blir eksakt 100,0.
+        var rest = Math.Round(100.0 - _form.Maanedsprofil.Sum(), 1);
+        if (rest != 0)
+        {
+            var maxIdx = Array.IndexOf(_form.Maanedsprofil, _form.Maanedsprofil.Max());
+            _form.Maanedsprofil[maxIdx] = Math.Round(_form.Maanedsprofil[maxIdx] + rest, 1);
+        }
+    }
+
+    private void BrukStandardprofil()
+        => _form.Maanedsprofil = (double[])StandardProfil.Clone();
+
+    /// <summary>Tom profil (alle 0) lagres som null → flat pro-rata-fallback.</summary>
+    private double[]? ProfilForLagring()
+        => ProfilErTom ? null : (double[])_form.Maanedsprofil.Clone();
+
     private sealed class FormModel
     {
         public string Name { get; set; } = string.Empty;
@@ -1143,6 +1238,9 @@ else
         public string TimeZone { get; set; } = "Europe/Oslo";
         public double DeratingThreshold { get; set; } = 0.80;
         public double? NormalAarsproduksjonGwh { get; set; }
+        // Månedsprofil (jan–des). Alle 0 = «ikke satt» → lagres som null
+        // (flat pro-rata-fallback). SPEC-MAANEDSPROFIL-NORMALAAR.
+        public double[] Maanedsprofil { get; set; } = new double[12];
         public string? TurbineType { get; set; }
         public double? HeadM { get; set; }
         public double? EnergyEquivalentKwhPerM3 { get; set; }

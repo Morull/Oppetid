@@ -213,10 +213,10 @@ else if (_data is not null)
                 <MudItem xs="12" sm="6" md="4">
                     <KpiCard Label="Faktisk vs normalår"
                              Value="@($"{(normalAars.Value * 100):F0} %")"
-                             SubText="@($"{(_plant?.NormalAarsproduksjonGwh ?? 0):F1} GWh i et normalår · pro-rata på perioden")"
+                             SubText="@($"{(_plant?.NormalAarsproduksjonGwh ?? 0):F1} GWh i et normalår · {(HarMaanedsprofil ? "månedsvektet" : "pro-rata på perioden")}")"
                              Accent="@(normalAars.Value >= 0.95 ? KpiAccent.Positive : normalAars.Value >= 0.80 ? KpiAccent.Warning : KpiAccent.Negative)"
-                             InfoText="Faktisk Elhub-produksjon delt på forventet produksjon i perioden, gitt normalåret. 100 % = på snitt; under = under snitt; over = bedre enn snitt."
-                             InfoFormula="andel = ElhubMwh / (NormalGwh × 1000 × dager / 365)" />
+                             InfoText="Faktisk Elhub-produksjon delt på forventet produksjon i perioden. Forventningen vektes etter verkets månedsprofil (hydrologisk sesong — vinter høyt, sommer lavt); profilen redigeres i PlantAdmin. Uten profil brukes flat pro-rata. 100 % = på snitt; under = under snitt; over = bedre enn snitt."
+                             InfoFormula="forventet = Σ måned: NormalGwh × 1000 × profil% × dekkede_dager/dager_i_mnd" />
                 </MudItem>
             </MudGrid>
         }
@@ -769,23 +769,26 @@ else if (_data is not null)
     }
 
     /// <summary>
-    /// Faktisk produksjon som andel av pro-rata normalår. Returnerer null
-    /// hvis NormalAarsproduksjonGwh ikke er satt eller perioden er ugyldig.
-    /// Beregning: andel = ElhubMwh / (NormalGwh × 1000 × dager / 365).
+    /// Faktisk produksjon som andel av forventet normalår for perioden.
+    /// Månedsvektet når anlegget har månedsprofil (hydrologisk sesong);
+    /// ellers flat pro-rata som før. Delt beregning i Core:
+    /// <c>ForventetProduksjonKalkulator</c> (SPEC-MAANEDSPROFIL-NORMALAAR §7a).
+    /// Returnerer null hvis NormalAarsproduksjonGwh ikke er satt eller
+    /// perioden er ugyldig.
     /// </summary>
     private double? NormalAarsAndel()
     {
         if (_data is null) return null;
-        if (_plant?.NormalAarsproduksjonGwh is not { } normalGwh) return null;
-        if (normalGwh <= 0) return null;
         if (!Filter.FromDate.HasValue || !Filter.ToDate.HasValue) return null;
-        var dager = (Filter.ToDate.Value - Filter.FromDate.Value).TotalDays;
-        if (dager <= 0) return null;
-        var dagerIAaret = DateTime.IsLeapYear(Filter.FromDate.Value.Year) ? 366 : 365;
-        var forventetMwh = normalGwh * 1000.0 * dager / dagerIAaret;
-        if (forventetMwh <= 0) return null;
-        return _data.TotalElhubMwh / forventetMwh;
+        var forventetMwh = KraftverkUptime.Core.Domain.ForventetProduksjonKalkulator.ForventetMwh(
+            _plant?.NormalAarsproduksjonGwh, _plant?.MaanedsprofilProsent,
+            Filter.FromDate.Value, Filter.ToDate.Value);
+        if (forventetMwh is not { } fv || fv <= 0) return null;
+        return _data.TotalElhubMwh / fv;
     }
+
+    /// <summary>True når normalår-KPI-en bruker månedsvektet profil (ikke flat).</summary>
+    private bool HarMaanedsprofil => _plant?.MaanedsprofilProsent is { Length: 12 };
 
     private string HelhetligTolkning()
     {

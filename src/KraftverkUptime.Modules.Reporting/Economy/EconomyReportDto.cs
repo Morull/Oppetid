@@ -80,6 +80,10 @@ public sealed record PerPlantEconomyDto(
     int AntallReddbareEvents,
     // Datakvalitet og normal-produksjon for Sammendrag-tabellen.
     double? NormalAarsproduksjonGwh,
+    // Månedsfordeling av normalåret (12 %-verdier, jan først) for månedsvektet
+    // normalår-sammenligning i UI. Null = flat pro-rata-fallback.
+    // SPEC-MAANEDSPROFIL-NORMALAAR.
+    double[]? MaanedsprofilProsent,
     double GoodHoursPct,
     int ManglerImportHours);
 

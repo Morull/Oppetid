@@ -134,6 +134,10 @@ public static class DatabaseBootstrapper
             // kraftverkoversikt 2022. Idempotent — kun NULL-rader får default.
             await NormalAarsproduksjonSeeder.SeedAsync(services, ct).ConfigureAwait(false);
 
+            // Felles Dalane-månedsprofil for normalår-fordelingen. Idempotent —
+            // kun NULL-rader. SPEC-MAANEDSPROFIL-NORMALAAR.
+            await MaanedsprofilSeeder.SeedAsync(services, ct).ConfigureAwait(false);
+
             // Anleggs-metadata (turbin-type, fallhøyde, energiekvivalent) fra
             // samme kraftverkoversikt. Idempotent per kolonne.
             await PlantMetadataSeeder.SeedAsync(services, ct).ConfigureAwait(false);
@@ -248,6 +252,12 @@ public static class DatabaseBootstrapper
             -- feil i EndUtc fra SCADA/operlog. Idempotent ALTER.
             ALTER TABLE core.vakt_event_overrides
                 ADD COLUMN IF NOT EXISTS actual_end_override_utc timestamptz NULL;
+
+            -- Start-korreksjon (SPEC-NEDETID-STARTTID-OVERRIDE, 2026-06-01):
+            -- drifts-leder kan rette opp feil detektert START. Raden er fortsatt
+            -- nøklet på detektert start, så øvrige overstyringer beholder ankeret.
+            ALTER TABLE core.vakt_event_overrides
+                ADD COLUMN IF NOT EXISTS actual_start_override_utc timestamptz NULL;
 
             -- Vakt-utrykning-overstyring (2026-05-22, Spec
             -- NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md): U2-PlanDeviation
@@ -492,6 +502,12 @@ public static class DatabaseBootstrapper
             -- sammenligning og GWh-andel-fordeling av felleskostnader.
             ALTER TABLE core.plants
                 ADD COLUMN IF NOT EXISTS normal_aarsproduksjon_gwh double precision NULL;
+
+            -- Månedsfordeling av normalårsproduksjonen i prosent (12 verdier,
+            -- indeks 1 = januar, sum 100). NULL = flat pro-rata-fallback.
+            -- SPEC-MAANEDSPROFIL-NORMALAAR (2026-07-02).
+            ALTER TABLE core.plants
+                ADD COLUMN IF NOT EXISTS maanedsprofil_prosent double precision[] NULL;
 
             -- Anleggs-metadata fra kraftverkoversikten (2026-05-21):
             -- turbin-type, fallhøyde, energiekvivalent og idriftsettelsesår.

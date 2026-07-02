@@ -90,6 +90,7 @@ public static class PlantsEndpoints
                 p.InstalledCapacityMw,
                 p.TimeZone,
                 p.NormalAarsproduksjonGwh,
+                p.MaanedsprofilProsent,
             })
             .ToList();
 
@@ -133,6 +134,7 @@ public static class PlantsEndpoints
             plant.TimeZone,
             DeratingThreshold = deratingThreshold ?? 0.80, // default = 20 % avvik
             plant.NormalAarsproduksjonGwh,
+            plant.MaanedsprofilProsent,
             plant.TurbineType,
             plant.HeadM,
             plant.EnergyEquivalentKwhPerM3,
@@ -183,6 +185,17 @@ public static class PlantsEndpoints
                 detail: $"'{body.Type}' er ikke en gyldig PlantType. Lovlige verdier: Regulated, RunOfRiver, Mixed, Pumped.",
                 statusCode: StatusCodes.Status400BadRequest);
         }
+        // Månedsprofil: null = ikke satt (flat fallback); ellers nøyaktig 12
+        // verdier ≥ 0 med sum 100 ± 0,1. Delt validering med PlantAdmin-skjemaet.
+        // SPEC-MAANEDSPROFIL-NORMALAAR §2.
+        if (KraftverkUptime.Core.Domain.ForventetProduksjonKalkulator
+                .ValiderProfil(body.MaanedsprofilProsent) is { } profilFeil)
+        {
+            return Results.Problem(
+                title: "Ugyldig månedsprofil",
+                detail: profilFeil,
+                statusCode: StatusCodes.Status400BadRequest);
+        }
         // NormalAarsproduksjonGwh: nullbar; tom = ikke satt. Negativ er ugyldig.
         // Øvre grense romslig nok til å dekke vannkraftverk uten å være helt åpen.
         if (body.NormalAarsproduksjonGwh is { } gwh && (gwh < 0 || gwh > 10000))
@@ -210,6 +223,7 @@ public static class PlantsEndpoints
         plant.InstalledCapacityMw = body.InstalledCapacityMw;
         plant.TimeZone = body.TimeZone.Trim();
         plant.NormalAarsproduksjonGwh = body.NormalAarsproduksjonGwh;
+        plant.MaanedsprofilProsent = body.MaanedsprofilProsent;
         // Metadata fra kraftverkoversikten — alle valgfrie.
         plant.TurbineType = string.IsNullOrWhiteSpace(body.TurbineType)
             ? null : body.TurbineType.Trim();
@@ -257,6 +271,7 @@ public static class PlantsEndpoints
             plant.TimeZone,
             DeratingThreshold = savedThreshold ?? 0.80,
             plant.NormalAarsproduksjonGwh,
+            plant.MaanedsprofilProsent,
             plant.TurbineType,
             plant.HeadM,
             plant.EnergyEquivalentKwhPerM3,
@@ -347,6 +362,8 @@ public sealed record UpdatePlantRequest(
     string TimeZone,
     double? DeratingThreshold = null,
     double? NormalAarsproduksjonGwh = null,
+    // 12 prosentverdier (jan–des, sum 100 ± 0,1) eller null = flat fallback.
+    double[]? MaanedsprofilProsent = null,
     string? TurbineType = null,
     double? HeadM = null,
     double? EnergyEquivalentKwhPerM3 = null,

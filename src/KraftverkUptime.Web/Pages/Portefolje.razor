@@ -262,7 +262,7 @@ else if (_rows is not null)
                             </MudTooltip>
                         </MudTh>
                         <MudTh Class="num">
-                            <MudTooltip Text="Faktisk produksjon som andel av normalåret pro-rata på perioden. 100 % = på snitt; > 100 % over et normalår; < 100 % under. Krever at normal årsproduksjon er satt på anlegget (PlantAdmin).">
+                            <MudTooltip Text="Faktisk produksjon som andel av forventet normalår for perioden, månedsvektet etter verkets produksjonsprofil (hydrologisk sesong). Faller tilbake til flat pro-rata hvis profil ikke er satt. 100 % = på snitt; > 100 % over et normalår; < 100 % under. Normalår + profil redigeres i PlantAdmin.">
                                 <MudTableSortLabel SortBy="@SortByNormalAar">Normalår %</MudTableSortLabel>
                             </MudTooltip>
                         </MudTh>
@@ -471,6 +471,8 @@ else if (_rows is not null)
         int AntallReddbare,
         DataQualitySummaryDto? DataQuality,
         double? NormalAarsproduksjonGwh,
+        // Månedsprofil for månedsvektet normalår-forventning (null = flat).
+        double[]? MaanedsprofilProsent,
         IReadOnlyList<string> MissingData);
 
     protected override async Task OnInitializedAsync()
@@ -614,6 +616,7 @@ else if (_rows is not null)
             AntallReddbare: p.AntallReddbareEvents,
             DataQuality: dq,
             NormalAarsproduksjonGwh: p.NormalAarsproduksjonGwh,
+            MaanedsprofilProsent: p.MaanedsprofilProsent,
             MissingData: missing);
     }
 
@@ -651,23 +654,25 @@ else if (_rows is not null)
     }
 
     /// <summary>
-    /// Faktisk produksjon som andel av pro-rata normalår. Returnerer null
-    /// hvis NormalAarsproduksjonGwh ikke er satt for anlegget eller
-    /// periode-dager &lt;= 0.
-    /// Beregning:
-    ///   forventet_mwh = NormalGwh × 1000 × periode_dager / dager_i_året
-    ///   andel = TotalProductionMwh / forventet_mwh
+    /// Faktisk produksjon som andel av forventet normalår for perioden.
+    /// Månedsvektet når verket har månedsprofil; ellers flat pro-rata.
+    /// Delt beregning i Core: <c>ForventetProduksjonKalkulator</c>
+    /// (SPEC-MAANEDSPROFIL-NORMALAAR §7b). Returnerer null hvis
+    /// NormalAarsproduksjonGwh ikke er satt eller perioden er ugyldig.
     /// </summary>
     private double? NormalAarsAndel(Row r)
     {
-        if (!r.NormalAarsproduksjonGwh.HasValue || r.NormalAarsproduksjonGwh.Value <= 0) return null;
+        var forventetMwh = ForventetMwh(r);
+        if (forventetMwh is not { } fv || fv <= 0) return null;
+        return r.TotalProductionMwh / fv;
+    }
+
+    private double? ForventetMwh(Row r)
+    {
         if (!Filter.FromDate.HasValue || !Filter.ToDate.HasValue) return null;
-        var dager = (Filter.ToDate.Value - Filter.FromDate.Value).TotalDays;
-        if (dager <= 0) return null;
-        var dagerIAaret = DateTime.IsLeapYear(Filter.FromDate.Value.Year) ? 366 : 365;
-        var forventetMwh = r.NormalAarsproduksjonGwh.Value * 1000.0 * dager / dagerIAaret;
-        if (forventetMwh <= 0) return null;
-        return r.TotalProductionMwh / forventetMwh;
+        return KraftverkUptime.Core.Domain.ForventetProduksjonKalkulator.ForventetMwh(
+            r.NormalAarsproduksjonGwh, r.MaanedsprofilProsent,
+            Filter.FromDate.Value, Filter.ToDate.Value);
     }
 
     private double MerverdiSum() => _rows?.Sum(r => r.MerverdiNok) ?? 0;
@@ -741,21 +746,19 @@ else if (_rows is not null)
 
     /// <summary>
     /// Portefølje-andel: total faktisk MWh / sum forventet MWh for alle anlegg
-    /// med NormalAarsproduksjonGwh satt. Pro-rata på periode-lengden.
+    /// med NormalAarsproduksjonGwh satt. Forventningen per verk er månedsvektet
+    /// (hver med sin profil) — vi summerer forventet MWh og deler faktisk sum
+    /// på forventet sum, IKKE gjennomsnitt av andeler (§7b).
     /// </summary>
     private double? NormalAarsAndelTotal()
     {
         if (_rows is null || _rows.Count == 0) return null;
-        if (!Filter.FromDate.HasValue || !Filter.ToDate.HasValue) return null;
-        var dager = (Filter.ToDate.Value - Filter.FromDate.Value).TotalDays;
-        if (dager <= 0) return null;
-        var dagerIAaret = DateTime.IsLeapYear(Filter.FromDate.Value.Year) ? 366 : 365;
         double forventetMwh = 0;
         double faktiskMwh = 0;
         foreach (var r in _rows)
         {
-            if (!r.NormalAarsproduksjonGwh.HasValue || r.NormalAarsproduksjonGwh.Value <= 0) continue;
-            forventetMwh += r.NormalAarsproduksjonGwh.Value * 1000.0 * dager / dagerIAaret;
+            if (ForventetMwh(r) is not { } fv || fv <= 0) continue;
+            forventetMwh += fv;
             faktiskMwh += r.TotalProductionMwh;
         }
         return forventetMwh > 0 ? faktiskMwh / forventetMwh : null;

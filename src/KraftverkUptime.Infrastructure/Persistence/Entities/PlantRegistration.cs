@@ -53,6 +53,17 @@ public sealed class PlantRegistration : IOwnedEntity, ISoftDeletable
     public double? NormalAarsproduksjonGwh { get; set; }
 
     /// <summary>
+    /// Månedsfordeling av normalårsproduksjonen i prosent, indeks 0 = januar.
+    /// 12 verdier som summerer til 100 (± 0,1). Null = ikke satt → forbruks-
+    /// koden faller tilbake til flat fordeling (dagbasert pro-rata). Vannkraft
+    /// er sterkt sesongavhengig, så flat pro-rata gir feil normalår-forventning
+    /// (SPEC-MAANEDSPROFIL-NORMALAAR). Redigeres i PlantAdmin; seedes med
+    /// felles Dalane-profil av <c>MaanedsprofilSeeder</c>. Lagres som nativ
+    /// Postgres-array (<c>double precision[]</c>).
+    /// </summary>
+    public double[]? MaanedsprofilProsent { get; set; }
+
+    /// <summary>
     /// Turbin-type — typisk "Francis", "Kaplan" eller "Pelton". Lagres som
     /// fri streng for å tillate fremtidige varianter uten kode-endring.
     /// Null = ikke satt.

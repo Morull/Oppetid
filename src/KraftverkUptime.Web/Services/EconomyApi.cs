@@ -168,5 +168,7 @@ public sealed record PerPlantEconomyDto(
     int AntallEvents,
     int AntallReddbareEvents,
     double? NormalAarsproduksjonGwh,
+    // Månedsprofil for månedsvektet normalår-sammenligning (null = flat).
+    double[]? MaanedsprofilProsent,
     double GoodHoursPct,
     int ManglerImportHours);
