@@ -1,4 +1,4 @@
-﻿using FluentAssertions;
+using FluentAssertions;
 using KraftverkUptime.Core.Domain;
 using KraftverkUptime.Core.Time;
 using KraftverkUptime.Modules.Reporting.Nedetid;
@@ -8,16 +8,16 @@ namespace KraftverkUptime.Infrastructure.Tests.Nedetid;
 
 /// <summary>
 /// Verifiserer Vakt-ROI-modellen mot eksempel-beregningen i overleveringen
-/// 2026-04-28: Drivdal 2.2 MW, trip onsdag 16:00 fikset 17:30 â†’ vakt redder
-/// 14.5 t Ã— 0.5 utnyttelse Ã— 2.2 MW Ã— 850 NOK/MWh â‰ˆ 13 600 NOK.
+/// 2026-04-28: Drivdal 2.2 MW, trip onsdag 16:00 fikset 17:30 → vakt redder
+/// 14.5 t × 0.5 utnyttelse × 2.2 MW × 850 NOK/MWh ≈ 13 600 NOK.
 ///
 /// Etter spec 2026-04-29 forutsetter alle ROI-tester at counterfactual-perioden
-/// hadde overlÃ¸p i magasinet. Tester uten overlÃ¸p gir per definisjon null ROI.
+/// hadde overløp i magasinet. Tester uten overløp gir per definisjon null ROI.
 ///
 /// Etter signatur-endring 2026-05-19 tar <see cref="VaktRoiCalculator.Calculate"/>
-/// en plan-dictionary per UTC-time istedenfor flat (installertEffekt Ã— kapasitetsfaktor).
-/// Testene bruker hjelperen <see cref="PlanFlat"/> for Ã¥ bygge en konstant plan-verdi
-/// per time, slik at de gamle test-forventningene (basert pÃ¥ flat utnyttelse) fortsatt
+/// en plan-dictionary per UTC-time istedenfor flat (installertEffekt × kapasitetsfaktor).
+/// Testene bruker hjelperen <see cref="PlanFlat"/> for å bygge en konstant plan-verdi
+/// per time, slik at de gamle test-forventningene (basert på flat utnyttelse) fortsatt
 /// holder math-ekvivalent.
 /// </summary>
 public class VaktRoiCalculatorTests
@@ -46,7 +46,7 @@ public class VaktRoiCalculatorTests
     /// <summary>
     /// Bygger en plan-dictionary med konstant MWh-verdi for hver hel klokketime i
     /// counterfactual-vinduet (typisk fra eventets start til neste arbeidsdag 08:00).
-    /// Returnerer "installert Ã— kapasitetsfaktor" som flat verdi per time sÃ¥
+    /// Returnerer "installert × kapasitetsfaktor" som flat verdi per time så
     /// summen i den nye plan-baserte formelen matcher de gamle test-forventningene.
     /// </summary>
     private static IReadOnlyDictionary<DateTimeOffset, double> PlanFlat(
@@ -55,7 +55,7 @@ public class VaktRoiCalculatorTests
         var dict = new Dictionary<DateTimeOffset, double>();
         var u = fromUtc.UtcDateTime;
         var startHour = new DateTimeOffset(u.Year, u.Month, u.Day, u.Hour, 0, 0, TimeSpan.Zero);
-        // Utvid forover for Ã¥ dekke counterfactual-end (max ~3 dager etter event)
+        // Utvid forover for å dekke counterfactual-end (max ~3 dager etter event)
         var endHour = toUtc.AddDays(3);
         for (var h = startHour; h < endHour; h = h.AddHours(1))
         {
@@ -67,7 +67,7 @@ public class VaktRoiCalculatorTests
     [Fact]
     public void Trip_Innenfor_Vakt_Onsdag_Beregner_ROI_Med_Overlop()
     {
-        // Onsdag 4. feb 2026 16:00-17:30 lokal â€” vakt aktiv
+        // Onsdag 4. feb 2026 16:00-17:30 lokal — vakt aktiv
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
@@ -102,25 +102,25 @@ public class VaktRoiCalculatorTests
         lokal.Day.Should().Be(5);
         lokal.Hour.Should().Be(8);
 
-        // Ekstra timer = 08:00 (5. feb) âˆ’ 17:30 (4. feb) = 14.5 t
+        // Ekstra timer = 08:00 (5. feb) − 17:30 (4. feb) = 14.5 t
         r.EkstraTimerSpart.Should().BeApproximately(14.5, 0.01);
 
-        // OverlÃ¸ps-telling jobber pÃ¥ time-presisjon:
-        // 17:00 (start floor) â†’ 08:00 (end floor) = 15 hele timer.
+        // Overløps-telling jobber på time-presisjon:
+        // 17:00 (start floor) → 08:00 (end floor) = 15 hele timer.
         r.OverflowTimerInCounterfactual.Should().Be(15);
         r.OverflowDataMissing.Should().BeFalse();
 
-        // ROI = 15 Ã— 2.2 Ã— 0.5 Ã— 850 = 14 025 NOK
+        // ROI = 15 × 2.2 × 0.5 × 850 = 14 025 NOK
         r.ReddetMwh.Should().BeApproximately(15 * 2.2 * 0.5, 0.01);
         r.ReddetNok.Should().BeApproximately(15 * 2.2 * 0.5 * 850, 1.0);
         r.ReddetProduksjon_NOK.Should().BeApproximately(15 * 2.2 * 0.5 * 850, 1.0);
-        r.ReddetUbalanse_NOK.Should().Be(0);  // ingen ubalanse-tillegg â†’ bare produksjon
+        r.ReddetUbalanse_NOK.Should().Be(0);  // ingen ubalanse-tillegg → bare produksjon
     }
 
     [Fact]
     public void Trip_Uten_Overlop_Gir_Null_ROI()
     {
-        // Samme trip som over, men ingen overlÃ¸p i counterfactual-perioden â†’
+        // Samme trip som over, men ingen overløp i counterfactual-perioden →
         // vannet er trygt magasinert, vakten redder ingenting.
         var ev = new DowntimeEvent
         {
@@ -150,14 +150,14 @@ public class VaktRoiCalculatorTests
         r.OverflowDataMissing.Should().BeFalse();
         r.ReddetMwh.Should().Be(0);
         r.ReddetNok.Should().Be(0);
-        r.Forklaring.Should().Contain("ingen overlÃ¸p");
+        r.Forklaring.Should().Contain("ingen OBSERVERT overløp");
     }
 
     [Fact]
     public void Trip_Med_Overlop_Halve_Counterfactual_Gir_Halv_ROI()
     {
         // Trip onsdag 16:00-17:30 lokal. Counterfactual = torsdag 08:00.
-        // 6 av 15 mulige overlÃ¸ps-timer registrert.
+        // 6 av 15 mulige overløps-timer registrert.
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
@@ -168,7 +168,7 @@ public class VaktRoiCalculatorTests
             TapMwh = 1.0, TapNok = 850, TimerSettlement = 2,
         };
 
-        // Plukk seks vilkÃ¥rlige timer i counterfactual-vinduet med overlÃ¸p.
+        // Plukk seks vilkårlige timer i counterfactual-vinduet med overløp.
         var counterfactualEnd = OsloLokal(2026, 2, 5, 8);
         var alle = OverflowAlleTimer(ev.EndUtc, counterfactualEnd).ToList();
         var halvt = alle.Take(6).ToHashSet();
@@ -190,7 +190,7 @@ public class VaktRoiCalculatorTests
     [Fact]
     public void Mangler_Overlop_Data_Konservativ_Antagelse()
     {
-        // SCADA-data mangler â€” vi flagger eventet og setter ROI = 0.
+        // SCADA-data mangler — vi flagger eventet og setter ROI = 0.
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
@@ -221,7 +221,7 @@ public class VaktRoiCalculatorTests
     [Fact]
     public void Trip_I_Arbeidstid_Gir_Ingen_ROI()
     {
-        // Onsdag 4. feb 2026 kl 10:00 lokal â€” ordinÃ¦r arbeidstid
+        // Onsdag 4. feb 2026 kl 10:00 lokal — ordinær arbeidstid
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
@@ -245,19 +245,19 @@ public class VaktRoiCalculatorTests
     }
 
     /// <summary>
-    /// Drifts-leders presisering 2026-05-05: Hvis en hendelse starter i ordinÃ¦r
+    /// Drifts-leders presisering 2026-05-05: Hvis en hendelse starter i ordinær
     /// arbeidstid (08-15 hverdag) og varer over inn i vakt-vinduet, regnes det
-    /// IKKE som vakt-redning â€” drifts-personellet jobber overtid for Ã¥ fikse
-    /// det. Eksempel: hendelse starter 13:00 og varer til 20:00 â†’ ingen ROI
-    /// fordi drifts-personellet hÃ¥ndterer overtid (typisk opp til 23:00).
+    /// IKKE som vakt-redning — drifts-personellet jobber overtid for å fikse
+    /// det. Eksempel: hendelse starter 13:00 og varer til 20:00 → ingen ROI
+    /// fordi drifts-personellet håndterer overtid (typisk opp til 23:00).
     /// </summary>
     [Fact]
     public void Trip_Starter_I_Arbeidstid_Varer_Inn_I_Vakt_Vindu_Gir_Ingen_ROI()
     {
-        // Onsdag 4. feb 2026 13:00 â†’ 20:00 lokal.
-        // Vakt-vinduet starter 15:00 hverdag, sÃ¥ event krysser inn i vakt-tid.
+        // Onsdag 4. feb 2026 13:00 → 20:00 lokal.
+        // Vakt-vinduet starter 15:00 hverdag, så event krysser inn i vakt-tid.
         // Men siden eventet startet i arbeidstid, har drifts-personellet
-        // ansvar for Ã¥ hÃ¥ndtere det via overtid â€” vakta blir ikke kalt ut.
+        // ansvar for å håndtere det via overtid — vakta blir ikke kalt ut.
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
@@ -269,7 +269,7 @@ public class VaktRoiCalculatorTests
             TapMwh = 7.0, TapNok = 5950, TimerSettlement = 7,
         };
 
-        // Selv med rikelig overflow-data og ubalansetillegg skal ROI vÃ¦re 0
+        // Selv med rikelig overflow-data og ubalansetillegg skal ROI være 0
         var counterfactual = OsloLokal(2026, 2, 5, 8);
         var overflow = OverflowAlleTimer(ev.StartUtc, counterfactual);
         var plan = PlanFlat(ev.StartUtc, counterfactual, 2.2 * 0.5);
@@ -284,23 +284,23 @@ public class VaktRoiCalculatorTests
 
         var r = roi[0];
         r.ErInnenforVakt.Should().BeFalse(
-            "event startet i arbeidstid (13:00 hverdag) â€” drifts-personell hÃ¥ndterer overtid");
+            "event startet i arbeidstid (13:00 hverdag) — drifts-personell håndterer overtid");
         r.ReddetNok.Should().Be(0);
         r.ReddetProduksjon_NOK.Should().Be(0);
         r.ReddetUbalanse_NOK.Should().Be(0);
         r.EkstraTimerSpart.Should().Be(0);
-        r.Forklaring.Should().Contain("ordinÃ¦r arbeidstid");
+        r.Forklaring.Should().Contain("ordinær arbeidstid");
     }
 
     [Fact]
     public void Planlagt_Vedlikehold_Innenfor_Vakt_Er_IKKE_Reddbart()
     {
         // Selv om planlagt-vedlikehold er innenfor vakt-vinduet, er det ikke ROI
-        // â€” vakt fikser ikke planlagte ting.
+        // — vakt fikser ikke planlagte ting.
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
-            StartUtc = OsloLokal(2026, 2, 7, 10),  // LÃ¸rdag 10:00
+            StartUtc = OsloLokal(2026, 2, 7, 10),  // Lørdag 10:00
             EndUtc = OsloLokal(2026, 2, 7, 12),
             State = UnitState.PlannedOutage,
             Category = DowntimeEventCategory.PlanlagtVedlikehold,
@@ -323,7 +323,7 @@ public class VaktRoiCalculatorTests
     [Fact]
     public void Lang_Trip_Forbi_Counterfactual_Gir_Null_ROI()
     {
-        // Trip onsdag 16:00, fikset fÃ¸rst fredag morgen 06:00 â€” vakten brukte
+        // Trip onsdag 16:00, fikset først fredag morgen 06:00 — vakten brukte
         // mer tid enn driftspersonell ville gjort. Counterfactual = torsdag 08:00.
         var ev = new DowntimeEvent
         {
@@ -335,7 +335,7 @@ public class VaktRoiCalculatorTests
             TapMwh = 30, TapNok = 25500, TimerSettlement = 38,
         };
 
-        // Selv med overlÃ¸p i hele perioden â€” ekstraTimer = 0 betyr ingen ROI.
+        // Selv med overløp i hele perioden — ekstraTimer = 0 betyr ingen ROI.
         var plan = PlanFlat(ev.StartUtc, ev.EndUtc, 2.2 * 0.5);
 
         var calc = new VaktRoiCalculator();
@@ -355,12 +355,12 @@ public class VaktRoiCalculatorTests
     [Fact]
     public void Helg_Trip_Hopper_Til_Mandag_0800_Med_Overlop()
     {
-        // LÃ¸rdag 7. feb 2026 kl 12:00 â†’ mandag 9. feb 08:00 = 43 t ekstra
+        // Lørdag 7. feb 2026 kl 12:00 → mandag 9. feb 08:00 = 43 t ekstra
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
             StartUtc = OsloLokal(2026, 2, 7, 12),
-            EndUtc = OsloLokal(2026, 2, 7, 13),  // vakt fikset pÃ¥ 1 time
+            EndUtc = OsloLokal(2026, 2, 7, 13),  // vakt fikset på 1 time
             State = UnitState.ForcedOutage,
             Category = DowntimeEventCategory.TripFeil,
             TapMwh = 1.0, TapNok = 850, TimerSettlement = 1,
@@ -377,7 +377,7 @@ public class VaktRoiCalculatorTests
             overflowHours: overflow,
             overflowDataAvailable: true);
 
-        roi[0].EkstraTimerSpart.Should().BeApproximately(43.0, 0.01); // 13:00 lÃ¸rdag â†’ 08:00 mandag
+        roi[0].EkstraTimerSpart.Should().BeApproximately(43.0, 0.01); // 13:00 lørdag → 08:00 mandag
         roi[0].OverflowTimerInCounterfactual.Should().Be(43);
         roi[0].ReddetNok.Should().BeGreaterThan(0);
     }
@@ -410,11 +410,11 @@ public class VaktRoiCalculatorTests
             snittUbalansetillegg_NokMwh: 200);
 
         var r = roi[0];
-        // Produksjon: 15 t Ã— 2.2 Ã— 0.5 Ã— 850 = 14 025 NOK
+        // Produksjon: 15 t × 2.2 × 0.5 × 850 = 14 025 NOK
         r.ReddetProduksjon_NOK.Should().BeApproximately(15 * 2.2 * 0.5 * 850, 1.0);
-        // Ubalanse: 15 hele timer (gulv-kvantisert) Ã— 2.2 Ã— 0.5 Ã— 200 = 3 300 NOK
+        // Ubalanse: 15 hele timer (gulv-kvantisert) × 2.2 × 0.5 × 200 = 3 300 NOK
         // (gammel formel brukte 14.5 t kontinuerlig, men plan summeres per hele time
-        // â€” counterfactual-vinduet dekker timene 16:00..07:00 = 16 hele timer minus
+        // — counterfactual-vinduet dekker timene 16:00..07:00 = 16 hele timer minus
         // outage-timene 16-17, dvs. 15 timer plan-bidrag).
         r.ReddetUbalanse_NOK.Should().BeApproximately(15 * 2.2 * 0.5 * 200, 1.0);
         // Total = sum
@@ -425,8 +425,8 @@ public class VaktRoiCalculatorTests
     [Fact]
     public void V3_Trip_Uten_Overlop_Med_Ubalansetillegg_Gir_Bare_Ubalanse_ROI()
     {
-        // Selv uten overlÃ¸p (vannet trygt magasinert) reddet vakten ubalanse-gebyret
-        // for de timene plant'en var forpliktet til Ã¥ levere.
+        // Selv uten overløp (vannet trygt magasinert) reddet vakten ubalanse-gebyret
+        // for de timene plant'en var forpliktet til å levere.
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
@@ -453,10 +453,10 @@ public class VaktRoiCalculatorTests
         // Plan summeres per hele time: 15 timer i counterfactual-vinduet utenfor outage.
         r.ReddetUbalanse_NOK.Should().BeApproximately(15 * 2.2 * 0.5 * 200, 1.0);
         r.ReddetNok.Should().BeApproximately(15 * 2.2 * 0.5 * 200, 1.0);
-        r.Forklaring.Should().Contain("ingen overlÃ¸p");
-        // FortegnsnÃ¸ytral formulering (SPEC-VAKT-ROI-UBALANSE-FULLPERIODE B3):
-        // positiv premie â†’ Â«Ubalanse-gebyr unngÃ¥ttÂ».
-        r.Forklaring.Should().Contain("Ubalanse-gebyr unngÃ¥tt");
+        r.Forklaring.Should().Contain("ingen OBSERVERT overløp");
+        // Fortegnsnøytral formulering (SPEC-VAKT-ROI-UBALANSE-FULLPERIODE B3):
+        // positiv premie → «Ubalanse-gebyr unngått».
+        r.Forklaring.Should().Contain("Ubalanse-gebyr unngått");
     }
 
     [Fact]
@@ -489,7 +489,7 @@ public class VaktRoiCalculatorTests
         var r = roi[0];
         r.OverflowDataMissing.Should().BeTrue();
         r.ReddetProduksjon_NOK.Should().Be(0);
-        // 15 hele timer plan-bidrag (gulv-kvantisert) Ã— 2.2 Ã— 0.5 Ã— 200
+        // 15 hele timer plan-bidrag (gulv-kvantisert) × 2.2 × 0.5 × 200
         r.ReddetUbalanse_NOK.Should().BeApproximately(15 * 2.2 * 0.5 * 200, 1.0);
         r.Forklaring.Should().Contain("SCADA mangler");
         r.Forklaring.Should().Contain("Ubalanse");
@@ -498,9 +498,9 @@ public class VaktRoiCalculatorTests
     [Fact]
     public void V3_Negativ_Ubalansetillegg_Gir_Negativ_Ubalanse_ROI()
     {
-        // Ã‰nprismodellen kan gi NEGATIV forventet ubalanse-merkost (ubalanse var i
+        // Énprismodellen kan gi NEGATIV forventet ubalanse-merkost (ubalanse var i
         // snitt billigere enn spot, typisk i NO2). Da er ubalanse-komponenten
-        // negativ â€” kontrakten kaster IKKE lenger.
+        // negativ — kontrakten kaster IKKE lenger.
         // FAGVURDERING #1 / SPEC-UBALANSE-ENPRIS-FIX.
         var ev = new DowntimeEvent
         {
@@ -524,12 +524,12 @@ public class VaktRoiCalculatorTests
             snittUbalansetillegg_NokMwh: -100);
 
         var r = roi[0];
-        r.ReddetProduksjon_NOK.Should().Be(0); // ingen overlÃ¸p
-        // Samme 15 timer som positiv-varianten, negativ premie â†’ negativ komponent.
+        r.ReddetProduksjon_NOK.Should().Be(0); // ingen overløp
+        // Samme 15 timer som positiv-varianten, negativ premie → negativ komponent.
         r.ReddetUbalanse_NOK.Should().BeApproximately(15 * 2.2 * 0.5 * -100, 1.0);
         r.ReddetUbalanse_NOK.Should().BeLessThan(0);
-        // Totalen bÃ¦rer fortegnet: ReddetNok = 0 + negativ ubalanse < 0
-        // (SPEC-VAKT-ROI-UBALANSE-FULLPERIODE Â§6.2 â€” negativ total skal IKKE
+        // Totalen bærer fortegnet: ReddetNok = 0 + negativ ubalanse < 0
+        // (SPEC-VAKT-ROI-UBALANSE-FULLPERIODE §6.2 — negativ total skal IKKE
         // klippes til 0 noe sted i kjeden).
         r.ReddetNok.Should().BeApproximately(r.ReddetUbalanse_NOK, 0.01);
         r.ReddetNok.Should().BeLessThan(0);
@@ -538,17 +538,17 @@ public class VaktRoiCalculatorTests
     [Fact]
     public void FullPeriode_Ubalanse_Dekker_Hele_Counterfactual_Vinduet_For_Helge_Event()
     {
-        // Helge-event: trip lÃ¸rdag 13:00, counterfactual = mandag 08:00 (neste
-        // arbeidsdag). Ubalanse-komponenten dekker HELE vinduet â€” Hydrogrid melder
-        // inn produksjon automatisk for pÃ¥fÃ¸lgende dÃ¸gn, sÃ¥ Spotbud-forpliktelsen
-        // bestÃ¥r gjennom hele den ekstra nedetiden (verifisert mot Ã˜greyfoss-
+        // Helge-event: trip lørdag 13:00, counterfactual = mandag 08:00 (neste
+        // arbeidsdag). Ubalanse-komponenten dekker HELE vinduet — Hydrogrid melder
+        // inn produksjon automatisk for påfølgende døgn, så Spotbud-forpliktelsen
+        // består gjennom hele den ekstra nedetiden (verifisert mot Øgreyfoss-
         // havariet 16.01.2026: Spotbud sto uendret gjennom hele nedetiden).
-        // SPEC-VAKT-ROI-UBALANSE-FULLPERIODE-OG-VISNING (avlÃ¸ser gate-closure-
+        // SPEC-VAKT-ROI-UBALANSE-FULLPERIODE-OG-VISNING (avløser gate-closure-
         // cappen fra SPEC-UBALANSE-ENPRIS-FIX).
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
-            StartUtc = OsloLokal(2026, 2, 7, 13),   // lÃ¸rdag
+            StartUtc = OsloLokal(2026, 2, 7, 13),   // lørdag
             EndUtc = OsloLokal(2026, 2, 7, 14),     // 1 t outage
             State = UnitState.ForcedOutage,
             Category = DowntimeEventCategory.TripFeil,
@@ -570,10 +570,10 @@ public class VaktRoiCalculatorTests
 
         var r = roi[0];
 
-        // Produksjon dekker hele counterfactual: 42 timer (43 i vinduet âˆ’ 1 outage).
+        // Produksjon dekker hele counterfactual: 42 timer (43 i vinduet − 1 outage).
         r.ReddetProduksjon_NOK.Should().BeApproximately(42 * p * 850, 1.0);
 
-        // Ubalanse dekker de SAMME 42 timene â€” ikke kappet ved lÃ¸rdag/sÃ¸ndag-
+        // Ubalanse dekker de SAMME 42 timene — ikke kappet ved lørdag/søndag-
         // gate-closure (tidligere: 34 timer).
         r.ReddetUbalanse_NOK.Should().BeApproximately(42 * p * 200, 1.0);
         r.ReddetNok.Should().BeApproximately(42 * p * 850 + 42 * p * 200, 1.0);
@@ -583,9 +583,9 @@ public class VaktRoiCalculatorTests
     public void Variant2_PerTime_Premie_Verdsetter_Hver_Time_Paa_Faktisk_Pris()
     {
         // Variant 2 (SPEC funn 1b): et periodesnitt er strukturelt negativt i NO2
-        // og maskerer knapphetstimer. Hver counterfactual-time skal verdsettes pÃ¥
-        // timens faktiske (RK âˆ’ spot); timer som mangler i ordboken faller
-        // tilbake pÃ¥ periodesnittet.
+        // og maskerer knapphetstimer. Hver counterfactual-time skal verdsettes på
+        // timens faktiske (RK − spot); timer som mangler i ordboken faller
+        // tilbake på periodesnittet.
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
@@ -600,10 +600,10 @@ public class VaktRoiCalculatorTests
         const double p = 2.0;                                // plan MWh/time
         var plan = PlanFlat(ev.StartUtc, counterfactualEnd, p);
 
-        // Counterfactual-timer (ikke-outage): 17:00 â†’ 08:00 = 15 hele timer.
-        // Gi de FÃ˜RSTE 3 timene en sterkt positiv premie (knapphet, RK â‰« spot),
-        // de neste 10 en negativ (NO2-normalen) â€” og la de siste 2 mangle i
-        // ordboken slik at fallback-snittet (âˆ’50) brukes.
+        // Counterfactual-timer (ikke-outage): 17:00 → 08:00 = 15 hele timer.
+        // Gi de FØRSTE 3 timene en sterkt positiv premie (knapphet, RK ≫ spot),
+        // de neste 10 en negativ (NO2-normalen) — og la de siste 2 mangle i
+        // ordboken slik at fallback-snittet (−50) brukes.
         var premieByHour = new Dictionary<DateTimeOffset, double>();
         var t0 = OsloLokal(2026, 2, 4, 17);
         for (var i = 0; i < 3; i++) premieByHour[t0.AddHours(i)] = +500;
@@ -619,30 +619,30 @@ public class VaktRoiCalculatorTests
             ubalansePremieByHour: premieByHour);
 
         var r = roi[0];
-        r.ReddetProduksjon_NOK.Should().Be(0); // ingen overlÃ¸p
+        r.ReddetProduksjon_NOK.Should().Be(0); // ingen overløp
 
-        // Forventet: 3 t Ã— 2 MWh Ã— 500 + 10 t Ã— 2 MWh Ã— (âˆ’30) + 2 t Ã— 2 MWh Ã— (âˆ’50)
-        //          = 3000 âˆ’ 600 âˆ’ 200 = 2 200 NOK.
-        // Med periodesnittet alene ville komponenten vÃ¦rt 15 Ã— 2 Ã— (âˆ’50) = âˆ’1 500 â€”
+        // Forventet: 3 t × 2 MWh × 500 + 10 t × 2 MWh × (−30) + 2 t × 2 MWh × (−50)
+        //          = 3000 − 600 − 200 = 2 200 NOK.
+        // Med periodesnittet alene ville komponenten vært 15 × 2 × (−50) = −1 500 —
         // per-time-verdsettingen avdekker at knapphetstimene snur fortegnet.
         r.ReddetUbalanse_NOK.Should().BeApproximately(2200, 1.0);
         r.ReddetNok.Should().BeApproximately(2200, 1.0);
     }
 
     /// <summary>
-    /// Drifts-leders 2026-05-04-bug: hvis det oppstÃ¥r flere events i samme
+    /// Drifts-leders 2026-05-04-bug: hvis det oppstår flere events i samme
     /// vakt-vindu (eks. 21.02.2026 helg-callout), skal IKKE alle telles som
-    /// selvstendige ROI-er. Vakta er allerede ute â€” ekstra hendelser i samme
-    /// helg Ã¸ker ikke omfanget.
+    /// selvstendige ROI-er. Vakta er allerede ute — ekstra hendelser i samme
+    /// helg øker ikke omfanget.
     /// </summary>
     [Fact]
     public void Helg_Flere_Events_I_Samme_Vakt_Vindu_Telles_Som_Ett_Callout()
     {
-        // LÃ¸rdag 21.02.2026 â€” to events samme helg
+        // Lørdag 21.02.2026 — to events samme helg
         var event1 = new DowntimeEvent
         {
             PlantId = "drivdal",
-            StartUtc = OsloLokal(2026, 2, 21, 16),  // lÃ¸rdag 16:00
+            StartUtc = OsloLokal(2026, 2, 21, 16),  // lørdag 16:00
             EndUtc = OsloLokal(2026, 2, 21, 17),    // 1 t outage
             State = UnitState.ForcedOutage,
             Category = DowntimeEventCategory.TripFeil,
@@ -652,7 +652,7 @@ public class VaktRoiCalculatorTests
         var event2 = new DowntimeEvent
         {
             PlantId = "drivdal",
-            StartUtc = OsloLokal(2026, 2, 22, 14),  // sÃ¸ndag 14:00
+            StartUtc = OsloLokal(2026, 2, 22, 14),  // søndag 14:00
             EndUtc = OsloLokal(2026, 2, 22, 15),    // 1 t outage
             State = UnitState.ForcedOutage,
             Category = DowntimeEventCategory.TripFeil,
@@ -679,7 +679,7 @@ public class VaktRoiCalculatorTests
         // Leder samler hele gruppe-ROI
         leader.ErReddbar.Should().BeTrue();
         leader.EkstraTimerSpart.Should().BeApproximately(38, 0.01,
-            "lÃ¸r 16:00 â†’ man 08:00 = 40 t, minus 2 t faktisk outage = 38 t");
+            "lør 16:00 → man 08:00 = 40 t, minus 2 t faktisk outage = 38 t");
         leader.ReddetNok.Should().BeGreaterThan(0);
 
         // Medlem skal ha 0 ROI med eksplisitt forklaring
@@ -710,7 +710,7 @@ public class VaktRoiCalculatorTests
             overflowDataAvailable: true);
 
         var leader = roi.First(r => ReferenceEquals(r.Event, e1));
-        // Vindu = lÃ¸r 16:00 â†’ man 08:00 = 40 t. Minus 4 t union = 36 t.
+        // Vindu = lør 16:00 → man 08:00 = 40 t. Minus 4 t union = 36 t.
         leader.EkstraTimerSpart.Should().BeApproximately(36, 0.01);
 
         // De to andre er medlemmer
@@ -721,7 +721,7 @@ public class VaktRoiCalculatorTests
     [Fact]
     public void Events_I_Forskjellige_Vakt_Vinduer_Tellers_Selvstendig()
     {
-        // To events i forskjellige helger â€” hver sin counterfactual og ROI
+        // To events i forskjellige helger — hver sin counterfactual og ROI
         var e1 = MakeEvent(OsloLokal(2026, 2, 14, 16), OsloLokal(2026, 2, 14, 17)); // helg 1
         var e2 = MakeEvent(OsloLokal(2026, 2, 21, 16), OsloLokal(2026, 2, 21, 17)); // helg 2
 
@@ -736,10 +736,10 @@ public class VaktRoiCalculatorTests
             overflowHours: overflow,
             overflowDataAvailable: true);
 
-        // Begge er ledere for sin gruppe â€” begge fÃ¥r full ROI
+        // Begge er ledere for sin gruppe — begge får full ROI
         roi.Should().HaveCount(2);
         roi[0].EkstraTimerSpart.Should().BeApproximately(39, 0.01,
-            "helg 1: lÃ¸r 16:00 â†’ man 08:00 = 40 t, minus 1 t = 39 t");
+            "helg 1: lør 16:00 → man 08:00 = 40 t, minus 1 t = 39 t");
         roi[1].EkstraTimerSpart.Should().BeApproximately(39, 0.01, "samme math for helg 2");
     }
 
@@ -747,7 +747,7 @@ public class VaktRoiCalculatorTests
     public void Forskjellige_Anlegg_Samme_Vindu_Tellers_Selvstendig()
     {
         // Drivdal-event og Haukland-event samme helg = forskjellige vakt-callouts
-        // (eller i hvert fall forskjellige anlegg â€” ROI per plant er separat).
+        // (eller i hvert fall forskjellige anlegg — ROI per plant er separat).
         var e1 = new DowntimeEvent
         {
             PlantId = "drivdal",
@@ -778,7 +778,7 @@ public class VaktRoiCalculatorTests
             overflowHours: overflow,
             overflowDataAvailable: true);
 
-        // Begge fÃ¥r sin egen ROI siden de er forskjellige plants
+        // Begge får sin egen ROI siden de er forskjellige plants
         roi.Should().HaveCount(2);
         roi.Should().AllSatisfy(r =>
         {
@@ -790,7 +790,7 @@ public class VaktRoiCalculatorTests
     [Fact]
     public void PlanDataPartial_FlaggesNaarProxyHoursTreffer_CounterfactualVindu()
     {
-        // Event onsdag kveld â†’ counterfactual = torsdag 08:00.
+        // Event onsdag kveld → counterfactual = torsdag 08:00.
         // Vi gir plan for hele vinduet, men markerer noen av timene som proxy.
         var ev = new DowntimeEvent
         {
@@ -837,7 +837,7 @@ public class VaktRoiCalculatorTests
             TapMwh = 1.0, TapNok = 850, TimerSettlement = 1,
         };
 
-    // ---- v2: counterfactual-overlÃ¸p via tilsigsmodell (SPEC-VAKT-ROI-OVERLOP-V2) ----
+    // ---- v2: counterfactual-overløp via tilsigsmodell (SPEC-VAKT-ROI-OVERLOP-V2) ----
 
     private static IReadOnlyList<InflowOverflowEstimator.HourlySample> DamSamples(
         DateTimeOffset fromUtc, int hours, double startVolumeM3, double dVolumePerHourM3,
@@ -871,8 +871,8 @@ public class VaktRoiCalculatorTests
     public void V2_Estimat_Gir_Produksjonskreditt_Uten_Observert_Overlop_Regresjon_Skjermbilde()
     {
         // Regresjonscase fra skjermbildet: trip fredag 2026-04-10 22:00 (3 t outage),
-        // counterfactual mandag 08:00, NULL observerte overlÃ¸pstimer. Med tilsig i
-        // april fyller magasinet seg â†’ estimert overlÃ¸p â†’ Reddet produksjon > 0.
+        // counterfactual mandag 08:00, NULL observerte overløpstimer. Med tilsig i
+        // april fyller magasinet seg → estimert overløp → Reddet produksjon > 0.
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
@@ -887,17 +887,17 @@ public class VaktRoiCalculatorTests
         const double p = 2.2 * 0.5;
         var plan = PlanFlat(ev.StartUtc, counterfactualEnd, p);
 
-        // Lookback 24 t: stigende volum +3600 mÂ³/t = netto inn 1 mÂ³/s (dam/turbin 0).
+        // Lookback 24 t: stigende volum +3600 m³/t = netto inn 1 m³/s (dam/turbin 0).
         var damSamples = DamSamples(OsloLokal(2026, 4, 9, 22), hours: 24,
             startVolumeM3: 1_000_000, dVolumePerHourM3: 3600);
-        // Fyllgrad 90 % â†’ ledig 0,1 Ã— 360 000 = 36 000 mÂ³ â†’ fullt etter 10 t.
+        // Fyllgrad 90 % → ledig 0,1 × 360 000 = 36 000 m³ → fullt etter 10 t.
         var fill = FillFlat(OsloLokal(2026, 4, 9, 22), hours: 24, fill: 0.90);
 
         var calc = new VaktRoiCalculator();
         var roi = calc.Calculate(new[] { ev },
             snittSpotprisNokMwh: 850,
             planByHour: plan,
-            overflowHours: new HashSet<DateTimeOffset>(),   // INGEN observert overlÃ¸p
+            overflowHours: new HashSet<DateTimeOffset>(),   // INGEN observert overløp
             overflowDataAvailable: true,
             damSamples: damSamples,
             maxVolumeM3: 360_000,
@@ -909,7 +909,7 @@ public class VaktRoiCalculatorTests
         r.SavedOverflowHoursEstimated.Should().BeGreaterThan(0);
         r.ReddetProduksjon_NOK.Should().BeGreaterThan(0);
         r.OverflowEstimateHoursToFull.Should().BeApproximately(10.0, 0.5);
-        // Ingen dobbelttelling: reddet MWh = (observert + estimert) timer Ã— plan.
+        // Ingen dobbelttelling: reddet MWh = (observert + estimert) timer × plan.
         r.ReddetMwh.Should().BeApproximately(
             (r.SavedOverflowHoursObserved + r.SavedOverflowHoursEstimated) * p, 0.01);
         r.Forklaring.Should().Contain("estimert");
@@ -918,7 +918,7 @@ public class VaktRoiCalculatorTests
     [Fact]
     public void V2_Uten_DamSamples_Beholder_Dagens_Oppforsel()
     {
-        // Ingen dam-samples â†’ estimat ikke tilgjengelig, kun observert overlÃ¸p.
+        // Ingen dam-samples → estimat ikke tilgjengelig, kun observert overløp.
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
@@ -948,7 +948,7 @@ public class VaktRoiCalculatorTests
     public void V2_Override_IkkeOverlop_Trumfer_Estimat()
     {
         // Samme oppsett som regresjonscaset, men drifts-leder har satt IkkeOverlop
-        // â†’ ingen produksjonskreditt, estimatet trumfes.
+        // → ingen produksjonskreditt, estimatet trumfes.
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
@@ -983,8 +983,8 @@ public class VaktRoiCalculatorTests
     [Fact]
     public void V2_NettoInn_Negativ_Gir_Ingen_Estimerte_Timer()
     {
-        // Fallende volum (netto inn â‰¤ 0) â†’ magasinet fylles ikke â†’ 0 estimerte timer,
-        // men estimatet er likevel Â«tilgjengeligÂ» (DataAvailable=true).
+        // Fallende volum (netto inn ≤ 0) → magasinet fylles ikke → 0 estimerte timer,
+        // men estimatet er likevel «tilgjengelig» (DataAvailable=true).
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
@@ -996,7 +996,7 @@ public class VaktRoiCalculatorTests
         };
         var counterfactualEnd = OsloLokal(2026, 4, 13, 8);
         var plan = PlanFlat(ev.StartUtc, counterfactualEnd, 2.2 * 0.5);
-        // Fallende volum âˆ’3600 mÂ³/t â†’ netto inn âˆ’1 mÂ³/s.
+        // Fallende volum −3600 m³/t → netto inn −1 m³/s.
         var damSamples = DamSamples(OsloLokal(2026, 4, 9, 22), 24, 1_000_000, -3600);
         var fill = FillFlat(OsloLokal(2026, 4, 9, 22), 24, 0.50);
 
@@ -1018,17 +1018,17 @@ public class VaktRoiCalculatorTests
     }
 
     /// <summary>
-    /// B1 (2026-05-20): <c>ActualEndOverrideUtc</c> anvendes oppstrÃ¸ms for
+    /// B1 (2026-05-20): <c>ActualEndOverrideUtc</c> anvendes oppstrøms for
     /// <see cref="VaktRoiCalculator"/> ved at endepunktet bygger om event-listen
-    /// med ny <c>EndUtc</c> fÃ¸r <c>Calculate</c> kalles. Denne testen simulerer
-    /// det ved Ã¥ kjÃ¸re Calculate to ganger med samme event men ulik EndUtc og
+    /// med ny <c>EndUtc</c> før <c>Calculate</c> kalles. Denne testen simulerer
+    /// det ved å kjøre Calculate to ganger med samme event men ulik EndUtc og
     /// verifisere at EkstraTimerSpart endres med tilsvarende differanse.
     /// </summary>
     [Fact]
     public void ActualEndOverride_Reduserer_EkstraTimerSpart()
     {
-        // Onsdag 4. feb 2026 16:00 â€” vakten ble varslet.
-        // Original (fra SCADA): vakten "lÃ¸ste" pÃ¥ 17:30 (1.5 t)
+        // Onsdag 4. feb 2026 16:00 — vakten ble varslet.
+        // Original (fra SCADA): vakten "løste" på 17:30 (1.5 t)
         // Drifts-leder overstyrer: faktisk slutt var 16:30 (0.5 t)
         var start = OsloLokal(2026, 2, 4, 16);
         var counterfactualEnd = OsloLokal(2026, 2, 5, 8);
@@ -1045,8 +1045,8 @@ public class VaktRoiCalculatorTests
             overflowHours: overflow,
             overflowDataAvailable: true);
 
-        // Override simulert: samme event, men EndUtc forskjÃ¸vet en time tilbake.
-        // (Endepunktet bytter ut EndUtc i events-listen FÃ˜R Calculate kalles.)
+        // Override simulert: samme event, men EndUtc forskjøvet en time tilbake.
+        // (Endepunktet bytter ut EndUtc i events-listen FØR Calculate kalles.)
         var evOverridden = evOriginal with { EndUtc = OsloLokal(2026, 2, 4, 16, 30) };
         var roiOverridden = calc.Calculate(new[] { evOverridden },
             snittSpotprisNokMwh: 850,
@@ -1054,36 +1054,36 @@ public class VaktRoiCalculatorTests
             overflowHours: overflow,
             overflowDataAvailable: true);
 
-        // Ekstra timer Ã¸ker med 1 time fordi vakten "i realiteten" fikset
-        // problemet 1 t tidligere â€” 15.5 t vs 14.5 t.
+        // Ekstra timer øker med 1 time fordi vakten "i realiteten" fikset
+        // problemet 1 t tidligere — 15.5 t vs 14.5 t.
         roiOriginal[0].EkstraTimerSpart.Should().BeApproximately(14.5, 0.01);
         roiOverridden[0].EkstraTimerSpart.Should().BeApproximately(15.5, 0.01);
 
-        // Reddet NOK skal ogsÃ¥ Ã¸ke proporsjonalt â€” en hel klokketime mer
-        // utenfor outage-vinduet, sÃ¥ plan-sum Ã¸ker med 1 Ã— 2.2 Ã— 0.5 MWh.
+        // Reddet NOK skal også øke proporsjonalt — en hel klokketime mer
+        // utenfor outage-vinduet, så plan-sum øker med 1 × 2.2 × 0.5 MWh.
         var diff = roiOverridden[0].ReddetNok - roiOriginal[0].ReddetNok;
         diff.Should().BeApproximately(2.2 * 0.5 * 850, 1.0);
     }
 
     /// <summary>
-    /// Spec NESTE-CHAT-VAKTROI-OG-UI-FIKS.md Del A â€” monoton-invariant:
-    /// For samme periode og samme oppmÃ¸te, og to vakt-vindu der A âŠ† B,
-    /// mÃ¥ TotalReddet(A) â‰¤ TotalReddet(B).
+    /// Spec NESTE-CHAT-VAKTROI-OG-UI-FIKS.md Del A — monoton-invariant:
+    /// For samme periode og samme oppmøte, og to vakt-vindu der A ⊆ B,
+    /// må TotalReddet(A) ≤ TotalReddet(B).
     ///
-    /// Konkret scenario fra dokumentasjonen: brukerens 15:00-23:00 mÃ¥ aldri
-    /// redde mer enn dÃ¸gnvakt 15:00-07:00 (sistnevnte er superset).
+    /// Konkret scenario fra dokumentasjonen: brukerens 15:00-23:00 må aldri
+    /// redde mer enn døgnvakt 15:00-07:00 (sistnevnte er superset).
     ///
-    /// Rot-Ã¥rsaken som testen fanger: hvis et event utenfor brukerens
+    /// Rot-årsaken som testen fanger: hvis et event utenfor brukerens
     /// kortere vindu (eks. natt 02:00) faktisk skjedde inne i et annet leder-
-    /// events counterfactual-vindu, mÃ¥ den outage-tiden fortsatt trekkes fra
-    /// savedHours â€” ellers gir det smalere vinduet kunstig hÃ¸yere ROI.
+    /// events counterfactual-vindu, må den outage-tiden fortsatt trekkes fra
+    /// savedHours — ellers gir det smalere vinduet kunstig høyere ROI.
     /// </summary>
     [Fact]
     public void Monoton_Invariant_KortereVinduRedderAldriMer()
     {
-        // Mandag 2026-02-02 â€” to events samme natt:
-        //   A: 22:00 mandag, varighet 1 t  â†’ 22:00-23:00
-        //   B: 02:00 tirsdag, varighet 1 t â†’ 02:00-03:00
+        // Mandag 2026-02-02 — to events samme natt:
+        //   A: 22:00 mandag, varighet 1 t  → 22:00-23:00
+        //   B: 02:00 tirsdag, varighet 1 t → 02:00-03:00
         // Begge har counterfactual = tirsdag 08:00.
         var events = new[]
         {
@@ -1097,7 +1097,7 @@ public class VaktRoiCalculatorTests
 
         var calc = new VaktRoiCalculator();
 
-        // Vindu B = dÃ¸gnvakt 15-07 (default â€” fanger begge events)
+        // Vindu B = døgnvakt 15-07 (default — fanger begge events)
         var roiB = calc.Calculate(events,
             snittSpotprisNokMwh: 850,
             planByHour: plan,
@@ -1123,28 +1123,28 @@ public class VaktRoiCalculatorTests
         var reddbareB = roiB.Count(r => r.ReddetNok > 0);
 
         totalA.Should().BeLessThanOrEqualTo(totalB,
-            "monoton-invariant: A âŠ† B â†’ TotalReddet(A) â‰¤ TotalReddet(B).");
+            "monoton-invariant: A ⊆ B → TotalReddet(A) ≤ TotalReddet(B).");
         reddbareA.Should().BeLessThanOrEqualTo(reddbareB,
-            "antall events med ROI skal ogsÃ¥ vÃ¦re monoton: A âŠ† B â†’ tellingen i A â‰¤ B.");
+            "antall events med ROI skal også være monoton: A ⊆ B → tellingen i A ≤ B.");
     }
 
     [Fact]
     public void Monoton_Invariant_HoldesAvUtenforVaktBidragTilOutageSet()
     {
         // Verifiserer spesifikt at outage-set inkluderer events som er
-        // UTENFOR brukerens vindu, sÃ¥ savedHours ikke kunstig blir hÃ¸yere
-        // nÃ¥r brukerens vindu smalere.
+        // UTENFOR brukerens vindu, så savedHours ikke kunstig blir høyere
+        // når brukerens vindu smalere.
         //
-        // Setup: Event A 22:00 mandag (innenfor BÃ…DE 15-07 OG 15-23).
+        // Setup: Event A 22:00 mandag (innenfor BÅDE 15-07 OG 15-23).
         //        Event B 02:00 tirsdag (innenfor 15-07, UTENFOR 15-23).
-        // Begge gruppes pÃ¥ counterfactual tirsdag 08:00.
+        // Begge gruppes på counterfactual tirsdag 08:00.
         //
-        // Window = 22:00 â†’ 08:00 = 10 t.
+        // Window = 22:00 → 08:00 = 10 t.
         // Outage = 1 t (A) + 1 t (B) = 2 t.
         // savedHours = 10 - 2 = 8 t (FOR BEGGE).
         //
-        // Bug: fÃ¸r fiksen ble savedHours for custom 15-23 beregnet til 9 t
-        // (kun A i merged-listen â†’ totalOutageHours=1), som ga A hÃ¸yere ROI
+        // Bug: før fiksen ble savedHours for custom 15-23 beregnet til 9 t
+        // (kun A i merged-listen → totalOutageHours=1), som ga A høyere ROI
         // i custom-modus enn default-modus.
         var events = new[]
         {
@@ -1176,25 +1176,25 @@ public class VaktRoiCalculatorTests
             overflowDataAvailable: true,
             vaktOptions: custom);
 
-        // Event A er leder i begge tilfeller. SavedHours skal vÃ¦re IDENTISK
+        // Event A er leder i begge tilfeller. SavedHours skal være IDENTISK
         // siden outage-tidslinjen for plantet i [22:00, 08:00) er den samme.
         var aDefault = roiDefault.First(r => r.Event.StartUtc == events[0].StartUtc);
         var aCustom = roiCustom.First(r => r.Event.StartUtc == events[0].StartUtc);
         aCustom.EkstraTimerSpart.Should().BeApproximately(aDefault.EkstraTimerSpart, 0.001,
             "samme leder-event skal ha samme savedHours uavhengig av om B er innenfor eller utenfor brukerens vindu.");
         aCustom.ReddetMwh.Should().BeApproximately(aDefault.ReddetMwh, 0.001,
-            "plan-sum for leder skal ikke vokse nÃ¥r B faller ut av gruppen.");
+            "plan-sum for leder skal ikke vokse når B faller ut av gruppen.");
     }
 
     // ------------------------------------------------------------------------
     // Spec NESTE-CHAT-VAKTROI-PLANDEVIATION-FILTER.md (2026-05-22):
     // U2-PlanDeviation-hendelser uten operlog-match skal IKKE telle som
     // vakt-utrykning i Auto-modus. Drifts-leder kan overstyre via Yes/No.
-    // Andre cause-koder er upÃ¥virket (regresjons-sjekk).
+    // Andre cause-koder er upåvirket (regresjons-sjekk).
     // ------------------------------------------------------------------------
 
     /// <summary>
-    /// Bygger excludeFromReddbar-settet slik endepunktene gjÃ¸r det: kombinerer
+    /// Bygger excludeFromReddbar-settet slik endepunktene gjør det: kombinerer
     /// event + override-verdi via <see cref="EffectiveGuardResponseEvaluator.ShouldCount"/>.
     /// </summary>
     private static IReadOnlySet<DateTimeOffset> BuildExcludeSet(
@@ -1223,9 +1223,9 @@ public class VaktRoiCalculatorTests
     public void U2_PlanDeviation_Filter_Matrix(
         string causeCode, GuardResponseOverride ovr, bool harOperlogMatch, bool expectedTellerSomReddbar)
     {
-        // Trip onsdag 16:00-17:30 lokal â€” vakt aktiv, overlÃ¸p i hele counterfactual.
+        // Trip onsdag 16:00-17:30 lokal — vakt aktiv, overløp i hele counterfactual.
         // Hendelsen er TripFeil + reddbar-kategori. Eneste varierte forutsetning er
-        // EffectiveGuardResponse-utfallet basert pÃ¥ causeCode/override/operlog.
+        // EffectiveGuardResponse-utfallet basert på causeCode/override/operlog.
         var ev = new DowntimeEvent
         {
             PlantId = "drivdal",
@@ -1287,8 +1287,8 @@ public class VaktRoiCalculatorTests
         // vakt-vindu. Outage-tiden fra U2-eventet teller fortsatt selv om den
         // ikke gir ROI selv.
         //
-        // Event A (U1): trip 16:00-17:00 â€” leder, fÃ¥r ROI
-        // Event B (U2 uten operlog): plan-deviation 17:30-18:00 â€” filtreres
+        // Event A (U1): trip 16:00-17:00 — leder, får ROI
+        // Event B (U2 uten operlog): plan-deviation 17:30-18:00 — filtreres
         //
         // Begge har counterfactualEnd = torsdag 08:00. B sin outage [17:30, 18:00)
         // skal komme med i merging-passet og dermed kappe A sin SavedHours.
@@ -1311,7 +1311,7 @@ public class VaktRoiCalculatorTests
             State = UnitState.ForcedOutage,
             Category = DowntimeEventCategory.TripFeil,
             CauseCode = "U2-PlanDeviation",
-            HarOperlogMatch = false,    // Auto-modus â†’ filtreres ut
+            HarOperlogMatch = false,    // Auto-modus → filtreres ut
             TapMwh = 0.5, TapNok = 425, TimerSettlement = 1,
         };
 
@@ -1338,16 +1338,16 @@ public class VaktRoiCalculatorTests
         rA.ErReddbar.Should().BeTrue();
         rA.ReddetNok.Should().BeGreaterThan(0);
 
-        // B er ekskludert â€” fortsatt synlig, men null ROI med forklaring som
+        // B er ekskludert — fortsatt synlig, men null ROI med forklaring som
         // peker drifts-leder mot Detaljer-popup.
         rB.ErReddbar.Should().BeFalse();
         rB.ReddetNok.Should().Be(0);
         rB.Forklaring.Should().Contain("U2-PlanDeviation");
         rB.Forklaring.Should().Contain("operlog");
 
-        // Sanity-sjekk pÃ¥ monoton-invariant: A sin EkstraTimerSpart skal vÃ¦re
-        // counterfactual-vindu minus outage fra BÃ…DE A og B (= [16:00, 17:00)
-        // âˆª [17:30, 18:00) = 1.5 t). 16:00 lokal â†’ 08:00 dagen etter = 16 t,
+        // Sanity-sjekk på monoton-invariant: A sin EkstraTimerSpart skal være
+        // counterfactual-vindu minus outage fra BÅDE A og B (= [16:00, 17:00)
+        // ∪ [17:30, 18:00) = 1.5 t). 16:00 lokal → 08:00 dagen etter = 16 t,
         // savedHours = 16 - 1.5 = 14.5 t.
         rA.EkstraTimerSpart.Should().BeApproximately(14.5, 0.01,
             "B sin outage [17:30, 18:00) skal kuttes fra A sin savedHours selv om B er filtrert fra reddbar-set.");
@@ -1356,9 +1356,9 @@ public class VaktRoiCalculatorTests
     [Fact]
     public void EffectiveGuardResponseEvaluator_AndreCauseCodes_ErUendret()
     {
-        // Regresjons-sjekk: filteret skal KUN slÃ¥ inn for U2-PlanDeviation.
+        // Regresjons-sjekk: filteret skal KUN slå inn for U2-PlanDeviation.
         // Andre cause-koder (operlog:fault, operlog:alarm, U1-UnplannedStop,
-        // PlanlagtVedlikehold, null) skal alltid kvalifisere â€” uavhengig av
+        // PlanlagtVedlikehold, null) skal alltid kvalifisere — uavhengig av
         // operlog-match og override-verdi (siden override er irrelevant uten
         // U2-filter).
         var causes = new string?[] { "operlog:fault", "operlog:alarm", "U1-UnplannedStop", "PlanlagtVedlikehold", null };
@@ -1372,7 +1372,7 @@ public class VaktRoiCalculatorTests
                 State = UnitState.ForcedOutage,
                 Category = DowntimeEventCategory.TripFeil,
                 CauseCode = cause,
-                HarOperlogMatch = false, // verste tilfelle â€” filteret bÃ¸r ikke slÃ¥ inn likevel
+                HarOperlogMatch = false, // verste tilfelle — filteret bør ikke slå inn likevel
                 TapMwh = 0.5, TapNok = 425, TimerSettlement = 1,
             };
             EffectiveGuardResponseEvaluator.ShouldCount(ev, null).Should().BeTrue(
@@ -1380,7 +1380,7 @@ public class VaktRoiCalculatorTests
             EffectiveGuardResponseEvaluator.ShouldCount(ev, GuardResponseOverride.Auto).Should().BeTrue(
                 "cause '{0}' Auto skal alltid telle (filter gjelder kun U2)", cause ?? "<null>");
             EffectiveGuardResponseEvaluator.ShouldCount(ev, GuardResponseOverride.No).Should().BeTrue(
-                "cause '{0}' No-override skal IKKE filtrere ut nÃ¥r cause ikke er U2-PlanDeviation", cause ?? "<null>");
+                "cause '{0}' No-override skal IKKE filtrere ut når cause ikke er U2-PlanDeviation", cause ?? "<null>");
         }
     }
 }
