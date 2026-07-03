@@ -60,19 +60,46 @@ spec-en ga rom, avvik fra spec-teksten, og rest-punkter for driftsleder.
    er idempotent bootstrapper-SQL etter samme mønster som hydrogrid_plan-
    oppryddingen; verifisert live ved deploy i stedet (matrise + data_imports).
 
-## Verifisering
+## Verifisering (utført, live 2026-07-03)
 
-- Full testsuite grønn (inkl. drivdal-feb2025-fasit-regresjonen) + Web
-  Release-bygg 0 warnings.
+- Full testsuite grønn: **588 tester** (inkl. drivdal-feb2025-fasit-
+  regresjonen) + Web Release-bygg 0 warnings.
 - Nye tester: `HotFolderDetectorSpacingTests` (7 stk — 15-min uten markør,
   hourly, innhold-vinner-over-markør, 2-raders fallback, multi-plant fine,
   ISO-tidsstempler, kildenøkkel-mapping) og `ScadaImportServiceTests` (9 stk —
   aggregering 4/delvise kvarter, null-timer, DST-UTC-bucketing, determinisme/
   idempotens, fine-import med filter+hourly-avledning+notes, hourly-filter,
   useedet-anlegg-unntak).
-- KPI-regresjon juni 2026: baseline fanget FØR deploy
-  (`kpi-baseline-juni2026.json` i scratchpad), sammenlignet ETTER deploy —
-  se resultat nederst.
+- **Migrasjon verifisert live:** 0 scada-fine-rader igjen i data_imports;
+  expectations viser nøyaktig tre kilder (operlog, scada, settlement).
+- **Aktiv-tagliste verifisert live:** markør satt; 99 av 592 signal_map-rader
+  har StoreSamples=true; Liavatns 9 tags seedet; 18 av 29 dammer (øvre
+  kaskade) deaktivert; Lindland alt-overløp bevart aktiv.
+- **KPI-regresjon juni 2026 (før/etter-diff av live API):**
+  - Effektivitet: **identisk** for alle anlegg.
+  - Economy (MWh, IEEE-AF, nedetid-timer, tap, events): **identisk** for
+    10 av 11 anlegg; eneste diff er `orsdalen.reddetAvVaktNok`
+    −1 216 → **+41 047** — den TILSIKTEDE ProductionStateProxy-effekten
+    (se «Kjente konsekvenser»). Portefølje-vakt-roi −42 614 → −350.
+  - Vakt-ROI per anlegg: alle øvrige anlegg uendret (kun sorterings-
+    rekkefølge flyttet seg fordi Ørsdalen gikk til topps).
+
+## Stille feil funnet og fikset under deploy (viktig kontekst)
+
+1. Settlement-backfillen i `EnsureDataCompletenessSchemaAsync` hadde feilet
+   STILLE lenge: live-tabellen har `completion_threshold_pct NOT NULL` uten
+   default (eldre skjema), så INSERT-en kastet 23502 hver oppstart — fanget
+   av catch-og-logg. Fikset (eksplisitt kolonne + idempotent SET DEFAULT),
+   og scada-fine-migrasjonen ligger nå i egen batch så den ikke avhenger av
+   backfillen.
+2. EF raw-SQL-parametere støtter ikke `DBNull` — Liavatn-inserten brukte det
+   og veltet hele AktivTagListeSeeder ved første deploy. Fikset med
+   NULLIF-sentinel. (Markør-designet gjorde at andre forsøk anvendte alt
+   korrekt.)
+3. Testfilen `VaktRoiCalculatorTests.cs` hadde mojibake-encoding fra en
+   tidligere PowerShell-tekstpipeline — 3 tester feilet stille (maskert av
+   `dotnet test | tail`-exitkode). Reparert (147 linjer) i egen commit;
+   lærdom notert i prosjektminnet.
 
 ## Kjente konsekvenser (tilsiktet)
 
