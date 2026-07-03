@@ -218,7 +218,9 @@ else if (IsPortfolioMode && _portfolio is not null)
             <MudGrid>
                 <MudItem xs="12" md="4">
                     <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">Din konfig</MudText>
-                    <MudText Typo="Typo.body2" Class="mb-1">@FormatVaktVindu(_portfolio.FromUtc.ToLocalTime().ToString("HH:mm"), "n/a", "n/a")</MudText>
+                    @* Portefølje-responsen bærer ikke vakt-vinduet — bruk brukerens
+                       valgte verdier (samme som ble sendt inn i spørringen). *@
+                    <MudText Typo="Typo.body2" Class="mb-1">@DinKonfigVindu</MudText>
                     <MudText Typo="Typo.h4">@FormatNok(customNok)</MudText>
                     <MudText Typo="Typo.caption">@customEvents reddbare events</MudText>
                 </MudItem>
@@ -746,6 +748,17 @@ else if (!IsPortfolioMode && _response is not null)
 
     private static string FormatVaktVindu(string start, string slutt, string oppmote) =>
         $"{start}-{slutt} (oppmøte {oppmote})";
+
+    /// <summary>
+    /// Brukerens valgte vakt-vindu formatert for «Din konfig» i portefølje-
+    /// sammenligningen. Effektiv verdi = brukervalg, med default som fallback
+    /// (feltene kan i teorien tømmes). Rettelse 2026-07-03: viste tidligere
+    /// periodens FromUtc-klokkeslett + «n/a» (placeholder som aldri ble byttet).
+    /// </summary>
+    private string DinKonfigVindu => FormatVaktVindu(
+        _vaktStart?.ToString(@"hh\:mm") ?? VaktStartDefault,
+        _vaktSlutt?.ToString(@"hh\:mm") ?? VaktSluttDefault,
+        _oppmote?.ToString(@"hh\:mm") ?? OppmoteDefault);
 
     // ----- GWh-andel-fordeling av samlet vaktkost ----------------------------
 
