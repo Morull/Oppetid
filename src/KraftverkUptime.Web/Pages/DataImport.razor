@@ -1087,18 +1087,20 @@
                         else if (cell.ImportPeriodFromUtc is not null)
                         {
                             // Hele måneden dekket av import-perioden, men dekning < threshold —
-                            // det betyr per-time-gap (manglende rader, sensor-feil, eller hull i kilden)
-                            var expectedRows = totalDays * 24;
+                            // det betyr per-tidssteg-gap (manglende rader, sensor-feil, eller hull i kilden).
+                            // SCADA-trend er nå alltid 15-min (SPEC-IMPORT-KONSOLIDERT-15MIN):
+                            // forventning regnes i kvarter (dager × 96).
+                            var expectedRows = totalDays * 96;
                             var actualRows = cell.RowsImported ?? 0;
-                            var missingRows = Math.Max(0, expectedRows - actualRows);
                             <MudAlert Severity="Severity.Warning" Dense="true">
                                 <strong>Hull i tids-rader:</strong> hele måneden er innenfor importens periode,
                                 men dekningen er @coveragePct.ToString("F1") %.<br />
                                 <span style="font-size:0.9em;">
                                     @if (cell.SourceType == "scada")
                                     {
-                                        <span>Forventet ca. @expectedRows.ToString("N0") timer (@totalDays × 24).
-                                        Importert @actualRows.ToString("N0") — dvs. @missingRows.ToString("N0") timer mangler.
+                                        <span>Forventet ca. @expectedRows.ToString("N0") kvarter (@totalDays × 96) for en
+                                        15-min-eksport; eldre hourly-importer har @((totalDays * 24).ToString("N0")) timer.
+                                        Importert @actualRows.ToString("N0").
                                         Sannsynlig årsak: sensor-feil, kommunikasjonsavbrudd eller hull i SCADA-eksport.</span>
                                     }
                                     else if (cell.SourceType == "settlement")

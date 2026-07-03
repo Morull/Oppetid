@@ -21,7 +21,11 @@ public sealed record Dam(
     double? HrvMoh,
     double? LrvMoh,
     double? VolumeMm3,
-    int? OverflowProxyThresholdCm = null);
+    int? OverflowProxyThresholdCm = null,
+    bool IsActive = true);
 // OverflowProxyThresholdCm: terskel (cm over HRV) for level-baserte overflow-
 // proxy. Kun relevant når anleggets OverflowMode = LevelProxy og dette er
 // terminal-dammen. Typisk 10 cm, settes per dam via PlantAdmin.
+// IsActive: false = dammen har ingen tags i 15-min-eksporten (øvre kaskade-
+// dammer, SPEC-IMPORT-KONSOLIDERT-15MIN Endring D) — UI skjuler/demper den
+// så tomme dammer ikke vises. Raden beholdes for historikk/reaktivering.

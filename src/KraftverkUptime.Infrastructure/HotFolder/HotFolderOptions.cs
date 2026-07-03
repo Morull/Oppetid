@@ -95,6 +95,8 @@ public sealed class HotFolderOptions
         ["GRODEMFOSS"] = "grodemfoss",
         ["OGREY"] = "ogreyfoss",
         ["OGREYFOSS"] = "ogreyfoss",
+        ["OGREY1"] = "ogreyfoss",      // G1-generator-side (ny eksport fra 2026-06)
+        ["OGREY2"] = "ogreyfoss",      // G2-generator-side (ny eksport fra 2026-06)
         ["LOGJEN"] = "logjen",
         ["LOG"] = "logjen",
         ["ORSDAL"] = "orsdalen",

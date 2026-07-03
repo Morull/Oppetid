@@ -32,17 +32,26 @@ public sealed class DbDataImportLogger : IDataImportLogger
     {
         ArgumentNullException.ThrowIfNull(entry);
 
+        // Defensiv normalisering (SPEC-IMPORT-KONSOLIDERT-15MIN Endring C):
+        // «scada-fine» er avviklet som egen kilde — 15-min og hourly er samme
+        // kilde i completeness. Normaliser her så INGEN kodevei kan gjenskape
+        // den gamle kilden (den kunne verken administreres i PlantAdmin eller
+        // vises pent i matrisen).
+        var sourceType = string.Equals(entry.SourceType, "scada-fine", StringComparison.OrdinalIgnoreCase)
+            ? "scada"
+            : entry.SourceType;
+
         // Auto-aktiver expectation hvis det er første gang vi ser denne
         // kombinasjonen av (plant, source). Da bygger completeness-matrisen
         // seg opp basert på faktisk bruk uten at drifts-leder må toggle
         // manuelt via PlantAdmin.
-        await EnsureExpectationAsync(entry.PlantId, entry.SourceType, ct).ConfigureAwait(false);
+        await EnsureExpectationAsync(entry.PlantId, sourceType, ct).ConfigureAwait(false);
 
         var record = new DataImport
         {
             ImportId = entry.ImportId ?? Guid.NewGuid(),
             PlantId = entry.PlantId,
-            SourceType = entry.SourceType,
+            SourceType = sourceType,
             PeriodFromUtc = entry.PeriodFromUtc,
             PeriodToUtc = entry.PeriodToUtc,
             ImportedAtUtc = entry.ImportedAtUtc ?? DateTimeOffset.UtcNow,

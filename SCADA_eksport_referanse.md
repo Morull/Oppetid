@@ -145,3 +145,24 @@ Stasjoner observert i datasettene:
 - Ingen kvalitetsflagg – kan ikke skille mellom "ekte 0", "feil sensor" og "manglende verdi"
 - Operlog er ren hendelseslogg – ingen aggregering eller status-snapshot
 - Tidssoneblanding (lokal tid i tag-historikk vs. UTC i operlog) må håndteres eksplisitt
+
+---
+
+## Ny felles eksportjobb (SPEC-IMPORT-KONSOLIDERT-15MIN, 2026-07)
+
+Fra juli 2026 konsolideres trend-eksporten til EN fast jobb:
+
+- **En 15-min multi-plant master-CSV** med de aktive tagene for alle anlegg
+  (fasit: `signalliste_eksport_15min.csv` i repo-rota, ~86 tags, status=aktiv).
+  Aggregering `avg`, opplosning 15 min. Hourly-eksportene avvikles - appen
+  avleder time-verdier selv (snitt per UTC-time) ved import.
+- **Eksisterende operlog-eksport** fortsetter uendret.
+- Filnavnet trenger INGEN markorer (`15min`/`_fine`): appen maler tidsavstanden
+  mellom radene og ruter selv (<= 20 min median = 15-min-fil).
+- Tags som ikke star i fasiten blir DROPPET ved import (telles i importloggens
+  notes) - en overgangsperiode med gamle brede eksporter fyller ikke databasen.
+- Nye tags som MA opprettes i SCADA (fasit-status `MANGLER I SCADA-EKSPORT`):
+  Stolskraft overlop/virkningsgrad/kom-alarm.
+- Orsdalen trenger INGEN nye tags: overlop utledes fra produksjonsstatus
+  (OverflowMode=ProductionStateProxy), og effektivitetsroller er bevisst
+  utelatt (elvekraft uten magasin).

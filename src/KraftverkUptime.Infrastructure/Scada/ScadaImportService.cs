@@ -1,5 +1,6 @@
 using System.Text;
 using KraftverkUptime.Core.DataCompleteness;
+using KraftverkUptime.Core.Domain;
 using KraftverkUptime.Modules.Scada.Import;
 using KraftverkUptime.Modules.Scada.Repositories;
 using Microsoft.Extensions.Logging;
@@ -19,6 +20,7 @@ public sealed class ScadaImportService : IScadaImportService
     private readonly IScadaSampleRepository _sampleRepo;
     private readonly IScadaSampleFineRepository _sampleFineRepo;
     private readonly IClassifiedEventRepository _eventRepo;
+    private readonly ISignalMapRepository _signalMapRepo;
     private readonly IDataImportLogger _dataImportLogger;
     private readonly ILogger<ScadaImportService> _logger;
 
@@ -29,14 +31,113 @@ public sealed class ScadaImportService : IScadaImportService
         IScadaSampleRepository sampleRepo,
         IScadaSampleFineRepository sampleFineRepo,
         IClassifiedEventRepository eventRepo,
+        ISignalMapRepository signalMapRepo,
         IDataImportLogger dataImportLogger,
         ILogger<ScadaImportService> logger)
     {
         _sampleRepo = sampleRepo;
         _sampleFineRepo = sampleFineRepo;
         _eventRepo = eventRepo;
+        _signalMapRepo = signalMapRepo;
         _dataImportLogger = dataImportLogger;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Tag-minimering (SPEC-IMPORT-KONSOLIDERT-15MIN Endring D): dropp samples
+    /// for signaler som ikke har <c>StoreSamples=true</c> i signal_map — både
+    /// kjente-men-deaktiverte og helt ukjente tags. Slik fyller ikke en
+    /// overgangsperiode med gamle brede eksporter (481 tags) databasen.
+    /// Defensivt: et anlegg HELT uten signal_map-rader filtreres ikke (ellers
+    /// ville et useedet anlegg miste all data); dropp telles for notes.
+    /// </summary>
+    private async Task<(IReadOnlyList<ScadaSample> Kept, int DroppedSamples, int DroppedTags)>
+        FilterStorableSamplesAsync(string plantId, IReadOnlyList<ScadaSample> samples, CancellationToken ct)
+    {
+        if (samples.Count == 0) return (samples, 0, 0);
+
+        IReadOnlyList<KraftverkUptime.Core.Domain.SignalMap> maps;
+        try
+        {
+            maps = await _signalMapRepo.ListForPlantAsync(plantId, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "signal_map-oppslag feilet for {PlantId} — importerer uten tag-filter.", plantId);
+            return (samples, 0, 0);
+        }
+        if (maps.Count == 0) return (samples, 0, 0);
+
+        var allowed = maps
+            .Where(m => m.StoreSamples)
+            .Select(m => m.SignalId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var kept = new List<ScadaSample>(samples.Count);
+        var droppedTags = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var s in samples)
+        {
+            if (allowed.Contains(s.SignalId)) kept.Add(s);
+            else droppedTags.Add(s.SignalId);
+        }
+        return (kept, samples.Count - kept.Count, droppedTags.Count);
+    }
+
+    /// <summary>
+    /// Avleder time-aggregat fra 15-min-samples (SPEC-IMPORT-KONSOLIDERT-15MIN
+    /// Endring B): <c>avg(value)</c> per (signal, UTC-time) over kvarterene i
+    /// timen, tidsstempel = timens start (:00) — konsistent med hourly-formatet.
+    /// Delvise timer (1–3 kvarter) aggregeres over de tilgjengelige. Timer der
+    /// alle kvarter mangler verdi får null + quality=2 (bad), ellers 0 (good).
+    /// UTC-buckets → DST-overganger trenger ingen særbehandling (parseren har
+    /// alt konvertert til UTC). Skrives via samme idempotente upsert som
+    /// hourly-importen, så re-import dobler ingenting.
+    /// </summary>
+    public static IReadOnlyList<ScadaSample> AggregateFineToHourly(IReadOnlyList<ScadaSample> fineSamples)
+    {
+        return fineSamples
+            .GroupBy(s => (s.AssetId, s.SignalId, Hour: FloorToHourUtc(s.TimeUtc)))
+            .Select(g =>
+            {
+                double sum = 0;
+                var count = 0;
+                foreach (var s in g)
+                {
+                    if (s.Value.HasValue) { sum += s.Value.Value; count++; }
+                }
+                return new ScadaSample(
+                    g.Key.AssetId,
+                    g.Key.SignalId,
+                    g.Key.Hour,
+                    count > 0 ? sum / count : null,
+                    (short)(count > 0 ? 0 : 2));
+            })
+            .OrderBy(s => s.TimeUtc)
+            .ThenBy(s => s.SignalId, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private static DateTimeOffset FloorToHourUtc(DateTimeOffset t)
+    {
+        var u = t.UtcDateTime;
+        return new DateTimeOffset(u.Year, u.Month, u.Day, u.Hour, 0, 0, TimeSpan.Zero);
+    }
+
+    /// <summary>Bulk-skriver samples i 5000-batcher via valgt repo. Returnerer antall skrevet.</summary>
+    private async Task<int> BulkWriteAsync(
+        IReadOnlyList<ScadaSample> samples, bool fine, CancellationToken ct)
+    {
+        const int batchSize = 5_000;
+        var written = 0;
+        for (var i = 0; i < samples.Count; i += batchSize)
+        {
+            var slice = samples.Skip(i).Take(batchSize).ToList();
+            written += fine
+                ? await _sampleFineRepo.BulkInsertAsync(slice, ct).ConfigureAwait(false)
+                : await _sampleRepo.BulkInsertAsync(slice, ct).ConfigureAwait(false);
+        }
+        return written;
     }
 
     public async Task<ScadaImportResult> ImportMasterCsvAsync(
@@ -65,21 +166,16 @@ public sealed class ScadaImportService : IScadaImportService
         var parser = new ScadaMasterCsvParser();
         var result = parser.Parse(plantId, reader, DefaultPlantTimeZone);
 
+        // Tag-minimering: kun signaler med StoreSamples=true lagres (Endring D).
+        var (kept, droppedSamples, droppedTags) =
+            await FilterStorableSamplesAsync(plantId, result.Samples, ct).ConfigureAwait(false);
+
         // Batch-skriv. Repositoriet er idempotent (overskriver duplikater).
-        const int batchSize = 5_000;
-        var written = 0;
-        for (var i = 0; i < result.Samples.Count; i += batchSize)
-        {
-            var slice = result.Samples
-                .Skip(i)
-                .Take(batchSize)
-                .ToList();
-            written += await _sampleRepo.BulkInsertAsync(slice, ct).ConfigureAwait(false);
-        }
+        var written = await BulkWriteAsync(kept, fine: false, ct).ConfigureAwait(false);
 
         _logger.LogInformation(
-            "SCADA-import for {PlantId}: {Signals} signaler, {Parsed} timer, {Skipped} skip, {Written} samples skrevet.",
-            plantId, result.SignalCount, result.RowsParsed, result.RowsSkipped, written);
+            "SCADA-import for {PlantId}: {Signals} signaler, {Parsed} timer, {Skipped} skip, {Written} samples skrevet ({Dropped} droppet).",
+            plantId, result.SignalCount, result.RowsParsed, result.RowsSkipped, written, droppedSamples);
 
         // Logg til data_imports — bruker FAKTISKE data-grenser (min/max) som
         // PeriodFrom/PeriodTo, ikke avrundet til måneds-slutt. Det gir korrekt
@@ -87,18 +183,19 @@ public sealed class ScadaImportService : IScadaImportService
         // (eks. en SCADA-eksport som dekker Jan 15 → Mar 14 vil markere mars
         // som ~45 % delvis i stedet for 100 % komplett).
         //
-        // Coverage_pct = unike timer / actualSpanHours (samme som før).
-        if (result.Samples.Count > 0)
+        // Coverage_pct = unike timer / actualSpanHours (samme som før) — regnet
+        // på LAGREDE samples (kept), siden det er dem matrisen skal beskrive.
+        if (kept.Count > 0)
         {
-            var minTime = result.Samples.Min(s => s.TimeUtc);
-            var maxTime = result.Samples.Max(s => s.TimeUtc);
+            var minTime = kept.Min(s => s.TimeUtc);
+            var maxTime = kept.Max(s => s.TimeUtc);
 
             var minHourly = new DateTimeOffset(minTime.Year, minTime.Month, minTime.Day,
                 minTime.Hour, 0, 0, TimeSpan.Zero);
             var maxHourly = new DateTimeOffset(maxTime.Year, maxTime.Month, maxTime.Day,
                 maxTime.Hour, 0, 0, TimeSpan.Zero);
             var actualSpanHours = (int)((maxHourly - minHourly).TotalHours) + 1;
-            var uniqueHours = result.Samples.Select(s => s.TimeUtc).Distinct().Count();
+            var uniqueHours = kept.Select(s => s.TimeUtc).Distinct().Count();
             var coverage = actualSpanHours > 0
                 ? Math.Min(1.0, uniqueHours / (double)actualSpanHours)
                 : 1.0;
@@ -120,6 +217,12 @@ public sealed class ScadaImportService : IScadaImportService
             notesBuilder.Append(uniqueHours).Append(" unike timer i ").Append(actualSpanHours)
                 .Append(" t-spenn (").Append(minHourly.ToString("yyyy-MM-dd HH"))
                 .Append('–').Append(maxHourly.ToString("yyyy-MM-dd HH")).Append(").");
+            if (droppedSamples > 0)
+            {
+                notesBuilder.Append(' ').Append(droppedSamples)
+                    .Append(" samples droppet (").Append(droppedTags)
+                    .Append(" deaktiverte/ukjente tags).");
+            }
             if (result.RowsSkipped > 0)
             {
                 notesBuilder.Append(' ').Append(result.RowsSkipped)
@@ -173,9 +276,13 @@ public sealed class ScadaImportService : IScadaImportService
     /// <summary>
     /// 15-min-variant av <see cref="ImportMasterCsvAsync"/>. Bruker SAMME
     /// parser (master-CSV-formatet er identisk — bare oppløsningen er ulik),
-    /// men skriver til <see cref="IScadaSampleFineRepository"/>. data_imports
-    /// logges med SourceType="scada-fine" så completeness-matrisen kan skille
-    /// dem fra hourly. Spec NESTE-CHAT-EFFEKTIVITET-15MIN.md.
+    /// og skriver til <see cref="IScadaSampleFineRepository"/> + avleder
+    /// time-aggregat (avg per UTC-time) til <c>sample_facts</c> slik at alle
+    /// hourly-konsumenter (overflow, tilsigsmodell, klassifisering, Vakt-ROI)
+    /// fungerer uendret med kun én SCADA-eksportjobb. data_imports logges med
+    /// SourceType="scada" — 15-min er samme KILDE som hourly, bare finere
+    /// oppløsning (SPEC-IMPORT-KONSOLIDERT-15MIN Endring B+C; avløser
+    /// «scada-fine»-kilden fra NESTE-CHAT-EFFEKTIVITET-15MIN.md).
     /// </summary>
     public async Task<ScadaImportResult> ImportMasterCsvFineAsync(
         string plantId,
@@ -200,41 +307,50 @@ public sealed class ScadaImportService : IScadaImportService
         var parser = new ScadaMasterCsvParser();
         var result = parser.Parse(plantId, reader, DefaultPlantTimeZone);
 
-        const int batchSize = 5_000;
-        var written = 0;
-        for (var i = 0; i < result.Samples.Count; i += batchSize)
-        {
-            var slice = result.Samples
-                .Skip(i)
-                .Take(batchSize)
-                .ToList();
-            written += await _sampleFineRepo.BulkInsertAsync(slice, ct).ConfigureAwait(false);
-        }
+        // Tag-minimering: kun signaler med StoreSamples=true lagres (Endring D).
+        var (kept, droppedSamples, droppedTags) =
+            await FilterStorableSamplesAsync(plantId, result.Samples, ct).ConfigureAwait(false);
+
+        var written = await BulkWriteAsync(kept, fine: true, ct).ConfigureAwait(false);
+
+        // Avled hourly (Endring B) — samme idempotente upsert som hourly-import.
+        var hourly = AggregateFineToHourly(kept);
+        var hourlyWritten = await BulkWriteAsync(hourly, fine: false, ct).ConfigureAwait(false);
 
         _logger.LogInformation(
-            "SCADA-fine-import for {PlantId}: {Signals} signaler, {Parsed} rader, {Skipped} skip, {Written} samples skrevet til sample_facts_fine.",
-            plantId, result.SignalCount, result.RowsParsed, result.RowsSkipped, written);
+            "SCADA-fine-import for {PlantId}: {Signals} signaler, {Parsed} rader, {Skipped} skip, "
+            + "{Written} samples til sample_facts_fine + {Hourly} time-aggregat ({Dropped} droppet).",
+            plantId, result.SignalCount, result.RowsParsed, result.RowsSkipped,
+            written, hourlyWritten, droppedSamples);
 
-        if (result.Samples.Count > 0)
+        if (kept.Count > 0)
         {
             // Faktisk data-spenn — for 15-min teller vi unike kvarter (96/dag).
             // Bruker periodFrom = første kvarter, periodTo = siste kvarter + 15 min.
-            var minTime = result.Samples.Min(s => s.TimeUtc);
-            var maxTime = result.Samples.Max(s => s.TimeUtc);
+            var minTime = kept.Min(s => s.TimeUtc);
+            var maxTime = kept.Max(s => s.TimeUtc);
             var span = maxTime - minTime;
             var totalQuarters = (int)(span.TotalMinutes / 15) + 1;
-            var uniqueStamps = result.Samples.Select(s => s.TimeUtc).Distinct().Count();
+            var uniqueStamps = kept.Select(s => s.TimeUtc).Distinct().Count();
             var coverage = totalQuarters > 0
                 ? Math.Min(1.0, uniqueStamps / (double)totalQuarters)
                 : 1.0;
             var periodFrom = minTime;
             var periodTo = maxTime.AddMinutes(15);
 
+            var notes = $"{result.SignalCount} signaler (15-min), {uniqueStamps} unike kvarter i "
+                + $"{totalQuarters} kvarter-spenn ({minTime:yyyy-MM-dd HH:mm}–{maxTime:yyyy-MM-dd HH:mm}). "
+                + $"Hourly avledet: {hourlyWritten} aggregater.";
+            if (droppedSamples > 0)
+            {
+                notes += $" {droppedSamples} samples droppet ({droppedTags} deaktiverte/ukjente tags).";
+            }
+
             try
             {
                 await _dataImportLogger.LogAsync(new DataImportLogEntry(
                     PlantId: plantId,
-                    SourceType: "scada-fine",
+                    SourceType: "scada",
                     PeriodFromUtc: periodFrom,
                     PeriodToUtc: periodTo,
                     FileName: null,
@@ -242,8 +358,7 @@ public sealed class ScadaImportService : IScadaImportService
                     RowsImported: written,
                     CoveragePct: coverage,
                     UserId: "system",
-                    Notes: $"{result.SignalCount} signaler (15-min), {uniqueStamps} unike kvarter i "
-                        + $"{totalQuarters} kvarter-spenn ({minTime:yyyy-MM-dd HH:mm}–{maxTime:yyyy-MM-dd HH:mm})."
+                    Notes: notes
                 ), ct).ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -399,29 +514,32 @@ public sealed class ScadaImportService : IScadaImportService
         var parser = new ScadaMasterCsvParser();
         var result = parser.ParseMultiPlant(reader, DefaultPlantTimeZone, MapSignalToPlantId);
 
-        const int batchSize = 5_000;
         var perPlant = new List<PlantScadaImportResult>(result.PerPlant.Count);
-        var sourceTypeKey = isFine ? "scada-fine" : "scada";
+        // Én SCADA-kilde (Endring C): 15-min og hourly er samme kilde i
+        // completeness-matrisen; notes skiller oppløsningen.
+        const string sourceTypeKey = "scada";
 
         foreach (var plant in result.PerPlant)
         {
-            var written = 0;
-            for (var i = 0; i < plant.Samples.Count; i += batchSize)
+            // Tag-minimering per anlegg (Endring D).
+            var (kept, droppedSamples, droppedTags) =
+                await FilterStorableSamplesAsync(plant.PlantId, plant.Samples, ct).ConfigureAwait(false);
+
+            var written = await BulkWriteAsync(kept, fine: isFine, ct).ConfigureAwait(false);
+
+            // Avled hourly fra 15-min (Endring B).
+            var hourlyWritten = 0;
+            if (isFine && kept.Count > 0)
             {
-                var slice = plant.Samples
-                    .Skip(i)
-                    .Take(batchSize)
-                    .ToList();
-                written += isFine
-                    ? await _sampleFineRepo.BulkInsertAsync(slice, ct).ConfigureAwait(false)
-                    : await _sampleRepo.BulkInsertAsync(slice, ct).ConfigureAwait(false);
+                var hourly = AggregateFineToHourly(kept);
+                hourlyWritten = await BulkWriteAsync(hourly, fine: false, ct).ConfigureAwait(false);
             }
             perPlant.Add(new PlantScadaImportResult(plant.PlantId, plant.SignalCount, written));
 
             // Logg data_imports per anlegg basert på faktisk data-spenn.
-            if (plant.Samples.Count == 0) continue;
-            var minTime = plant.Samples.Min(s => s.TimeUtc);
-            var maxTime = plant.Samples.Max(s => s.TimeUtc);
+            if (kept.Count == 0) continue;
+            var minTime = kept.Min(s => s.TimeUtc);
+            var maxTime = kept.Max(s => s.TimeUtc);
 
             DateTimeOffset periodFrom, periodTo;
             double coverage;
@@ -434,7 +552,7 @@ public sealed class ScadaImportService : IScadaImportService
                 // 15-min: tell unike kvarter, periode = [min, max + 15 min).
                 var span = maxTime - minTime;
                 spanUnits = (int)(span.TotalMinutes / 15) + 1;
-                uniqueUnits = plant.Samples.Select(s => s.TimeUtc).Distinct().Count();
+                uniqueUnits = kept.Select(s => s.TimeUtc).Distinct().Count();
                 coverage = spanUnits > 0 ? Math.Min(1.0, uniqueUnits / (double)spanUnits) : 1.0;
                 periodFrom = minTime;
                 periodTo = maxTime.AddMinutes(15);
@@ -447,11 +565,23 @@ public sealed class ScadaImportService : IScadaImportService
                 var maxHourly = new DateTimeOffset(maxTime.Year, maxTime.Month, maxTime.Day,
                     maxTime.Hour, 0, 0, TimeSpan.Zero);
                 spanUnits = (int)((maxHourly - minHourly).TotalHours) + 1;
-                uniqueUnits = plant.Samples.Select(s => s.TimeUtc).Distinct().Count();
+                uniqueUnits = kept.Select(s => s.TimeUtc).Distinct().Count();
                 coverage = spanUnits > 0 ? Math.Min(1.0, uniqueUnits / (double)spanUnits) : 1.0;
                 periodFrom = minHourly;
                 periodTo = maxHourly.AddHours(1);
                 unitLabel = "timer";
+            }
+
+            var notes = $"{plant.SignalCount} signaler (multi-plant{(isFine ? ", 15-min" : "")}), "
+                + $"{uniqueUnits} unike {unitLabel} i {spanUnits} {unitLabel}-spenn "
+                + $"({minTime:yyyy-MM-dd HH:mm}–{maxTime:yyyy-MM-dd HH:mm}).";
+            if (isFine)
+            {
+                notes += $" Hourly avledet: {hourlyWritten} aggregater.";
+            }
+            if (droppedSamples > 0)
+            {
+                notes += $" {droppedSamples} samples droppet ({droppedTags} deaktiverte/ukjente tags).";
             }
 
             try
@@ -466,9 +596,7 @@ public sealed class ScadaImportService : IScadaImportService
                     RowsImported: written,
                     CoveragePct: coverage,
                     UserId: "system",
-                    Notes: $"{plant.SignalCount} signaler (multi-plant{(isFine ? ", 15-min" : "")}), "
-                        + $"{uniqueUnits} unike {unitLabel} i {spanUnits} {unitLabel}-spenn "
-                        + $"({minTime:yyyy-MM-dd HH:mm}–{maxTime:yyyy-MM-dd HH:mm})."
+                    Notes: notes
                 ), ct).ConfigureAwait(false);
             }
             catch (Exception ex)

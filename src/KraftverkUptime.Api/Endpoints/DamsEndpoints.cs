@@ -275,7 +275,7 @@ public static class DamsEndpoints
 
     private static DamDto ToDto(Dam d) => new(
         d.PlantId, d.DamId, d.Name, d.CascadePosition, d.IsTurbineIntake,
-        d.HrvMoh, d.LrvMoh, d.VolumeMm3, d.OverflowProxyThresholdCm);
+        d.HrvMoh, d.LrvMoh, d.VolumeMm3, d.OverflowProxyThresholdCm, d.IsActive);
 }
 
 public sealed record DamDto(
@@ -287,7 +287,9 @@ public sealed record DamDto(
     double? HrvMoh,
     double? LrvMoh,
     double? VolumeMm3,
-    int? OverflowProxyThresholdCm);
+    int? OverflowProxyThresholdCm,
+    // False = ingen tags i den konsoliderte 15-min-eksporten (øvre kaskade-dam).
+    bool IsActive = true);
 
 public sealed record UpdateDamRequest(
     string? Name,

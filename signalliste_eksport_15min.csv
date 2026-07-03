@@ -1,0 +1,96 @@
+plant_id;signal_id;csv_column;unit;role;dam_id;formaal;status;kommentar
+drivdal;DRIVDAL_G1_GEN_P_PV;Cluster1.DRIVDAL_G1_GEN_P_PV;kW;GeneratorActivePower;;Effektivitet + Vakt-ROI + klassifikator;aktiv;G1 aktiv effekt
+drivdal;DRIVDAL_G1_TURB_VF_PV;Cluster1.DRIVDAL_G1_TURB_VF_PV;m3/s;TurbineWaterFlow;;Effektivitet + tilsigsmodell;aktiv;G1 turbin vannfoering
+drivdal;DRIVDAL_G1_TURB_VIRKNGRD_PV;Cluster1.DRIVDAL_G1_TURB_VIRKNGRD_PV;%;TurbineEfficiency;;Effektivitet;aktiv;G1 virkningsgrad
+drivdal;DRIVDAL_INNTAK_NIVA_OVERLOP_VF_PV;Cluster1.DRIVDAL_INNTAK_NIVA_OVERLOP_VF_PV;m3/s;OverflowFlow;drivdal_main;Vakt-ROI overloep;aktiv;Overloep inntak
+drivdal;DRIVDAL_INNTAK_MAGASIN_FYLLGRAD_PV;Cluster1.DRIVDAL_INNTAK_MAGASIN_FYLLGRAD_PV;%;ReservoirFillFactor;drivdal_main;Tilsigsmodell;aktiv;Fyllgrad inntak
+drivdal;DRIVDAL_INNTAK_NIVA_OPPSTROM_KOTE_PV;Cluster1.DRIVDAL_INNTAK_NIVA_OPPSTROM_KOTE_PV;moh;UpstreamLevel;drivdal_main;Vakt-ROI (level-modus);aktiv;Oppstroms kote
+drivdal;DRIVDAL_KRST_KONTROLL_KOM_AL;Cluster1.DRIVDAL_KRST_KONTROLL_KOM_AL;;CommunicationAlarm;;Datakvalitet;aktiv;Kommunikasjons-alarm
+grodemfoss;GRODEM_G2_GEN_P_PV;Cluster1.GRODEM_G2_GEN_P_PV;kW;GeneratorActivePower;;Effektivitet + Vakt-ROI + klassifikator;aktiv;G2 aktiv effekt
+grodemfoss;GRODEM_G2_TURB_VF_PV;Cluster1.GRODEM_G2_TURB_VF_PV;m3/s;TurbineWaterFlow;;Effektivitet + tilsigsmodell;aktiv;G2 turbin vannfoering
+grodemfoss;GRODEM_G2_TURB_VIRKNGRD_PV;Cluster1.GRODEM_G2_TURB_VIRKNGRD_PV;%;TurbineEfficiency;;Effektivitet;aktiv;G2 virkningsgrad
+grodemfoss;GRODEM_SMIEVT_KONTROLL_MAG_OVLOP_PV;Cluster1.GRODEM_SMIEVT_KONTROLL_MAG_OVLOP_PV;m3/s;OverflowFlow;grodemfoss_main;Vakt-ROI overloep;aktiv;Smievatn overloep (inntak)
+grodemfoss;GRODEM_SMIEVT_KONTROLL_MAG_VOLUM_PV;Cluster1.GRODEM_SMIEVT_KONTROLL_MAG_VOLUM_PV;Mill.m3;ReservoirVolume;grodemfoss_main;Tilsigsmodell;aktiv;Smievatn volum
+grodemfoss;GRODEM_SMIEVT_KONTROLL_TOT_VF_PV;Cluster1.GRODEM_SMIEVT_KONTROLL_TOT_VF_PV;m3/s;TotalDamFlow;grodemfoss_main;Tilsigsmodell;aktiv;Smievatn total VF
+grodemfoss;GRODEM_SMIEVT_KONTROLL_MAG_FYLLGRD_PV;Cluster1.GRODEM_SMIEVT_KONTROLL_MAG_FYLLGRD_PV;%;ReservoirFillFactor;grodemfoss_main;Tilsigsmodell;aktiv;Smievatn fyllgrad
+grodemfoss;GRODEM_SMIEVT_NIVA_SENSOR_PRI_KOTE_PV;Cluster1.GRODEM_SMIEVT_NIVA_SENSOR_PRI_KOTE_PV;moh;UpstreamLevel;grodemfoss_main;Vakt-ROI (level-modus);aktiv;Smievatn kote
+grodemfoss;GRODEM_KRST_KONTROLL_KOM_AL;Cluster1.GRODEM_KRST_KONTROLL_KOM_AL;;CommunicationAlarm;;Datakvalitet;aktiv;Kommunikasjons-alarm
+honnefoss;HONNE_G1_GEN_P_PV;Cluster1.HONNE_G1_GEN_P_PV;kW;GeneratorActivePower;;Effektivitet + Vakt-ROI + klassifikator;aktiv;G1 aktiv effekt
+honnefoss;HONNE_G1_TURB_VF_PV;Cluster1.HONNE_G1_TURB_VF_PV;m3/s;TurbineWaterFlow;;Effektivitet + tilsigsmodell;aktiv;G1 turbin vannfoering
+honnefoss;HONNE_G1_TURB_VIRKNGRD_PV;Cluster1.HONNE_G1_TURB_VIRKNGRD_PV;%;TurbineEfficiency;;Effektivitet;aktiv;G1 virkningsgrad
+honnefoss;HONNE_INNTAK_NIVA_OVERLOP_VF_PV;Cluster1.HONNE_INNTAK_NIVA_OVERLOP_VF_PV;m3/s;OverflowFlow;honnefoss_inntak;Vakt-ROI overloep;aktiv;Overloep inntak
+honnefoss;HONNE_INNTAK_MAGASIN_VOLUM_PV;Cluster1.HONNE_INNTAK_MAGASIN_VOLUM_PV;Mill.m3;ReservoirVolume;honnefoss_inntak;Tilsigsmodell;aktiv;Volum inntak
+honnefoss;HONNE_INNTAK_MAGASIN_TOT_VF_PV;Cluster1.HONNE_INNTAK_MAGASIN_TOT_VF_PV;m3/s;TotalDamFlow;honnefoss_inntak;Tilsigsmodell;aktiv;Total VF inntak - MANGLER I EKSPORT 2026-07-03, legg til i eksportjobben
+honnefoss;HONNE_INNTAK_MAGASIN_FYLLGRAD_PV;Cluster1.HONNE_INNTAK_MAGASIN_FYLLGRAD_PV;%;ReservoirFillFactor;honnefoss_inntak;Tilsigsmodell;aktiv;Fyllgrad inntak - MANGLER I EKSPORT 2026-07-03, legg til i eksportjobben
+honnefoss;HONNE_KRST_KONTROLL_KOM_AL;Cluster1.HONNE_KRST_KONTROLL_KOM_AL;;CommunicationAlarm;;Datakvalitet;aktiv;KRST kom-alarm
+lindland;LINDLAND_G1_GEN_P_PV;Value (Cluster1.LINDLAND_G1_GEN_P_PV);kW;GeneratorActivePower;;Effektivitet + Vakt-ROI + klassifikator;aktiv;G1 aktiv effekt
+lindland;LINDLAND_G2_GEN_P_PV;Value (Cluster1.LINDLAND_G2_GEN_P_PV);kW;GeneratorActivePower;;Effektivitet + Vakt-ROI + klassifikator;aktiv;G2 aktiv effekt
+lindland;LINDLAND_G1_TURB_VF_PV;Value (Cluster1.LINDLAND_G1_TURB_VF_PV);m3/s;TurbineWaterFlow;;Effektivitet + tilsigsmodell;aktiv;G1 turbin VF
+lindland;LINDLAND_G2_TURB_VF_PV;Value (Cluster1.LINDLAND_G2_TURB_VF_PV);m3/s;TurbineWaterFlow;;Effektivitet + tilsigsmodell;aktiv;G2 turbin VF
+lindland;LINDLAND_G1_TURB_VIRKNGRD_PV;Value (Cluster1.LINDLAND_G1_TURB_VIRKNGRD_PV);%;TurbineEfficiency;;Effektivitet;aktiv;G1 virkningsgrad
+lindland;LINDLAND_G2_TURB_VIRKNGRD_PV;Value (Cluster1.LINDLAND_G2_TURB_VIRKNGRD_PV);%;TurbineEfficiency;;Effektivitet;aktiv;G2 virkningsgrad - MANGLER I EKSPORT 2026-07-03, legg til i eksportjobben
+lindland;LINDLAND_INNTAK_NIVA_OVERLOP_VF_PV;Value (Cluster1.LINDLAND_INNTAK_NIVA_OVERLOP_VF_PV);m3/s;OverflowFlow;lindland_rosslandshølen;Vakt-ROI overloep;aktiv;Overloep inntak (Rosslandshoelen) - PRIMAER
+lindland;LINDLAND_INNTAK_KONTROLL_MAG_VOLUM_PV;Value (Cluster1.LINDLAND_INNTAK_KONTROLL_MAG_VOLUM_PV);Mill.m3;ReservoirVolume;lindland_rosslandshølen;Tilsigsmodell;aktiv;Volum inntak - MANGLER I EKSPORT 2026-07-03 (eksporten har Eiavatn-tags i stedet, bytt til inntak)
+lindland;LINDLAND_INNTAK_KONTROLL_TOT_VF_PV;Value (Cluster1.LINDLAND_INNTAK_KONTROLL_TOT_VF_PV);m3/s;TotalDamFlow;lindland_rosslandshølen;Tilsigsmodell;aktiv;Total VF inntak - MANGLER I EKSPORT 2026-07-03 (eksporten har Eiavatn-tags i stedet, bytt til inntak)
+lindland;LINDLAND_INNTAK_KONTROLL_MAG_FYLLGRD_PV;Value (Cluster1.LINDLAND_INNTAK_KONTROLL_MAG_FYLLGRD_PV);%;ReservoirFillFactor;lindland_rosslandshølen;Tilsigsmodell;aktiv;Fyllgrad inntak - MANGLER I EKSPORT 2026-07-03 (eksporten har Eiavatn-tags i stedet, bytt til inntak)
+lindland;LINDLAND_INNTAK_NIVA_OPPSTROM_KOTE_PV;Value (Cluster1.LINDLAND_INNTAK_NIVA_OPPSTROM_KOTE_PV);moh;UpstreamLevel;lindland_rosslandshølen;Vakt-ROI (level-modus);aktiv;Oppstroms kote inntak - MANGLER I EKSPORT 2026-07-03 (eksporten har NIVA_SENSOR_PRI_HRV, bytt eller behold begge)
+lindland;LINDLAND_KRST_KONTROLL_KOM_AL;Value (Cluster1.LINDLAND_KRST_KONTROLL_KOM_AL);;CommunicationAlarm;;Datakvalitet;aktiv;KRST kom-alarm
+haukland;HAUKLAND_G1_GEN_P_PV;Cluster1.HAUKLAND_G1_GEN_P_PV;kW;GeneratorActivePower;;Effektivitet + Vakt-ROI + klassifikator;aktiv;G1 aktiv effekt
+haukland;HAUKLAND_G1_TURB_VF_PV;Cluster1.HAUKLAND_G1_TURB_VF_PV;m3/s;TurbineWaterFlow;;Effektivitet + tilsigsmodell;aktiv;G1 turbin vannfoering
+haukland;HAUKLAND_G1_TURB_VIRKNGRD_PV;Cluster1.HAUKLAND_G1_TURB_VIRKNGRD_PV;%;TurbineEfficiency;;Effektivitet;aktiv;G1 virkningsgrad
+haukland;HAUKLAND_STEMMEVT_KONTROLL_MAG_OVLOP_PV;Cluster1.HAUKLAND_STEMMEVT_KONTROLL_MAG_OVLOP_PV;m3/s;OverflowFlow;haukland_stemmevt;Vakt-ROI overloep;aktiv;Stemmevatn overloep (inntak)
+haukland;HAUKLAND_STEMMEVT_KONTROLL_MAG_VOLUM_PV;Cluster1.HAUKLAND_STEMMEVT_KONTROLL_MAG_VOLUM_PV;Mill.m3;ReservoirVolume;haukland_stemmevt;Tilsigsmodell;aktiv;Stemmevatn volum
+haukland;HAUKLAND_STEMMEVT_KONTROLL_TOT_VF_PV;Cluster1.HAUKLAND_STEMMEVT_KONTROLL_TOT_VF_PV;m3/s;TotalDamFlow;haukland_stemmevt;Tilsigsmodell;aktiv;Stemmevatn total VF
+haukland;HAUKLAND_STEMMEVT_KONTROLL_MAG_FYLLGRD_PV;Cluster1.HAUKLAND_STEMMEVT_KONTROLL_MAG_FYLLGRD_PV;%;ReservoirFillFactor;haukland_stemmevt;Tilsigsmodell;aktiv;Stemmevatn fyllgrad
+haukland;HAUKLAND_STEMMEVT_NIVA_SENSOR_PRI_KOTE_PV;Cluster1.HAUKLAND_STEMMEVT_NIVA_SENSOR_PRI_KOTE_PV;moh;UpstreamLevel;haukland_stemmevt;Vakt-ROI (level-modus);aktiv;Stemmevatn kote (byttet fra NIVA_MOH_PV - eksporten 2026-07-03 bruker denne. Krever ny signal-map i seed)
+haukland;HAUKLAND_KRST_KONTROLL_KOM_AL;Cluster1.HAUKLAND_KRST_KONTROLL_KOM_AL;;CommunicationAlarm;;Datakvalitet;aktiv;KRST kom-alarm
+vikesa;VIKESA_G1_GEN_P_PV;Cluster1.VIKESA_G1_GEN_P_PV;kW;GeneratorActivePower;;Effektivitet + Vakt-ROI + klassifikator;aktiv;G1 aktiv effekt
+vikesa;VIKESA_G1_TURB_VF_PV;Cluster1.VIKESA_G1_TURB_VF_PV;m3/s;TurbineWaterFlow;;Effektivitet + tilsigsmodell;aktiv;G1 turbin vannfoering
+vikesa;VIKESA_G1_TURB_VIRKNGRD_PV;Cluster1.VIKESA_G1_TURB_VIRKNGRD_PV;%;TurbineEfficiency;;Effektivitet;aktiv;G1 virkningsgrad
+vikesa;VIKESA_INNTAK_NIVA_OVERLOP_VF_PV;Cluster1.VIKESA_INNTAK_NIVA_OVERLOP_VF_PV;m3/s;OverflowFlow;vikesa_main;Vakt-ROI overloep;aktiv;Overloep inntak
+vikesa;VIKESA_INNTAK_MAGASIN_VOLUM_PV;Cluster1.VIKESA_INNTAK_MAGASIN_VOLUM_PV;Mill.m3;ReservoirVolume;vikesa_main;Tilsigsmodell;aktiv;Magasin volum
+vikesa;VIKESA_INNTAK_MAGASIN_FYLLGRAD_PV;Cluster1.VIKESA_INNTAK_MAGASIN_FYLLGRAD_PV;%;ReservoirFillFactor;vikesa_main;Tilsigsmodell;aktiv;Fyllgrad
+vikesa;VIKESA_INNTAK_NIVA_OPPSTROM_REF_HRV_PV;Cluster1.VIKESA_INNTAK_NIVA_OPPSTROM_REF_HRV_PV;cm;UpstreamLevel;vikesa_main;Vakt-ROI (level-modus);aktiv;Oppstroms nivaa HRV-ref
+vikesa;VIKESA_KRST_KONTROLL_KOM_AL;Cluster1.VIKESA_KRST_KONTROLL_KOM_AL;;CommunicationAlarm;;Datakvalitet;aktiv;Kommunikasjons-alarm
+ogreyfoss;OGREY1_G1_GEN_P_PV;Cluster1.OGREY1_G1_GEN_P_PV;kW;GeneratorActivePower;;Effektivitet + Vakt-ROI + klassifikator;aktiv;G1 aktiv effekt
+ogreyfoss;OGREY1_G1_TURB_VF_PV;Cluster1.OGREY1_G1_TURB_VF_PV;m3/s;TurbineWaterFlow;;Effektivitet + tilsigsmodell;aktiv;G1 turbin vannfoering
+ogreyfoss;OGREY1_G1_TURB_VIRKNGRD_PV;Cluster1.OGREY1_G1_TURB_VIRKNGRD_PV;%;TurbineEfficiency;;Effektivitet;aktiv;G1 virkningsgrad
+ogreyfoss;OGREY1_INNTAK_NIVA_OVERLOP_VF_PV;Cluster1.OGREY1_INNTAK_NIVA_OVERLOP_VF_PV;m3/s;OverflowFlow;ogreyfoss_main;Vakt-ROI overloep;aktiv;Overloep inntak (felles G1/G2)
+ogreyfoss;OGREY1_INNTAK_MAGASIN_VOLUM_PV;Cluster1.OGREY1_INNTAK_MAGASIN_VOLUM_PV;Mill.m3;ReservoirVolume;ogreyfoss_main;Tilsigsmodell;aktiv;Magasin volum
+ogreyfoss;OGREY1_INNTAK_MAGASIN_TOT_VF_PV;Cluster1.OGREY1_INNTAK_MAGASIN_TOT_VF_PV;m3/s;TotalDamFlow;ogreyfoss_main;Tilsigsmodell;aktiv;Total VF
+ogreyfoss;OGREY1_INNTAK_MAGASIN_FYLLGRAD_PV;Cluster1.OGREY1_INNTAK_MAGASIN_FYLLGRAD_PV;%;ReservoirFillFactor;ogreyfoss_main;Tilsigsmodell;aktiv;Fyllgrad
+ogreyfoss;OGREY1_INNTAK_NIVA_OPPSTROM_KOTE_PV;Cluster1.OGREY1_INNTAK_NIVA_OPPSTROM_KOTE_PV;moh;UpstreamLevel;ogreyfoss_main;Vakt-ROI (level-modus);aktiv;Oppstroms kote
+ogreyfoss;OGREY1_KRST_KONTROLL_KOM_AL;Cluster1.OGREY1_KRST_KONTROLL_KOM_AL;;CommunicationAlarm;;Datakvalitet;aktiv;G1-side kom-alarm - MANGLER I EKSPORT 2026-07-03, legg til i eksportjobben
+ogreyfoss;OGREY2_G2_GEN_P_PV;Cluster1.OGREY2_G2_GEN_P_PV;kW;GeneratorActivePower;;Effektivitet + Vakt-ROI + klassifikator;aktiv;G2 aktiv effekt
+ogreyfoss;OGREY2_G2_TURB_VF_PV;Cluster1.OGREY2_G2_TURB_VF_PV;m3/s;TurbineWaterFlow;;Effektivitet + tilsigsmodell;aktiv;G2 turbin vannfoering
+ogreyfoss;OGREY2_G2_TURB_VIRKNGRD_PV;Cluster1.OGREY2_G2_TURB_VIRKNGRD_PV;%;TurbineEfficiency;;Effektivitet;aktiv;G2 virkningsgrad
+ogreyfoss;OGREY2_KRST_KONTROLL_KOM_AL;Cluster1.OGREY2_KRST_KONTROLL_KOM_AL;;CommunicationAlarm;;Datakvalitet;aktiv;G2-side kom-alarm
+logjen;LOGJEN_G1_GEN_P_PV;Cluster1.LOGJEN_G1_GEN_P_PV;kW;GeneratorActivePower;;Effektivitet + Vakt-ROI + klassifikator;aktiv;G1 aktiv effekt
+logjen;LOGJEN_G1_TURB_VF_PV;Cluster1.LOGJEN_G1_TURB_VF_PV;m3/s;TurbineWaterFlow;;Effektivitet + tilsigsmodell;aktiv;G1 turbin vannfoering
+logjen;LOGJEN_G1_TURB_VIRKNGRD_PV;Cluster1.LOGJEN_G1_TURB_VIRKNGRD_PV;%;TurbineEfficiency;;Effektivitet;aktiv;G1 virkningsgrad
+logjen;LOGJEN_INNTAK_NIVA_OVERLOP_VF_PV;Cluster1.LOGJEN_INNTAK_NIVA_OVERLOP_VF_PV;m3/s;OverflowFlow;logjen_main;Vakt-ROI overloep;aktiv;Overloep inntak
+logjen;LOGJEN_INNTAK_MAGASIN_VOLUM_PV;Cluster1.LOGJEN_INNTAK_MAGASIN_VOLUM_PV;Mill.m3;ReservoirVolume;logjen_main;Tilsigsmodell;aktiv;Magasin volum
+logjen;LOGJEN_INNTAK_MAGASIN_TOT_VF_PV;Cluster1.LOGJEN_INNTAK_MAGASIN_TOT_VF_PV;m3/s;TotalDamFlow;logjen_main;Tilsigsmodell;aktiv;Total VF
+logjen;LOGJEN_INNTAK_MAGASIN_FYLLGRAD_PV;Cluster1.LOGJEN_INNTAK_MAGASIN_FYLLGRAD_PV;%;ReservoirFillFactor;logjen_main;Tilsigsmodell;aktiv;Fyllgrad
+logjen;LOGJEN_INNTAK_NIVA_OPPSTROM_REF_HRV_PV;Cluster1.LOGJEN_INNTAK_NIVA_OPPSTROM_REF_HRV_PV;cm;UpstreamLevel;logjen_main;Vakt-ROI (level-modus);aktiv;Oppstroms nivaa HRV-ref
+logjen;LOGJEN_KRST_KONTROLL_KOM_AL;Cluster1.LOGJEN_KRST_KONTROLL_KOM_AL;;CommunicationAlarm;;Datakvalitet;aktiv;Kommunikasjons-alarm
+liavatn;LIAVATN_G1_GEN_P_PV;Cluster1.LIAVATN_G1_GEN_P_PV;kW;GeneratorActivePower;;Effektivitet + Vakt-ROI + klassifikator;aktiv;G1 aktiv effekt (verifisert i eksport 2026-07-03)
+liavatn;LIAVATN_G1_TURB_VF_PV;Cluster1.LIAVATN_G1_TURB_VF_PV;m3/s;TurbineWaterFlow;;Effektivitet + tilsigsmodell;aktiv;G1 turbin vannfoering
+liavatn;LIAVATN_VDAL_INNTAK_NIVA_OVERLOP_VF_PV;Cluster1.LIAVATN_VDAL_INNTAK_NIVA_OVERLOP_VF_PV;m3/s;OverflowFlow;liavatn_main;Vakt-ROI overloep;aktiv;Overloep inntak (Vdal)
+liavatn;LIAVATN_INNTAK_MAGASIN_VOLUM_PV;Cluster1.LIAVATN_INNTAK_MAGASIN_VOLUM_PV;Mill.m3;ReservoirVolume;liavatn_main;Tilsigsmodell;aktiv;Magasin volum
+liavatn;LIAVATN_INNTAK_MAGASIN_FYLLGRAD_PV;Cluster1.LIAVATN_INNTAK_MAGASIN_FYLLGRAD_PV;%;ReservoirFillFactor;liavatn_main;Tilsigsmodell;aktiv;Fyllgrad
+liavatn;LIAVATN_INNTAK_NIVA_OPPSTROM_REF_HRV_PV;Cluster1.LIAVATN_INNTAK_NIVA_OPPSTROM_REF_HRV_PV;cm;UpstreamLevel;liavatn_main;Vakt-ROI (level-modus);aktiv;Oppstroms nivaa HRV-ref
+liavatn;LIAVATN_KRST_KONTROLL_KOM_AL;Cluster1.LIAVATN_KRST_KONTROLL_KOM_AL;;CommunicationAlarm;;Datakvalitet;aktiv;Kommunikasjons-alarm
+liavatn;;;%;TurbineEfficiency;;Effektivitet;AVKLARES;Virkningsgrad-tag ikke i eksporten - sjekk om den finnes i SCADA eller om Effektivitet ikke er relevant for Liavatn
+stolskraft;STOLSKRAFT_G1_GEN_P_PV;Cluster1.STOLSKRAFT_G1_GEN_P_PV;kW;GeneratorActivePower;;Vakt-ROI (PlanOnly) + klassifikator;aktiv;G1 aktiv effekt
+stolskraft;STOLSKRAFT_G1_TURB_VF_PV;Cluster1.STOLSKRAFT_G1_TURB_VF_PV;m3/s;TurbineWaterFlow;;Tilsigsmodell;aktiv;G1 turbin vannfoering
+stolskraft;STOLSKRAFT_KRST_KONTROLL_KOM_AL;Cluster1.STOLSKRAFT_KRST_KONTROLL_KOM_AL;;CommunicationAlarm;;Datakvalitet;aktiv;Kommunikasjons-alarm (verifisert i eksport 2026-07-03)
+stolskraft;;;m3/s;OverflowFlow;stolskraft_main;Vakt-ROI overloep;IKKE BEHOV;Vannforsyning Stavanger - startes kun ved vannbehov, overloep styrer ikke drift. Vakt-ROI bruker OverflowMode=PlanOnly (KAIA-plan avgjoer kreditt)
+stolskraft;;;%;TurbineEfficiency;;Effektivitet;IKKE BEHOV;Drift styres av vannbehov i forsyningen - ingen driftspunkt-optimalisering (VIRKNGRD-tag finnes i eksporten men brukes ikke)
+orsdalen;ORSDAL_G1_GEN_P_PV;Cluster1.ORSDAL_G1_GEN_P_PV;kW;GeneratorActivePower;;Vakt-ROI (ProductionStateProxy) + klassifikator;aktiv;G1 aktiv effekt
+orsdalen;ORSDAL_INNTAK_NIVA_OPPSTROM_KOTE_PV;Cluster1.ORSDAL_INNTAK_NIVA_OPPSTROM_KOTE_PV;moh;UpstreamLevel;orsdalen_main;Stoette;aktiv;Oppstroms kote
+orsdalen;ORSDAL_KRST_KONTROLL_KOM_AL;Cluster1.ORSDAL_KRST_KONTROLL_KOM_AL;;CommunicationAlarm;;Datakvalitet;aktiv;Kommunikasjons-alarm
+orsdalen;;;m3/s;OverflowFlow;orsdalen_main;Vakt-ROI overloep;IKKE BEHOV;Overloep utledes fra produksjonsstatus (OverflowMode=ProductionStateProxy) - magasin er ~0 og overloep skjer straks maskinen ikke produserer. Krever kun ORSDAL_G1_GEN_P_PV
+orsdalen;;;m3/s;TurbineWaterFlow;;Effektivitet;IKKE BEHOV;Rent elvekraftverk uten magasin - kjoerer paa tilgjengelig vann, effektivitetsanalyse ikke relevant (beslutning driftsleder 2026-07-02)
+orsdalen;;;%;TurbineEfficiency;;Effektivitet;IKKE BEHOV;Som over - ingen driftspunkt-optimalisering mulig uten magasin
+orsdalen;;;%;Other;;Vakt-ROI (valgfri forbedring);VALGFRI;Aapning deflektor - deflektor > 0 % betyr vann forbi loepehjulet uten produksjon (tap GEN_P-proxyen ikke ser)

@@ -59,6 +59,7 @@ public sealed class DbDamRepository : IDamRepository
             LrvMoh = dam.LrvMoh,
             VolumeMm3 = dam.VolumeMm3,
             OverflowProxyThresholdCm = dam.OverflowProxyThresholdCm,
+            IsActive = dam.IsActive,
             OwnerOrgId = _user.OrgId,
             CreatedAtUtc = DateTimeOffset.UtcNow,
         };
@@ -84,6 +85,7 @@ public sealed class DbDamRepository : IDamRepository
         existing.LrvMoh = dam.LrvMoh;
         existing.VolumeMm3 = dam.VolumeMm3;
         existing.OverflowProxyThresholdCm = dam.OverflowProxyThresholdCm;
+        existing.IsActive = dam.IsActive;
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
 
@@ -111,5 +113,5 @@ public sealed class DbDamRepository : IDamRepository
     private static Dam ToDomain(DamEntry e)
         => new(e.PlantId, e.DamId, e.Name, e.CascadePosition,
                e.IsTurbineIntake, e.HrvMoh, e.LrvMoh, e.VolumeMm3,
-               e.OverflowProxyThresholdCm);
+               e.OverflowProxyThresholdCm, e.IsActive);
 }

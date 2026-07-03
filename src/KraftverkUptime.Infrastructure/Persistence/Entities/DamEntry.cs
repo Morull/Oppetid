@@ -28,6 +28,14 @@ public sealed class DamEntry : IOwnedEntity
     /// </summary>
     public int? OverflowProxyThresholdCm { get; set; }
 
+    /// <summary>
+    /// False = dammen har ingen tags i den konsoliderte 15-min-eksporten
+    /// (øvre kaskade-dammer — kun inntak/terminal eksporteres, beslutning
+    /// driftsleder 2026-07-02). UI demper/skjuler inaktive dammer; raden
+    /// beholdes for historikk. SPEC-IMPORT-KONSOLIDERT-15MIN Endring D.
+    /// </summary>
+    public bool IsActive { get; set; } = true;
+
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
     // IOwnedEntity — multi-tenant filter via global query filter på (OwnerOrgId, PlantId)

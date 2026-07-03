@@ -444,7 +444,9 @@ public sealed record DamDto(
     double? HrvMoh,
     double? LrvMoh,
     double? VolumeMm3,
-    int? OverflowProxyThresholdCm = null);
+    int? OverflowProxyThresholdCm = null,
+    // False = ingen tags i den konsoliderte 15-min-eksporten (øvre kaskade-dam).
+    bool IsActive = true);
 
 public sealed record UpdateDamRequestDto(
     string? Name,

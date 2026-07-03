@@ -165,8 +165,11 @@ public sealed class HotFolderDetector
             {
                 plantId = DetectPlantFromXlsxContent(file, diag);
             }
-            else if (sourceType == SourceType.ScadaTrends)
+            else if (sourceType is SourceType.ScadaTrends or SourceType.ScadaTrendsFine)
             {
+                // Fine-filer trenger samme content-sniff: med innholdsbasert
+                // oppløsnings-deteksjon (Endring A) er filnavnet ofte uten
+                // både markør OG plant-navn.
                 var (csvPlant, _) = AnalyzeCsvContent(file, diag);
                 plantId = csvPlant;
             }
@@ -437,9 +440,11 @@ public sealed class HotFolderDetector
             return SourceType.ScadaAlarms;
         }
 
-        // 15-min-eksport: filnavn-markører "15min", "avg-15min" eller "fine".
-        // Spec NESTE-CHAT-EFFEKTIVITET-15MIN.md — separat tabell hindrer
-        // overskriving av hourly på :00-tidsstempler.
+        // Filnavn-markører "15min", "avg-15min" eller "fine" — kun FALLBACK når
+        // innholdet har for få rader til å måle tidsavstand. Innhold har forrang
+        // (SPEC-IMPORT-KONSOLIDERT-15MIN Endring A): en 15-min-eksport uten
+        // markør i navnet ble tidligere feilrutet til hourly-banen, som ga
+        // 15-min-samples i sample_facts og falsk 100 % «SCADA trender»-dekning.
         var isFineByName = fileName.Contains("15min", StringComparison.OrdinalIgnoreCase)
             || fileName.Contains("avg-15min", StringComparison.OrdinalIgnoreCase)
             || fileName.Contains("_fine", StringComparison.OrdinalIgnoreCase);
@@ -459,12 +464,34 @@ public sealed class HotFolderDetector
             if (firstLine.Contains("DateTime", StringComparison.OrdinalIgnoreCase)
                 || firstLine.Contains("Cluster1.", StringComparison.OrdinalIgnoreCase))
             {
+                // Innholdsbasert oppløsning: mål median tidsavstand mellom
+                // påfølgende rad-tidsstempler (bred CSV = én rad per tidspunkt,
+                // så rad-avstand == per-signal-avstand). ≤ 20 min → 15-min-fil.
+                var spacing = MeasureMedianSpacingMinutes(reader, maxRows: 200, out var stampCount);
+                if (spacing is { } medianMin)
+                {
+                    if (medianMin <= FineSpacingThresholdMinutes)
+                    {
+                        diag.Attempts.Add(
+                            $"Innholdsmåling: median tidsavstand {medianMin:F1} min over {stampCount} tidsstempler (≤ {FineSpacingThresholdMinutes} min) → ScadaTrendsFine."
+                            + (isFineByName ? "" : " (Filnavn hadde ingen 15-min-markør — innhold har forrang.)"));
+                        return SourceType.ScadaTrendsFine;
+                    }
+                    diag.Attempts.Add(
+                        $"Innholdsmåling: median tidsavstand {medianMin:F1} min over {stampCount} tidsstempler (> {FineSpacingThresholdMinutes} min) → ScadaTrends (legacy hourly)."
+                        + (isFineByName ? " (Filnavn markerte 15-min, men innhold har forrang.)" : ""));
+                    return SourceType.ScadaTrends;
+                }
+
+                // Færre enn 3 tidsstempler → kan ikke måle; fall tilbake til filnavn.
                 if (isFineByName)
                 {
-                    diag.Attempts.Add("CSV header er DateTime/Cluster1 og filnavn markerer 15-min → ScadaTrendsFine.");
+                    diag.Attempts.Add(
+                        $"For få tidsstempler ({stampCount}) til å måle avstand; filnavn markerer 15-min → ScadaTrendsFine.");
                     return SourceType.ScadaTrendsFine;
                 }
-                diag.Attempts.Add("CSV header inneholder 'DateTime'/'Cluster1.' → ScadaTrends.");
+                diag.Attempts.Add(
+                    $"For få tidsstempler ({stampCount}) til å måle avstand og ingen 15-min-markør i filnavn → ScadaTrends.");
                 return SourceType.ScadaTrends;
             }
         }
@@ -480,6 +507,77 @@ public sealed class HotFolderDetector
         }
         diag.Attempts.Add("CSV header matchet ingen kjente mønstre → default ScadaTrends.");
         return SourceType.ScadaTrends;
+    }
+
+    /// <summary>Grense for 15-min-klassifisering: median rad-avstand ≤ 20 min.</summary>
+    private const double FineSpacingThresholdMinutes = 20;
+
+    /// <summary>
+    /// Leser opptil <paramref name="maxRows"/> datarader fra en trend-CSV
+    /// (header alt konsumert) og returnerer median tidsavstand i minutter
+    /// mellom påfølgende tidsstempler i første kolonne. Null hvis færre enn
+    /// 3 parsebare tidsstempler (→ caller faller tilbake til filnavn-markør).
+    /// Duplikat-/bakover-hopp (avstand ≤ 0, f.eks. DST-oktober) hoppes over.
+    /// </summary>
+    private static double? MeasureMedianSpacingMinutes(TextReader reader, int maxRows, out int stampCount)
+    {
+        var stamps = new List<DateTime>(Math.Min(maxRows, 256));
+        string? line;
+        while (stamps.Count < maxRows && (line = reader.ReadLine()) is not null)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            var sep = line.IndexOf(';');
+            var first = (sep > 0 ? line[..sep] : line).Trim();
+            if (TryParseSpacingTimestamp(first, out var ts))
+            {
+                stamps.Add(ts);
+            }
+        }
+        stampCount = stamps.Count;
+        if (stamps.Count < 3) return null;
+
+        var deltas = new List<double>(stamps.Count - 1);
+        for (var i = 1; i < stamps.Count; i++)
+        {
+            var d = (stamps[i] - stamps[i - 1]).TotalMinutes;
+            if (d > 0) deltas.Add(d);
+        }
+        if (deltas.Count == 0) return null;
+        deltas.Sort();
+        return deltas[deltas.Count / 2];
+    }
+
+    /// <summary>
+    /// Lettvekts-parse av trend-CSV-tidsstempler KUN for avstandsmåling —
+    /// tidssonen er irrelevant for differanser, så begge eksportformatene
+    /// (sone-løs lokal «yyyy-MM-dd HH:mm:ss[.fff]» og ISO-8601 med sone)
+    /// parses uten tz-konvertering. Speiler formatene i
+    /// <c>ScadaMasterCsvParser.TryParseTimestamp</c>.
+    /// </summary>
+    private static bool TryParseSpacingTimestamp(string raw, out DateTime ts)
+    {
+        ts = default;
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+        if (DateTime.TryParseExact(
+                raw,
+                ["yyyy-MM-dd HH:mm:ss.fff", "yyyy-MM-dd HH:mm:ss"],
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None,
+                out ts))
+        {
+            return true;
+        }
+        if (DateTimeOffset.TryParse(
+                raw,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal
+                    | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                out var dto))
+        {
+            ts = dto.UtcDateTime;
+            return true;
+        }
+        return false;
     }
 
     private string? DetectPlantFromFilename(string fileName, DetectionDiagnostics diag)
@@ -609,8 +707,12 @@ public static class SourceTypeExtensions
         SourceType.SettlementMultiPlant => "settlement",
         SourceType.ScadaTrends => "scada",
         SourceType.ScadaTrendsMultiPlant => "scada",
-        SourceType.ScadaTrendsFine => "scada-fine",
-        SourceType.ScadaTrendsFineMultiPlant => "scada-fine",
+        // 15-min og hourly er samme KILDE («SCADA trender») i completeness —
+        // oppløsningen er et implementasjonsdetalj (SPEC-IMPORT-KONSOLIDERT-
+        // 15MIN Endring C). Ruting til fine-/hourly-import styres av selve
+        // SourceType-enum-verdien, ikke av denne nøkkelen.
+        SourceType.ScadaTrendsFine => "scada",
+        SourceType.ScadaTrendsFineMultiPlant => "scada",
         SourceType.ScadaAlarms => "operlog",
         SourceType.ScadaAlarmsMultiPlant => "operlog",
         _ => throw new ArgumentOutOfRangeException(nameof(type)),

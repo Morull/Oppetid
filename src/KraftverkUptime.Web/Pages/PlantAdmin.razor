@@ -228,9 +228,20 @@ else
                     <MudTh></MudTh>
                 </HeaderContent>
                 <RowTemplate>
-                    <MudTd>
+                    <MudTd Style="@(context.IsActive ? null : "opacity: 0.5;")">
                         <strong>@context.Name</strong>
+                        @if (!context.IsActive)
+                        {
+                            <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+                                     Color="MudBlazor.Color.Default" Class="ml-1">Deaktivert</MudChip>
+                        }
                         <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary">@context.DamId</MudText>
+                        @if (!context.IsActive)
+                        {
+                            <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Style="display:block; opacity:0.85;">
+                                Ingen tags i 15-min-eksporten (kun inntak/terminal eksporteres)
+                            </MudText>
+                        }
                     </MudTd>
                     <MudTd Style="text-align:center">@context.CascadePosition</MudTd>
                     <MudTd Style="text-align:center">

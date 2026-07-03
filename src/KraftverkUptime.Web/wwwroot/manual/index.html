@@ -686,13 +686,18 @@
     <h3>Globalt filter (topp-baren)</h3>
     <p>Anlegg + periode lagres i <code>FilterState</code> og persisteres mellom navigeringer. Skjules på admin-sider og data-import. Forvalg: forrige måned for nytt valgt anlegg.</p>
 
-    <h3>Datakilder</h3>
+    <h3>Datakilder — tre filtyper, én importmappe</h3>
+    <p>Alle filer legges i samme hot-folder (eller lastes opp manuelt på
+    <code>/data-import</code>). Appen identifiserer filtypen selv på
+    <em>innhold</em> — filnavnet trenger ingen markører. SCADA-trend
+    eksporteres alltid på 15 minutter; time-verdier avledes automatisk
+    (snitt per time) slik at alle time-baserte beregninger fungerer uendret.</p>
     <table class="dk-table">
-      <thead><tr><th>Kilde</th><th>Format</th><th>Bruk</th></tr></thead>
+      <thead><tr><th>Kilde</th><th>Format</th><th>Gjenkjennes på</th><th>Bruk</th></tr></thead>
       <tbody>
-        <tr><td>Settlement (KAIA)</td><td>XLSX/CSV per anlegg + måned</td><td>MwhElhub, ProduksjonplanMwh, spotpris</td></tr>
-        <tr><td>SCADA-eksport</td><td>CSV signal-tag per minutt/time</td><td>UnitState, η, vannføring</td></tr>
-        <tr><td>Operlog</td><td>CSV/XLSX hendelses-logg</td><td>Cause-koder, operatør-merknader</td></tr>
+        <tr><td>Settlement (KAIA)</td><td>XLSX per måned (én eller flere plant-faner)</td><td>Workbook med plant-faner</td><td>MwhElhub, ProduksjonplanMwh, spotpris</td></tr>
+        <tr><td>SCADA trender</td><td>CSV, alltid 15-min (multi-plant master)</td><td>DateTime/Cluster1-header + målt tidsavstand</td><td>UnitState, η, vannføring, magasin/overløp</td></tr>
+        <tr><td>SCADA alarmer (operlog)</td><td>CSV hendelses-logg</td><td>Tidsstempel/Hendelse-header</td><td>Cause-koder, operatør-merknader</td></tr>
       </tbody>
     </table>
 

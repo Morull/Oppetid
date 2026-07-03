@@ -126,9 +126,17 @@ public static class DatabaseBootstrapper
 
             // Sett overflow-modus for anlegg som krever proxy-strategi:
             //   - Stølskraft → ProductionStateProxy (drikkevannskraftverk)
-            //   - Ørsdalen → LevelProxy med 10cm terskel
-            // Idempotent — endrer kun rader med default-verdi.
+            //   - Ørsdalen → ProductionStateProxy (~0 magasin; SPEC-IMPORT-
+            //     KONSOLIDERT-15MIN Endring D pkt. 3)
+            // Idempotent — endrer kun rader med seed-verdier.
             await OverflowModeSeeder.SeedAsync(services, ct).ConfigureAwait(false);
+
+            // Tag-minimering (SPEC-IMPORT-KONSOLIDERT-15MIN Endring D):
+            // anvend aktiv-listen fra signalliste_eksport_15min.csv ÉN gang
+            // (markør-styrt) — kjøres ETTER alle signal-map-seederne så nye
+            // databaser også minimeres. Deaktiverer i tillegg øvre kaskade-
+            // dammer (uten tags i eksporten) og seeder Liavatns 9 KPI-tags.
+            await AktivTagListeSeeder.SeedAsync(services, ct).ConfigureAwait(false);
 
             // Default normal årsproduksjon (GWh) per anlegg fra drifts-leders
             // kraftverkoversikt 2022. Idempotent — kun NULL-rader får default.
@@ -474,6 +482,13 @@ public static class DatabaseBootstrapper
             CREATE INDEX IF NOT EXISTS ix_dams_plant_intake
                 ON core.dams (plant_id, is_turbine_intake);
 
+            -- SPEC-IMPORT-KONSOLIDERT-15MIN Endring D: øvre kaskade-dammer har
+            -- ingen tags i den konsoliderte eksporten og kan deaktiveres uten
+            -- å slettes. Deaktiveringen selv gjøres én gang av
+            -- AktivTagListeSeeder (marker-styrt).
+            ALTER TABLE core.dams
+                ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT TRUE;
+
             ALTER TABLE core.signal_map
                 ADD COLUMN IF NOT EXISTS dam_id varchar(64) NULL;
 
@@ -687,6 +702,20 @@ public static class DatabaseBootstrapper
             -- ingen slike rader eksisterer.
             DELETE FROM core.data_source_expectations
             WHERE source_type = 'hydrogrid_plan';
+
+            -- SPEC-IMPORT-KONSOLIDERT-15MIN Endring C (2026-07-03): «scada-fine»
+            -- er avviklet som egen kilde — 15-min og hourly er samme kilde
+            -- («SCADA trender»). Migrer historiske rader og fjern expectations/
+            -- overrides så matrisen viser nøyaktig tre kilder. Idempotent.
+            UPDATE core.data_imports
+            SET source_type = 'scada'
+            WHERE source_type = 'scada-fine';
+
+            DELETE FROM core.data_source_expectations
+            WHERE source_type = 'scada-fine';
+
+            DELETE FROM core.data_completeness_overrides
+            WHERE source_type = 'scada-fine';
             """;
 
         try

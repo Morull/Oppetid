@@ -9,20 +9,19 @@ namespace KraftverkUptime.Infrastructure.Persistence;
 /// strategi istedenfor native SCADA-tag (Spec OVERFLOW-PROXY):
 /// <list type="bullet">
 ///   <item>Stølskraft → <c>ProductionStateProxy</c> (drikkevannskraftverk, ingen INNTAK-tags).</item>
-///   <item>Ørsdalen → <c>LevelProxy</c> med 10 cm terskel (ingen overflow-tag, men UpstreamLevel finnes).</item>
+///   <item>Ørsdalen → <c>ProductionStateProxy</c> (SPEC-IMPORT-KONSOLIDERT-15MIN
+///   Endring D pkt. 3: ~0 inntaksmagasin — overløp straks maskinen ikke
+///   produserer; minstevannføring 100 l/s berører ikke proxyen. Krever kun
+///   <c>ORSDAL_G1_GEN_P_PV</c>. Avløser tidligere LevelProxy-valg.)</item>
 /// </list>
 ///
-/// Idempotent: kun anlegg som fortsatt har default-verdien <c>NativeTag</c>
-/// oppdateres. Hvis drifts-leder har endret modus manuelt via PlantAdmin
-/// lar vi det stå. HRV/LRV må drifts-leder fylle inn selv via PlantAdmin
-/// for at LevelProxy skal gi tall ut (uten HRV returnerer service-en
-/// <c>DataAvailable = false</c> med advarsel i logg).
+/// Idempotent: kun anlegg som fortsatt har seed-verdier (<c>NativeTag</c>,
+/// eller for Ørsdalen den tidligere seedede <c>LevelProxy</c>) oppdateres.
+/// Hvis drifts-leder har endret modus manuelt via PlantAdmin til noe annet
+/// lar vi det stå.
 /// </summary>
 public static class OverflowModeSeeder
 {
-    /// <summary>Default-terskel for level-proxy. Drifts-leder kan endre per dam.</summary>
-    private const int DefaultLevelProxyThresholdCm = 10;
-
     public static async Task SeedAsync(IServiceProvider services, CancellationToken ct = default)
     {
         using var scope = services.CreateScope();
@@ -47,40 +46,22 @@ public static class OverflowModeSeeder
                     "Stølskraft: satte OverflowMode = ProductionStateProxy (drikkevannskraftverk).");
             }
 
+            // Ørsdalen: ProductionStateProxy. 'LevelProxy' i WHERE-lista migrerer
+            // databaser som fikk den tidligere seed-verdien — LevelProxy var aldri
+            // funksjonell for Ørsdalen (HRV ble aldri fylt inn) og var uansett
+            // feil modell for et elvekraftverk uten magasin.
             const string updateOrsdalenPlantSql = """
                 UPDATE core.plants
-                SET overflow_mode = 'LevelProxy'
-                WHERE id = 'orsdalen' AND overflow_mode = 'NativeTag';
+                SET overflow_mode = 'ProductionStateProxy'
+                WHERE id = 'orsdalen' AND overflow_mode IN ('NativeTag', 'LevelProxy');
                 """;
             var orsdalenPlantUpdated = await db.Database
                 .ExecuteSqlRawAsync(updateOrsdalenPlantSql, ct).ConfigureAwait(false);
             if (orsdalenPlantUpdated > 0)
             {
                 logger.LogInformation(
-                    "Ørsdalen: satte OverflowMode = LevelProxy (utleder fra UpstreamLevel + HRV).");
-            }
-
-            // Ørsdalen-dammen får default terskel 10cm hvis den ikke er satt.
-            // HRV/LRV må drifts-leder fylle inn selv via PlantAdmin.
-            const string updateOrsdalenDamSql = """
-                UPDATE core.dams
-                SET overflow_proxy_threshold_cm = @p0
-                WHERE plant_id = 'orsdalen'
-                  AND dam_id = 'orsdalen_main'
-                  AND overflow_proxy_threshold_cm IS NULL;
-                """;
-            // NB: parameter-listen må wrappes som object[] (eller IEnumerable<object>)
-            // — ellers velger EF params-overloaden og prøver å mappe 'ct' som SQL-parameter.
-            var orsdalenDamUpdated = await db.Database
-                .ExecuteSqlRawAsync(updateOrsdalenDamSql,
-                    new object[] { DefaultLevelProxyThresholdCm }, ct)
-                .ConfigureAwait(false);
-            if (orsdalenDamUpdated > 0)
-            {
-                logger.LogInformation(
-                    "Ørsdalen: satte default OverflowProxyThresholdCm = {Cm} cm på terminal-dammen. "
-                    + "Husk å fylle inn HRV/LRV via PlantAdmin.",
-                    DefaultLevelProxyThresholdCm);
+                    "Ørsdalen: satte OverflowMode = ProductionStateProxy (overløp straks "
+                    + "maskinen ikke produserer — ~0 inntaksmagasin).");
             }
         }
         catch (Exception ex)
