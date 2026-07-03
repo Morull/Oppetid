@@ -164,16 +164,18 @@ public static class AktivTagListeSeeder
             if (alreadyApplied) return;
 
             // 1. Liavatn: seed manglende signal_map-rader (idempotent).
+            // NULLIF-sentinel for dam-løse tags: EF raw-SQL-parametere støtter
+            // verken null eller DBNull direkte.
             foreach (var (signalId, role, unit, damId) in LiavatnTags)
             {
                 await db.Database.ExecuteSqlRawAsync("""
                     INSERT INTO core.signal_map
                         (plant_id, signal_id, csv_column, unit, role, store_samples,
                          is_active, dam_id, owner_org_id, created_at, updated_at)
-                    VALUES ('liavatn', {0}, {1}, {2}, {3}, TRUE, TRUE, {4}, 'dev-org', NOW(), NOW())
+                    VALUES ('liavatn', {0}, {1}, {2}, {3}, TRUE, TRUE, NULLIF({4}, ''), 'dev-org', NOW(), NOW())
                     ON CONFLICT (plant_id, signal_id) DO NOTHING;
                     """,
-                    new object[] { signalId, $"Cluster1.{signalId}", unit, role, (object?)damId ?? DBNull.Value }, ct)
+                    new object[] { signalId, $"Cluster1.{signalId}", unit, role, damId ?? "" }, ct)
                     .ConfigureAwait(false);
             }
 

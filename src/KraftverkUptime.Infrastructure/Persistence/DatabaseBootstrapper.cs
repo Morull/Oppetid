@@ -636,6 +636,12 @@ public static class DatabaseBootstrapper
             ALTER TABLE core.data_source_expectations
                 ADD COLUMN IF NOT EXISTS completion_threshold_pct double precision NOT NULL DEFAULT 0.95;
 
+            -- Eldre databaser har kolonnen NOT NULL men UTEN default (ADD COLUMN
+            -- IF NOT EXISTS var no-op der) — settlement-backfillen under feilet
+            -- da stille med 23502. Idempotent SET DEFAULT reparerer.
+            ALTER TABLE core.data_source_expectations
+                ALTER COLUMN completion_threshold_pct SET DEFAULT 0.95;
+
             CREATE TABLE IF NOT EXISTS core.data_imports (
                 import_id uuid PRIMARY KEY,
                 plant_id varchar(64) NOT NULL,
@@ -692,8 +698,9 @@ public static class DatabaseBootstrapper
         // Idempotent: ON CONFLICT DO NOTHING bevarer eksisterende konfig.
         const string backfillSql = """
             INSERT INTO core.data_source_expectations
-                (plant_id, source_type, cadence, expected_lag_days, is_active, activated_at_utc)
-            SELECT p.id, 'settlement', 'monthly', 7, TRUE, '2024-01-01'::timestamptz
+                (plant_id, source_type, cadence, expected_lag_days, is_active,
+                 activated_at_utc, completion_threshold_pct)
+            SELECT p.id, 'settlement', 'monthly', 7, TRUE, '2024-01-01'::timestamptz, 0.95
             FROM core.plants p
             ON CONFLICT (plant_id, source_type) DO NOTHING;
 
@@ -702,20 +709,6 @@ public static class DatabaseBootstrapper
             -- ingen slike rader eksisterer.
             DELETE FROM core.data_source_expectations
             WHERE source_type = 'hydrogrid_plan';
-
-            -- SPEC-IMPORT-KONSOLIDERT-15MIN Endring C (2026-07-03): «scada-fine»
-            -- er avviklet som egen kilde — 15-min og hourly er samme kilde
-            -- («SCADA trender»). Migrer historiske rader og fjern expectations/
-            -- overrides så matrisen viser nøyaktig tre kilder. Idempotent.
-            UPDATE core.data_imports
-            SET source_type = 'scada'
-            WHERE source_type = 'scada-fine';
-
-            DELETE FROM core.data_source_expectations
-            WHERE source_type = 'scada-fine';
-
-            DELETE FROM core.data_completeness_overrides
-            WHERE source_type = 'scada-fine';
             """;
 
         try
@@ -731,6 +724,39 @@ public static class DatabaseBootstrapper
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Kunne ikke kjøre data-completeness backfill — manglende expectations.");
+        }
+
+        // SPEC-IMPORT-KONSOLIDERT-15MIN Endring C (2026-07-03): «scada-fine» er
+        // avviklet som egen kilde — 15-min og hourly er samme kilde («SCADA
+        // trender»). Migrer historiske rader og fjern expectations/overrides så
+        // matrisen viser nøyaktig tre kilder. Idempotent. EGEN batch/try —
+        // skal ikke stoppes av at settlement-backfillen over eventuelt feiler.
+        const string scadaFineMigrationSql = """
+            UPDATE core.data_imports
+            SET source_type = 'scada'
+            WHERE source_type = 'scada-fine';
+
+            DELETE FROM core.data_source_expectations
+            WHERE source_type = 'scada-fine';
+
+            DELETE FROM core.data_completeness_overrides
+            WHERE source_type = 'scada-fine';
+            """;
+
+        try
+        {
+            var migrated = await db.Database.ExecuteSqlRawAsync(scadaFineMigrationSql, ct).ConfigureAwait(false);
+            if (migrated > 0)
+            {
+                logger.LogInformation(
+                    "scada-fine → scada-migrasjon: {Rows} rader berørt (data_imports/expectations/overrides).",
+                    migrated);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "scada-fine-migrasjonen feilet — matrisen kan fortsatt vise en scada-fine-kolonne.");
         }
     }
 
